@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>ChanthraStudio</RootNamespace>
+    <AssemblyName>ChanthraStudio</AssemblyName>
+    <Version>0.1.0</Version>
+    <Company>Chanthra Studio</Company>
+    <Product>Chanthra Studio</Product>
+    <Description>AI video atelier — generate · edit · score · stitch</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Dapper" Version="2.1.72" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\Fonts\*.ttf" />
+    <Resource Include="Assets\Brand\*.png" />
+  </ItemGroup>
+
+  <!--
+    WPF builds an intermediate "_wpftmp" project for XAML compilation.
+    Without this guard, the CommunityToolkit.Mvvm source generators run
+    twice and emit duplicate OnXxxChanged partial methods — disable
+    analyzers in the temp project.
+  -->
+
+</Project>

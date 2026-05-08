@@ -1,0 +1,65 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--  ============================================================
+          Drop shadows / glows
+          WPF DropShadowEffect ≠ CSS box-shadow (no inset, single layer
+          per effect), so multi-layer glows are stacked Borders.
+          ============================================================  -->
+
+    <DropShadowEffect
+        x:Key="ShadowWindow"
+        BlurRadius="80"
+        Direction="270"
+        Opacity="0.7"
+        ShadowDepth="40"
+        Color="#FF000000" />
+
+    <DropShadowEffect
+        x:Key="ShadowCanvas"
+        BlurRadius="60"
+        Direction="270"
+        Opacity="0.18"
+        ShadowDepth="22"
+        Color="{StaticResource ColorGold}" />
+
+    <DropShadowEffect
+        x:Key="ShadowCanvasCrimson"
+        BlurRadius="60"
+        Direction="270"
+        Opacity="0.12"
+        ShadowDepth="22"
+        Color="{StaticResource ColorCrimson}" />
+
+    <DropShadowEffect
+        x:Key="ShadowGoldGlow"
+        BlurRadius="20"
+        Opacity="0.5"
+        ShadowDepth="0"
+        Color="{StaticResource ColorGold}" />
+
+    <DropShadowEffect
+        x:Key="ShadowGoldGlowSoft"
+        BlurRadius="8"
+        Opacity="0.7"
+        ShadowDepth="0"
+        Color="{StaticResource ColorGold}" />
+
+    <DropShadowEffect
+        x:Key="ShadowSummonCta"
+        BlurRadius="20"
+        Opacity="0.25"
+        ShadowDepth="4"
+        Color="{StaticResource ColorGold}" />
+
+    <DropShadowEffect
+        x:Key="ShadowCardLift"
+        BlurRadius="16"
+        Opacity="0.18"
+        ShadowDepth="4"
+        Color="{StaticResource ColorGold}" />
+
+    <BlurEffect x:Key="EffectGlassBlur" KernelType="Gaussian" Radius="12" />
+
+</ResourceDictionary>
