@@ -27,9 +27,20 @@ public sealed class QueueViewModel : ObservableObject
         _ctx = ctx;
         RefreshCommand = new RelayCommand(Refresh);
 
-        // Live update: any progress change refreshes the queue. Cheap because
-        // it's just a SELECT — a few hundred rows max.
-        _ctx.Generation.ProgressChanged += (_, _) => Refresh();
+        // Refresh on terminal events only. Subscribing to every progress frame
+        // (multiple per second) was Clear()-ing + reloading the ItemsControl
+        // continuously, collapsing user scroll position and flickering pills.
+        // The queue rows users care about are status transitions, not the
+        // 0–100 progress bar (that lives on the Generate-view shot card).
+        _ctx.Generation.ProgressChanged += (_, e) =>
+        {
+            if (e.Status == ShotStatus.Done
+                || e.Status == ShotStatus.Error
+                || e.Status == ShotStatus.Queue)
+            {
+                Refresh();
+            }
+        };
 
         Refresh();
     }

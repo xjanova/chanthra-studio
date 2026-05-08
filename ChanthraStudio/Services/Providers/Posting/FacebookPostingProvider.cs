@@ -28,6 +28,12 @@ internal sealed class FacebookPostingProvider : IPostingProvider
 {
     private const string GraphBase = "https://graph.facebook.com/v19.0/";
 
+    // Single shared HttpClient — per-call construction was leaking sockets
+    // into TIME_WAIT under repeated posting. Timeout set per-request via
+    // CancellationToken / Task.WhenAny rather than the instance-wide timeout
+    // so one long upload doesn't throttle a small probe.
+    private static readonly HttpClient Http = new() { BaseAddress = new Uri(GraphBase) };
+
     public string Id => "facebook";
     public string DisplayName => "Facebook Page · Graph API";
     public string ApiKeyHint => "Page access token · developers.facebook.com";
@@ -42,8 +48,7 @@ internal sealed class FacebookPostingProvider : IPostingProvider
         // /me with the page token returns the page record. Cheap, no rate cost.
         try
         {
-            using var http = new HttpClient { BaseAddress = new Uri(GraphBase) };
-            using var resp = await http.GetAsync($"me?fields=id,name&access_token={Uri.EscapeDataString(apiKey)}", ct);
+            using var resp = await Http.GetAsync($"me?fields=id,name&access_token={Uri.EscapeDataString(apiKey)}", ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
                 return new ProviderHealth(false, $"HTTP {(int)resp.StatusCode}", ExtractError(body));
@@ -66,8 +71,6 @@ internal sealed class FacebookPostingProvider : IPostingProvider
 
         try
         {
-            using var http = new HttpClient { BaseAddress = new Uri(GraphBase), Timeout = TimeSpan.FromMinutes(5) };
-
             using var form = new MultipartFormDataContent();
             form.Add(new StringContent(req.ApiKey), "access_token");
 
@@ -88,7 +91,9 @@ internal sealed class FacebookPostingProvider : IPostingProvider
                 }
 
                 var endpoint = isVideo ? "videos" : "photos";
-                using var resp = await http.PostAsync($"{Uri.EscapeDataString(req.TargetId)}/{endpoint}", form, ct);
+                using var uploadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                uploadCts.CancelAfter(TimeSpan.FromMinutes(5));
+                using var resp = await Http.PostAsync($"{Uri.EscapeDataString(req.TargetId)}/{endpoint}", form, uploadCts.Token);
                 return ParseResponse(await resp.Content.ReadAsStringAsync(ct), resp.IsSuccessStatusCode);
             }
             else
@@ -97,7 +102,7 @@ internal sealed class FacebookPostingProvider : IPostingProvider
                 if (string.IsNullOrEmpty(req.Caption))
                     return new PostResult(false, null, "Nothing to post: no file and no caption.");
                 form.Add(new StringContent(req.Caption), "message");
-                using var resp = await http.PostAsync($"{Uri.EscapeDataString(req.TargetId)}/feed", form, ct);
+                using var resp = await Http.PostAsync($"{Uri.EscapeDataString(req.TargetId)}/feed", form, ct);
                 return ParseResponse(await resp.Content.ReadAsStringAsync(ct), resp.IsSuccessStatusCode);
             }
         }

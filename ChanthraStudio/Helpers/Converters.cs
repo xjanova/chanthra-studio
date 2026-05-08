@@ -70,6 +70,53 @@ public sealed class PercentToWidthConverter : IValueConverter
         => Binding.DoNothing;
 }
 
+/// <summary>
+/// Loads a clip's file path into a <see cref="BitmapImage"/> only when the
+/// file extension is an image format. Non-image files (.mp4, .webm, etc.)
+/// return null so the binding falls back to the placeholder Border behind
+/// the Image control. Critically uses <see cref="BitmapCacheOption.OnLoad"/>
+/// so the bitmap closes the file handle immediately — without this the
+/// Library's "Delete clip" action would fail with "file in use" because the
+/// Image control keeps the PNG locked for the lifetime of the binding.
+/// </summary>
+public sealed class ClipPathToImageConverter : IValueConverter
+{
+    private static readonly System.Collections.Generic.HashSet<string> ImageExt = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff",
+    };
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not string path || string.IsNullOrEmpty(path)) return null;
+        var ext = System.IO.Path.GetExtension(path);
+        if (!ImageExt.Contains(ext)) return null;
+        if (!System.IO.File.Exists(path)) return null;
+        try
+        {
+            var bmp = new System.Windows.Media.Imaging.BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bmp.CreateOptions = System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreImageCache;
+            bmp.UriSource = new Uri(path, UriKind.Absolute);
+            // Down-sample huge source images to roughly card size so a wall
+            // of 4K renders doesn't OOM us. The bitmap stays at native size
+            // logically, but the decode buffer is constrained.
+            bmp.DecodePixelWidth = 480;
+            bmp.EndInit();
+            bmp.Freeze();
+            return bmp;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => Binding.DoNothing;
+}
+
 public sealed class StatusToBrushConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)

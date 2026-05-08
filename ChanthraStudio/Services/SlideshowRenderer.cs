@@ -60,7 +60,7 @@ public sealed class SlideshowRenderer
             : spec.OutputName);
         var outputPath = Path.Combine(outDir, safeName + ".mp4");
 
-        var args = BuildArgs(spec, outputPath);
+        var args = BuildArgList(spec, outputPath);
         progress?.Report("Rendering film…");
 
         var (_, stderr, exit) = await ff.RunAsync(ffmpegPath, args,
@@ -107,53 +107,64 @@ public sealed class SlideshowRenderer
         return RenderResult.Success(outputPath, clipId);
     }
 
-    private static string BuildArgs(Spec spec, string outputPath)
+    /// <summary>
+    /// Builds the ffmpeg argument list as separate tokens so
+    /// <see cref="ProcessStartInfo.ArgumentList"/> can pass each one verbatim.
+    /// Filenames with spaces / quotes / shell metacharacters are safe — there
+    /// is no shell parsing in this path.
+    /// </summary>
+    private static List<string> BuildArgList(Spec spec, string outputPath)
     {
         var hasAudio = !string.IsNullOrWhiteSpace(spec.AudioPath) && File.Exists(spec.AudioPath);
+        var args = new List<string> { "-y" };
 
-        var sb = new StringBuilder();
-        sb.Append("-y ");
-
-        // -loop 1 -t {dur} -i {path}   for each image clip.
         foreach (var c in spec.Clips)
         {
-            sb.Append($"-loop 1 -t {spec.SecondsPerClip:F2} -i \"{c.FilePath}\" ");
+            args.Add("-loop");      args.Add("1");
+            args.Add("-t");         args.Add(spec.SecondsPerClip.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
+            args.Add("-i");         args.Add(c.FilePath);
         }
-        // Audio input goes after all image inputs so its index is predictable.
         var audioIndex = spec.Clips.Count;
         if (hasAudio)
         {
-            sb.Append($"-i \"{spec.AudioPath}\" ");
+            args.Add("-i");
+            args.Add(spec.AudioPath!);
         }
 
-        // filter_complex — per-input scale-pad to common size, setsar=1, then concat.
-        // When audio is present we also build a [a] label by piping the audio
-        // input through a volume filter, so it can be mapped alongside [out].
-        sb.Append("-filter_complex \"");
+        // filter_complex value is a single argv slot — internal commas and
+        // semicolons are fine, ffmpeg parses them inside the filter language.
+        var filter = new StringBuilder();
         for (int i = 0; i < spec.Clips.Count; i++)
         {
-            sb.Append($"[{i}:v]scale={spec.Width}:{spec.Height}:force_original_aspect_ratio=decrease,");
-            sb.Append($"pad={spec.Width}:{spec.Height}:(ow-iw)/2:(oh-ih)/2:color=#060409,setsar=1[v{i}];");
+            filter.Append($"[{i}:v]scale={spec.Width}:{spec.Height}:force_original_aspect_ratio=decrease,");
+            filter.Append($"pad={spec.Width}:{spec.Height}:(ow-iw)/2:(oh-ih)/2:color=#060409,setsar=1[v{i}];");
         }
-        for (int i = 0; i < spec.Clips.Count; i++) sb.Append($"[v{i}]");
-        sb.Append($"concat=n={spec.Clips.Count}:v=1:a=0[out]");
+        for (int i = 0; i < spec.Clips.Count; i++) filter.Append($"[v{i}]");
+        filter.Append($"concat=n={spec.Clips.Count}:v=1:a=0[out]");
         if (hasAudio)
         {
-            // Clamp volume to a sane band; the slider already enforces 0–2 range.
             var vol = Math.Clamp(spec.AudioVolume, 0.0, 2.0);
-            sb.Append($";[{audioIndex}:a]volume={vol:F2}[a]");
+            filter.Append($";[{audioIndex}:a]volume={vol.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}[a]");
         }
-        sb.Append("\" ");
 
-        sb.Append("-map \"[out]\" ");
+        args.Add("-filter_complex");
+        args.Add(filter.ToString());
+
+        args.Add("-map");           args.Add("[out]");
         if (hasAudio)
         {
-            sb.Append("-map \"[a]\" -c:a aac -b:a 192k -shortest ");
+            args.Add("-map");       args.Add("[a]");
+            args.Add("-c:a");       args.Add("aac");
+            args.Add("-b:a");       args.Add("192k");
+            args.Add("-shortest");
         }
-        sb.Append($"-r {spec.Fps} ");
-        sb.Append("-c:v libx264 -preset fast -crf 20 -pix_fmt yuv420p ");
-        sb.Append($"\"{outputPath}\"");
-        return sb.ToString();
+        args.Add("-r");             args.Add(spec.Fps.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        args.Add("-c:v");           args.Add("libx264");
+        args.Add("-preset");        args.Add("fast");
+        args.Add("-crf");           args.Add("20");
+        args.Add("-pix_fmt");       args.Add("yuv420p");
+        args.Add(outputPath);
+        return args;
     }
 
     private static string TailLines(string text, int n)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -76,7 +77,7 @@ public sealed class FFmpegService
         if (path is null) return null;
         try
         {
-            var (stdout, _, code) = await RunAsync(path, "-version", capture: true, ct: ct);
+            var (stdout, _, code) = await RunAsync(path, new[] { "-version" }, capture: true, ct: ct);
             if (code != 0) return null;
             // First line is "ffmpeg version 6.1.1 …"
             var nl = stdout.IndexOf('\n');
@@ -86,19 +87,18 @@ public sealed class FFmpegService
     }
 
     /// <summary>
-    /// Runs ffmpeg with the given arguments. Returns (stdout, stderr, exit-code).
-    /// Stdout is rarely interesting; stderr carries progress + final stats. We
-    /// stream both into StringBuilders so callers can surface them in toasts
-    /// or save to the logs folder for debugging.
+    /// Runs ffmpeg with the given list of arguments. Each entry becomes a
+    /// separate argv slot, so paths containing spaces / quotes / shell
+    /// metacharacters are passed verbatim with no shell parsing — safer than
+    /// concatenating into a single command-line string.
     /// </summary>
     public async Task<(string stdout, string stderr, int exit)> RunAsync(
-        string ffmpegPath, string arguments, bool capture = true,
+        string ffmpegPath, IEnumerable<string> arguments, bool capture = true,
         Action<string>? onStderrLine = null, CancellationToken ct = default)
     {
         var psi = new ProcessStartInfo
         {
             FileName = ffmpegPath,
-            Arguments = arguments,
             CreateNoWindow = true,
             UseShellExecute = false,
             RedirectStandardOutput = capture,
@@ -106,6 +106,7 @@ public sealed class FFmpegService
             StandardErrorEncoding = Encoding.UTF8,
             StandardOutputEncoding = Encoding.UTF8,
         };
+        foreach (var arg in arguments) psi.ArgumentList.Add(arg);
 
         using var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
         var stdout = new StringBuilder();

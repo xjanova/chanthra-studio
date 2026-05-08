@@ -106,41 +106,7 @@ public sealed class GenerateViewModel : ObservableObject
         new() { Id = "oracle",      Name = "Oracle",       ThumbPath = "/Assets/Brand/empress-tall-2.png" },
     };
 
-    public ObservableCollection<Shot> Storyboard { get; } = new()
-    {
-        new()
-        {
-            Id = "01", Number = "01", Title = "Throne reveal",
-            Description = "Slow tilt-up from black silk floor to the empress on her gold-threaded throne; halo flares.",
-            DurationLabel = "2.4s", Status = ShotStatus.Done,
-            ThumbUrl = "/Assets/Brand/empress-portrait.png",
-            Tags = { "CINE", "WIDE", "NIGHT" },
-        },
-        new()
-        {
-            Id = "02", Number = "02", Title = "Veil drop",
-            Description = "Cascading mauve veil reveals her face; eyes catch a single shaft of crimson light.",
-            DurationLabel = "1.8s", Status = ShotStatus.Done,
-            ThumbUrl = "/Assets/Brand/empress-wide.png",
-            Tags = { "CU", "DRAMA" },
-        },
-        new()
-        {
-            Id = "03", Number = "03", Title = "Lotus ascent",
-            Description = "Gold lotuses bloom in slow-motion around her shoulders, halo splits into eight beams.",
-            DurationLabel = "3.1s", Status = ShotStatus.Generating, Progress = 62,
-            ThumbUrl = "/Assets/Brand/empress-tall-1.png",
-            Tags = { "MS", "GOLD", "BLOOM" },
-        },
-        new()
-        {
-            Id = "04", Number = "04", Title = "Halo close",
-            Description = "Camera pulls back as the eight beams converge into a single luminous ring above her crown.",
-            DurationLabel = "2.0s", Status = ShotStatus.Queue,
-            ThumbUrl = "/Assets/Brand/empress-tall-2.png",
-            Tags = { "WIDE", "CLOSE" },
-        },
-    };
+    public ObservableCollection<Shot> Storyboard { get; } = new();
 
     public IAsyncRelayCommand SummonSceneCommand { get; }
 
@@ -152,11 +118,55 @@ public sealed class GenerateViewModel : ObservableObject
         SummonSceneCommand = new AsyncRelayCommand(SummonSceneAsync);
         RefreshWorkflowsCommand = new RelayCommand(LoadWorkflows);
 
-        if (_ctx is not null)
+        if (_ctx is null)
         {
-            _ctx.Generation.ProgressChanged += OnGenerationProgress;
-            LoadWorkflows();
+            // Design-time only — populate fake shots so the XAML designer
+            // shows realistic content. At runtime _ctx is non-null and the
+            // storyboard fills from real generations.
+            SeedDesignTimeStoryboard();
+            IsGenerating = false;
+            return;
         }
+
+        _ctx.Generation.ProgressChanged += OnGenerationProgress;
+        LoadWorkflows();
+        IsGenerating = false;
+    }
+
+    private void SeedDesignTimeStoryboard()
+    {
+        Storyboard.Add(new Shot
+        {
+            Id = "01", Number = "01", Title = "Throne reveal",
+            Description = "Slow tilt-up from black silk floor to the empress on her gold-threaded throne; halo flares.",
+            DurationLabel = "2.4s", Status = ShotStatus.Done,
+            ThumbUrl = "/Assets/Brand/empress-portrait.png",
+            Tags = { "CINE", "WIDE", "NIGHT" },
+        });
+        Storyboard.Add(new Shot
+        {
+            Id = "02", Number = "02", Title = "Veil drop",
+            Description = "Cascading mauve veil reveals her face; eyes catch a single shaft of crimson light.",
+            DurationLabel = "1.8s", Status = ShotStatus.Done,
+            ThumbUrl = "/Assets/Brand/empress-wide.png",
+            Tags = { "CU", "DRAMA" },
+        });
+        Storyboard.Add(new Shot
+        {
+            Id = "03", Number = "03", Title = "Lotus ascent",
+            Description = "Gold lotuses bloom in slow-motion around her shoulders, halo splits into eight beams.",
+            DurationLabel = "3.1s", Status = ShotStatus.Generating, Progress = 62,
+            ThumbUrl = "/Assets/Brand/empress-tall-1.png",
+            Tags = { "MS", "GOLD", "BLOOM" },
+        });
+        Storyboard.Add(new Shot
+        {
+            Id = "04", Number = "04", Title = "Halo close",
+            Description = "Camera pulls back as the eight beams converge into a single luminous ring above her crown.",
+            DurationLabel = "2.0s", Status = ShotStatus.Queue,
+            ThumbUrl = "/Assets/Brand/empress-tall-2.png",
+            Tags = { "WIDE", "CLOSE" },
+        });
     }
 
     private void LoadWorkflows()

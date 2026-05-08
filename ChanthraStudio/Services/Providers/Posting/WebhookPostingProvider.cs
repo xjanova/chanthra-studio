@@ -26,6 +26,8 @@ namespace ChanthraStudio.Services.Providers.Posting;
 /// </summary>
 internal sealed class WebhookPostingProvider : IPostingProvider
 {
+    private static readonly HttpClient Http = new();
+
     public string Id => "webhook";
     public string DisplayName => "Generic webhook";
     public string ApiKeyHint => "Optional bearer/secret — empty for public endpoints";
@@ -47,10 +49,11 @@ internal sealed class WebhookPostingProvider : IPostingProvider
             return new PostResult(false, null, "Webhook URL missing — set it in Settings → Posting.");
         if (!Uri.TryCreate(req.TargetId, UriKind.Absolute, out var url))
             return new PostResult(false, null, $"Invalid webhook URL: {req.TargetId}");
+        if (url.Scheme != Uri.UriSchemeHttp && url.Scheme != Uri.UriSchemeHttps)
+            return new PostResult(false, null, $"Webhook URL must be http(s) — got {url.Scheme}://");
 
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
             using var form = new MultipartFormDataContent();
 
             if (!string.IsNullOrEmpty(req.FilePath) && File.Exists(req.FilePath))
@@ -77,7 +80,9 @@ internal sealed class WebhookPostingProvider : IPostingProvider
             if (!string.IsNullOrEmpty(req.ApiKey))
                 msg.Headers.Authorization = new AuthenticationHeaderValue("Bearer", req.ApiKey);
 
-            using var resp = await http.SendAsync(msg, ct);
+            using var uploadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            uploadCts.CancelAfter(TimeSpan.FromMinutes(5));
+            using var resp = await Http.SendAsync(msg, uploadCts.Token);
             var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {

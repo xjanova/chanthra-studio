@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using ChanthraStudio.Models;
 using ChanthraStudio.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -70,6 +72,13 @@ public sealed class LibraryViewModel : ObservableObject
 
     public void Refresh()
     {
+        // Capture which clip ids the user had checked — IsSelected lives on
+        // the in-memory Clip instances we're about to discard. Without this
+        // restore-after-rebuild step a generation finishing mid-batch would
+        // wipe whatever the user had marked for "Render film".
+        var prevSelected = new HashSet<string>(
+            Clips.Where(c => c.IsSelected).Select(c => c.Id));
+
         // Detach old clips' PropertyChanged handlers before discarding them.
         foreach (var old in Clips) old.PropertyChanged -= OnClipPropertyChanged;
         Clips.Clear();
@@ -77,6 +86,7 @@ public sealed class LibraryViewModel : ObservableObject
         var rows = _ctx.Clips.RecentClips();
         foreach (var c in rows)
         {
+            if (prevSelected.Contains(c.Id)) c.IsSelected = true;
             c.PropertyChanged += OnClipPropertyChanged;
             Clips.Add(c);
         }

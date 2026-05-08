@@ -177,10 +177,26 @@
                                     <Border Grid.Row="0" CornerRadius="10,10,0,0" ClipToBounds="True">
                                         <Grid>
                                             <Border Background="{StaticResource BrushBgInset}" />
+                                            <!--  Video / non-image fallback: a film-strip glyph + filename  -->
+                                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <TextBlock
+                                                    HorizontalAlignment="Center"
+                                                    FontFamily="{StaticResource FontDisplay}"
+                                                    FontSize="32"
+                                                    Foreground="{StaticResource BrushGoldHi}"
+                                                    Text="✦" />
+                                                <TextBlock
+                                                    Margin="0,4,0,0"
+                                                    HorizontalAlignment="Center"
+                                                    FontSize="9.5"
+                                                    Style="{StaticResource TextMonoUpper}"
+                                                    Text="MEDIA" />
+                                            </StackPanel>
+                                            <!--  Real image (only renders when ClipPathToImage returns non-null)  -->
                                             <Image
-                                                Stretch="UniformToFill"
-                                                Source="{Binding FilePath, IsAsync=True}"
-                                                RenderOptions.BitmapScalingMode="HighQuality" />
+                                                RenderOptions.BitmapScalingMode="HighQuality"
+                                                Source="{Binding FilePath, Converter={StaticResource ClipPathToImage}}"
+                                                Stretch="UniformToFill" />
                                             <!--  Selection checkbox overlay (top-left)  -->
                                             <CheckBox
                                                 Margin="10"

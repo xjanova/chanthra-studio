@@ -123,17 +123,6 @@ public sealed class SettingsViewModel : ObservableObject
     private string _toastKind = "info";
     public string ToastKind { get => _toastKind; set => SetProperty(ref _toastKind, value); }
 
-    public string ComfyUiUrl
-    {
-        get => _settings.ComfyUiUrl;
-        set
-        {
-            if (_settings.ComfyUiUrl == value) return;
-            _settings.ComfyUiUrl = value;
-            OnPropertyChanged();
-        }
-    }
-
     public string ActiveLlm
     {
         get => _settings.ActiveLlm;
@@ -164,6 +153,11 @@ public sealed class SettingsViewModel : ObservableObject
             if (_settings.PostFacebookPageId == value) return;
             _settings.PostFacebookPageId = value;
             OnPropertyChanged();
+            // The api-key rows persist on their per-row Save button, but the
+            // Page ID + Webhook URL textboxes had no equivalent — losing the
+            // value on hard kill. Persist on every keystroke (debounced by
+            // SQLite's UPSERT being effectively free).
+            TryPersist();
         }
     }
 
@@ -175,7 +169,26 @@ public sealed class SettingsViewModel : ObservableObject
             if (_settings.PostWebhookUrl == value) return;
             _settings.PostWebhookUrl = value;
             OnPropertyChanged();
+            TryPersist();
         }
+    }
+
+    public string ComfyUiUrl
+    {
+        get => _settings.ComfyUiUrl;
+        set
+        {
+            if (_settings.ComfyUiUrl == value) return;
+            _settings.ComfyUiUrl = value;
+            OnPropertyChanged();
+            TryPersist();
+        }
+    }
+
+    private void TryPersist()
+    {
+        try { _settings.Save(); }
+        catch { /* DB write failures are non-fatal — OnExit retries. */ }
     }
 
     public string DataPath => AppPaths.Root;
