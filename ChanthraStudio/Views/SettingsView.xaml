@@ -298,6 +298,15 @@
                 </Border>
                 <ItemsControl ItemTemplate="{StaticResource ProviderRowTemplate}" ItemsSource="{Binding VideoProviders}" />
 
+                <!--  Voice section  -->
+                <TextBlock
+                    Margin="0,28,0,4"
+                    Style="{StaticResource TextSectionDivider}"
+                    Text="VOICE PROVIDERS · text-to-speech" />
+                <TextBlock Margin="0,0,0,12" Style="{StaticResource TextSecondary}" FontSize="11.5"
+                           Text="Used by the Voice Atelier to synthesise voice-overs. Output drops into media/voice/ and can be picked in Render Film's audio track." />
+                <ItemsControl ItemTemplate="{StaticResource ProviderRowTemplate}" ItemsSource="{Binding VoiceProviders}" />
+
                 <!--  Posting section  -->
                 <TextBlock
                     Margin="0,28,0,4"

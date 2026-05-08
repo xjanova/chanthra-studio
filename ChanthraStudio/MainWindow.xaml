@@ -48,7 +48,7 @@
                 <DataTrigger Binding="{Binding ActiveView}" Value="Voice">
                     <Setter Property="Content">
                         <Setter.Value>
-                            <views:StubView Tag="Sound atelier" />
+                            <views:VoiceView />
                         </Setter.Value>
                     </Setter>
                 </DataTrigger>

@@ -114,6 +114,7 @@ public sealed class SettingsViewModel : ObservableObject
 
     public ObservableCollection<ProviderRow> LlmProviders { get; } = new();
     public ObservableCollection<ProviderRow> VideoProviders { get; } = new();
+    public ObservableCollection<ProviderRow> VoiceProviders { get; } = new();
     public ObservableCollection<ProviderRow> PostingProviders { get; } = new();
 
     private string? _toastMessage;
@@ -206,6 +207,7 @@ public sealed class SettingsViewModel : ObservableObject
 
         foreach (var p in registry.Llm) LlmProviders.Add(new ProviderRow(p, settings));
         foreach (var p in registry.Video) VideoProviders.Add(new ProviderRow(p, settings));
+        foreach (var p in registry.Voice) VoiceProviders.Add(new ProviderRow(p, settings));
         foreach (var p in registry.Posting) PostingProviders.Add(new ProviderRow(p, settings));
 
         SaveAllCommand = new RelayCommand(SaveAll);
@@ -244,7 +246,7 @@ public sealed class SettingsViewModel : ObservableObject
         {
             // Per-row Save mutates the in-memory dict; final Save below
             // persists everything in one transaction.
-            foreach (var row in LlmProviders.Concat(VideoProviders).Concat(PostingProviders))
+            foreach (var row in LlmProviders.Concat(VideoProviders).Concat(VoiceProviders).Concat(PostingProviders))
             {
                 if (row.IsDirty) row.SaveCommand.Execute(null);
             }

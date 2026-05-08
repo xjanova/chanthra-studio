@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using ChanthraStudio.Services.Providers.Posting;
+using ChanthraStudio.Services.Providers.Voice;
 
 namespace ChanthraStudio.Services.Providers;
 
@@ -15,8 +16,10 @@ public sealed class ProviderRegistry
     public IReadOnlyList<ILlmProvider> Llm { get; }
     public IReadOnlyList<IVideoProvider> Video { get; }
     public IReadOnlyList<IPostingProvider> Posting { get; }
+    public IReadOnlyList<IVoiceProvider> Voice { get; }
 
-    public IEnumerable<IProvider> All => Llm.Cast<IProvider>().Concat(Video).Concat(Posting);
+    public IEnumerable<IProvider> All
+        => Llm.Cast<IProvider>().Concat(Video).Concat(Posting).Concat(Voice);
 
     public ProviderRegistry()
     {
@@ -41,6 +44,12 @@ public sealed class ProviderRegistry
         {
             new FacebookPostingProvider(),
             new WebhookPostingProvider(),
+        };
+
+        Voice = new IVoiceProvider[]
+        {
+            new OpenAiTtsProvider(),
+            new ElevenLabsTtsProvider(),
         };
     }
 
