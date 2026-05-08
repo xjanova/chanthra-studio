@@ -173,6 +173,8 @@ public sealed class LibraryViewModel : ObservableObject
             SecondsPerClip = dialog.SecondsPerClip,
             Fps = dialog.Fps,
             OutputName = dialog.OutputName,
+            AudioPath = string.IsNullOrEmpty(dialog.AudioPath) ? null : dialog.AudioPath,
+            AudioVolume = dialog.AudioVolume,
         };
         var progress = new Progress<string>(line => { /* could surface frame counts later */ });
         var result = await _ctx.SlideshowRenderer.RenderAsync(spec, progress);

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Media;
 using ChanthraStudio.Services;
+using Microsoft.Win32;
 
 namespace ChanthraStudio.Views.Dialogs;
 
@@ -14,6 +15,11 @@ public partial class RenderFilmDialog : Window
     public string OutputName => NameBox.Text;
     public double SecondsPerClip => DurationSlider.Value;
     public int Fps => Fps24.IsChecked == true ? 24 : Fps60.IsChecked == true ? 60 : 30;
+
+    /// <summary>Empty when the user hasn't picked an audio file.</summary>
+    public string AudioPath { get; private set; } = "";
+    public double AudioVolume => VolumeSlider.Value;
+
     public bool Confirmed { get; private set; }
 
     public RenderFilmDialog(StudioContext ctx, int clipCount, string defaultName)
@@ -32,6 +38,27 @@ public partial class RenderFilmDialog : Window
         InitializeComponent();
         DataContext = this;
         NameBox.Text = defaultName;
+    }
+
+    private void BrowseAudio_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Title = "Pick an audio track",
+            Filter = "Audio files|*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac|All files|*.*",
+            CheckFileExists = true,
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        AudioPath = dlg.FileName;
+        AudioPathLabel.Text = System.IO.Path.GetFileName(AudioPath);
+        AudioPathLabel.Foreground = (Brush)FindResource("BrushText1");
+    }
+
+    private void ClearAudio_Click(object sender, RoutedEventArgs e)
+    {
+        AudioPath = "";
+        AudioPathLabel.Text = "(silent — no audio track)";
+        AudioPathLabel.Foreground = (Brush)FindResource("BrushText3");
     }
 
     private void Confirm_Click(object sender, RoutedEventArgs e)

@@ -32,6 +32,12 @@ public sealed class SlideshowRenderer
         public int Width { get; init; } = 1920;
         public int Height { get; init; } = 1080;
         public string OutputName { get; init; } = "";
+
+        /// <summary>Optional audio track. Empty / missing file → silent video.</summary>
+        public string? AudioPath { get; init; }
+
+        /// <summary>0.0 – 1.0 multiplier. Mapped to ffmpeg's volume filter.</summary>
+        public double AudioVolume { get; init; } = 1.0;
     }
 
     public async Task<RenderResult> RenderAsync(Spec spec, IProgress<string>? progress = null, CancellationToken ct = default)
@@ -103,28 +109,47 @@ public sealed class SlideshowRenderer
 
     private static string BuildArgs(Spec spec, string outputPath)
     {
+        var hasAudio = !string.IsNullOrWhiteSpace(spec.AudioPath) && File.Exists(spec.AudioPath);
+
         var sb = new StringBuilder();
         sb.Append("-y ");
 
-        // -loop 1 -t {dur} -i {path}   for each clip.
+        // -loop 1 -t {dur} -i {path}   for each image clip.
         foreach (var c in spec.Clips)
         {
             sb.Append($"-loop 1 -t {spec.SecondsPerClip:F2} -i \"{c.FilePath}\" ");
         }
+        // Audio input goes after all image inputs so its index is predictable.
+        var audioIndex = spec.Clips.Count;
+        if (hasAudio)
+        {
+            sb.Append($"-i \"{spec.AudioPath}\" ");
+        }
 
         // filter_complex — per-input scale-pad to common size, setsar=1, then concat.
+        // When audio is present we also build a [a] label by piping the audio
+        // input through a volume filter, so it can be mapped alongside [out].
         sb.Append("-filter_complex \"");
         for (int i = 0; i < spec.Clips.Count; i++)
         {
-            // scale: fit inside W×H preserving aspect, then pad to exact W×H
             sb.Append($"[{i}:v]scale={spec.Width}:{spec.Height}:force_original_aspect_ratio=decrease,");
             sb.Append($"pad={spec.Width}:{spec.Height}:(ow-iw)/2:(oh-ih)/2:color=#060409,setsar=1[v{i}];");
         }
         for (int i = 0; i < spec.Clips.Count; i++) sb.Append($"[v{i}]");
         sb.Append($"concat=n={spec.Clips.Count}:v=1:a=0[out]");
+        if (hasAudio)
+        {
+            // Clamp volume to a sane band; the slider already enforces 0–2 range.
+            var vol = Math.Clamp(spec.AudioVolume, 0.0, 2.0);
+            sb.Append($";[{audioIndex}:a]volume={vol:F2}[a]");
+        }
         sb.Append("\" ");
 
         sb.Append("-map \"[out]\" ");
+        if (hasAudio)
+        {
+            sb.Append("-map \"[a]\" -c:a aac -b:a 192k -shortest ");
+        }
         sb.Append($"-r {spec.Fps} ");
         sb.Append("-c:v libx264 -preset fast -crf 20 -pix_fmt yuv420p ");
         sb.Append($"\"{outputPath}\"");

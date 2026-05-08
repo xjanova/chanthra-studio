@@ -6,8 +6,8 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
     Title="Render film"
-    Width="540"
-    Height="500"
+    Width="560"
+    Height="640"
     AllowsTransparency="True"
     Background="Transparent"
     FontFamily="{StaticResource FontUI}"
@@ -119,8 +119,48 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <!--  spacer  -->
-                    <Border Grid.Row="6" />
+                    <!--  Audio track (optional)  -->
+                    <StackPanel Grid.Row="6" Margin="0,14,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource TextMonoUpper}" Text="AUDIO TRACK · OPTIONAL" />
+                            <TextBlock Grid.Column="1" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="MP3 · WAV · M4A · OGG" />
+                        </Grid>
+                        <Grid Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Padding="12,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                <TextBlock x:Name="AudioPathLabel"
+                                           VerticalAlignment="Center"
+                                           FontFamily="{StaticResource FontMono}"
+                                           FontSize="10.5"
+                                           Foreground="{StaticResource BrushText3}"
+                                           Text="(silent — no audio track)"
+                                           TextTrimming="CharacterEllipsis" />
+                            </Border>
+                            <Button Grid.Column="1" Margin="6,0,0,0" Padding="12,8" Click="BrowseAudio_Click" Content="Browse…" Style="{StaticResource ButtonPill}" />
+                            <Button Grid.Column="2" Margin="6,0,0,0" Padding="10,8" Click="ClearAudio_Click" Style="{StaticResource ButtonPill}">
+                                <Path Width="11" Height="11" Data="{StaticResource IcoClose}" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
+                            </Button>
+                        </Grid>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="74" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextLabel}" Text="Volume" />
+                            <Slider Grid.Column="1" x:Name="VolumeSlider" Margin="6,0" Minimum="0" Maximum="2" SmallChange="0.1" LargeChange="0.5" Value="1.0" Style="{StaticResource GoldSlider}" />
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}"
+                                       Text="{Binding Value, ElementName=VolumeSlider, StringFormat={}{0:F2}×}" />
+                        </Grid>
+                    </StackPanel>
 
                     <!--  Footer  -->
                     <Grid Grid.Row="7" Margin="0,18,0,0">
