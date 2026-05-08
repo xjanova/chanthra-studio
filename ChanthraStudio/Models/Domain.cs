@@ -79,11 +79,16 @@ public sealed class Project
     public string CurrentShotId { get; set; } = "";
 }
 
-public sealed class StylePreset
+public sealed class StylePreset : ObservableObject
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string ThumbPath { get; set; } = "";
+
+    private bool _isActive;
+    /// <summary>True when the preset is the currently-selected style.
+    /// Drives the gold border highlight in the picker grid.</summary>
+    public bool IsActive { get => _isActive; set => SetProperty(ref _isActive, value); }
 }
 
 /// <summary>Persisted clip — one row in the <c>clips</c> table.</summary>

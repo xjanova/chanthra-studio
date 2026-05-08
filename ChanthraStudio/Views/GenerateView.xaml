@@ -239,18 +239,29 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border
-                                        Margin="3"
-                                        BorderBrush="{StaticResource BrushLineHairline}"
-                                        BorderThickness="1"
-                                        CornerRadius="6"
-                                        Cursor="Hand">
+                                    <Button Margin="3" BorderThickness="0" Background="Transparent" Padding="0" Cursor="Hand"
+                                            Command="{Binding DataContext.SetStyleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding Id}">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="bd" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                                    <ContentPresenter />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                        <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushGoldHi}" />
+                                                        <Setter TargetName="bd" Property="Effect" Value="{StaticResource ShadowGoldGlowSoft}" />
+                                                    </DataTrigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushLineGold}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
                                         <Grid>
                                             <Border CornerRadius="6" ClipToBounds="True">
                                                 <Border.Background>
-                                                    <ImageBrush
-                                                        ImageSource="{Binding ThumbPath}"
-                                                        Stretch="UniformToFill" />
+                                                    <ImageBrush ImageSource="{Binding ThumbPath}" Stretch="UniformToFill" />
                                                 </Border.Background>
                                             </Border>
                                             <Border VerticalAlignment="Bottom" CornerRadius="0,0,6,6">
@@ -260,17 +271,10 @@
                                                         <GradientStop Offset="1" Color="#D9000000" />
                                                     </LinearGradientBrush>
                                                 </Border.Background>
-                                                <TextBlock
-                                                    Margin="6,12,6,4"
-                                                    HorizontalAlignment="Center"
-                                                    FontFamily="{StaticResource FontDisplay}"
-                                                    FontSize="10.5"
-                                                    FontStyle="Italic"
-                                                    Foreground="{StaticResource BrushText1}"
-                                                    Text="{Binding Name}" />
+                                                <TextBlock Margin="6,12,6,4" HorizontalAlignment="Center" FontFamily="{StaticResource FontDisplay}" FontSize="10.5" FontStyle="Italic" Foreground="{StaticResource BrushText1}" Text="{Binding Name}" />
                                             </Border>
                                         </Grid>
-                                    </Border>
+                                    </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -445,10 +449,22 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextLabel}" Text="Aspect" />
                                     <StackPanel Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal">
-                                        <RadioButton GroupName="aspect" Margin="0,0,4,0" Content="9:16" Style="{StaticResource ChipRadio}" />
-                                        <RadioButton GroupName="aspect" Margin="0,0,4,0" Content="1:1" Style="{StaticResource ChipRadio}" />
-                                        <RadioButton GroupName="aspect" Margin="0,0,4,0" Content="16:9" IsChecked="True" Style="{StaticResource ChipRadio}" />
-                                        <RadioButton GroupName="aspect" Content="21:9" Style="{StaticResource ChipRadio}" />
+                                        <RadioButton GroupName="aspect" Margin="0,0,4,0" Content="9:16"
+                                                     Command="{Binding SetAspectCommand}" CommandParameter="Vertical"
+                                                     IsChecked="{Binding Aspect, Converter={StaticResource EnumEquals}, ConverterParameter=Vertical, Mode=OneWay}"
+                                                     Style="{StaticResource ChipRadio}" />
+                                        <RadioButton GroupName="aspect" Margin="0,0,4,0" Content="1:1"
+                                                     Command="{Binding SetAspectCommand}" CommandParameter="Square"
+                                                     IsChecked="{Binding Aspect, Converter={StaticResource EnumEquals}, ConverterParameter=Square, Mode=OneWay}"
+                                                     Style="{StaticResource ChipRadio}" />
+                                        <RadioButton GroupName="aspect" Margin="0,0,4,0" Content="16:9"
+                                                     Command="{Binding SetAspectCommand}" CommandParameter="Wide"
+                                                     IsChecked="{Binding Aspect, Converter={StaticResource EnumEquals}, ConverterParameter=Wide, Mode=OneWay}"
+                                                     Style="{StaticResource ChipRadio}" />
+                                        <RadioButton GroupName="aspect" Content="21:9"
+                                                     Command="{Binding SetAspectCommand}" CommandParameter="Cinema"
+                                                     IsChecked="{Binding Aspect, Converter={StaticResource EnumEquals}, ConverterParameter=Cinema, Mode=OneWay}"
+                                                     Style="{StaticResource ChipRadio}" />
                                     </StackPanel>
                                 </Grid>
                                 <Border BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="0,1,0,0" />
@@ -491,7 +507,7 @@
                                 </Grid>
                                 <Border BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="0,1,0,0" />
 
-                                <!--  Seed  -->
+                                <!--  Seed — two editable numbers + a regenerate (shuffle) button  -->
                                 <Grid Margin="13,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="74" />
@@ -499,9 +515,17 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextLabel}" Text="Seed" />
-                                    <TextBlock Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding SeedLabel}" />
-                                    <Button Grid.Column="2" Width="22" Height="22" Margin="6,0,0,0" Style="{StaticResource ButtonIcon}" ToolTip="Shuffle seed">
-                                        <Path Width="11" Height="11" Data="{StaticResource IcoShuffle}" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
+                                    <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                                        <Border Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="4" Padding="6,2">
+                                            <TextBox Width="58" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Center" Text="{Binding SeedA, UpdateSourceTrigger=PropertyChanged}" />
+                                        </Border>
+                                        <TextBlock Margin="4,0" VerticalAlignment="Center" Foreground="{StaticResource BrushText4}" Text="·" />
+                                        <Border Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="4" Padding="6,2">
+                                            <TextBox Width="58" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Center" Text="{Binding SeedB, UpdateSourceTrigger=PropertyChanged}" />
+                                        </Border>
+                                    </StackPanel>
+                                    <Button Grid.Column="2" Width="24" Height="24" Margin="6,0,0,0" Command="{Binding RegenerateSeedCommand}" Style="{StaticResource ButtonIcon}" ToolTip="Shuffle seed (random)">
+                                        <Path Width="12" Height="12" Data="{StaticResource IcoShuffle}" Stretch="Uniform" Stroke="{StaticResource BrushGoldHi}" StrokeThickness="1.4" />
                                     </Button>
                                 </Grid>
                                 <Border BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="0,1,0,0" />
@@ -535,43 +559,55 @@
                             Style="{StaticResource TextSectionDivider}"
                             Text="CAMERA LANGUAGE" />
                         <UniformGrid Columns="3" Rows="2">
-                            <RadioButton GroupName="camera" Margin="0,0,4,4" Style="{StaticResource ChipRadio}" Height="58">
+                            <RadioButton GroupName="camera" Margin="0,0,4,4"
+                                         Command="{Binding SetCameraCommand}" CommandParameter="Locked"
+                                         IsChecked="{Binding Camera, Converter={StaticResource EnumEquals}, ConverterParameter=Locked, Mode=OneWay}"
+                                         Style="{StaticResource ChipRadio}" Height="58">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <Border
-                                        Width="22"
-                                        Height="22"
-                                        Margin="0,0,0,4"
-                                        BorderBrush="{StaticResource BrushText3}"
-                                        BorderThickness="1.4"
-                                        CornerRadius="3" />
+                                    <Border Width="22" Height="22" Margin="0,0,0,4" BorderBrush="{StaticResource BrushText3}" BorderThickness="1.4" CornerRadius="3" />
                                     <TextBlock Style="{StaticResource TextMonoUpper}" Text="LOCKED" />
                                 </StackPanel>
                             </RadioButton>
-                            <RadioButton GroupName="camera" Margin="0,0,4,4" Style="{StaticResource ChipRadio}" Height="58">
+                            <RadioButton GroupName="camera" Margin="0,0,4,4"
+                                         Command="{Binding SetCameraCommand}" CommandParameter="Pan"
+                                         IsChecked="{Binding Camera, Converter={StaticResource EnumEquals}, ConverterParameter=Pan, Mode=OneWay}"
+                                         Style="{StaticResource ChipRadio}" Height="58">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Path Margin="0,0,0,4" Width="22" Height="22" Data="M4 12 H20 M16 8 L20 12 L16 16 M8 8 L4 12 L8 16" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
                                     <TextBlock Style="{StaticResource TextMonoUpper}" Text="PAN" />
                                 </StackPanel>
                             </RadioButton>
-                            <RadioButton GroupName="camera" Margin="0,0,0,4" Style="{StaticResource ChipRadio}" Height="58">
+                            <RadioButton GroupName="camera" Margin="0,0,0,4"
+                                         Command="{Binding SetCameraCommand}" CommandParameter="Tilt"
+                                         IsChecked="{Binding Camera, Converter={StaticResource EnumEquals}, ConverterParameter=Tilt, Mode=OneWay}"
+                                         Style="{StaticResource ChipRadio}" Height="58">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Path Margin="0,0,0,4" Width="22" Height="22" Data="M12 4 V20 M8 16 L12 20 L16 16 M8 8 L12 4 L16 8" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
                                     <TextBlock Style="{StaticResource TextMonoUpper}" Text="TILT" />
                                 </StackPanel>
                             </RadioButton>
-                            <RadioButton GroupName="camera" Margin="0,0,4,0" IsChecked="True" Style="{StaticResource ChipRadio}" Height="58">
+                            <RadioButton GroupName="camera" Margin="0,0,4,0"
+                                         Command="{Binding SetCameraCommand}" CommandParameter="Push"
+                                         IsChecked="{Binding Camera, Converter={StaticResource EnumEquals}, ConverterParameter=Push, Mode=OneWay}"
+                                         Style="{StaticResource ChipRadio}" Height="58">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Path Margin="0,0,0,4" Width="22" Height="22" Data="M4 4 L20 4 L20 20 L4 20 Z M9 9 L15 9 L15 15 L9 15 Z" Stretch="Uniform" Stroke="{StaticResource BrushGoldHi}" StrokeThickness="1.4" />
                                     <TextBlock FontSize="9" Foreground="{StaticResource BrushGoldHi}" Style="{StaticResource TextMonoUpper}" Text="PUSH" />
                                 </StackPanel>
                             </RadioButton>
-                            <RadioButton GroupName="camera" Margin="0,0,4,0" Style="{StaticResource ChipRadio}" Height="58">
+                            <RadioButton GroupName="camera" Margin="0,0,4,0"
+                                         Command="{Binding SetCameraCommand}" CommandParameter="Orbit"
+                                         IsChecked="{Binding Camera, Converter={StaticResource EnumEquals}, ConverterParameter=Orbit, Mode=OneWay}"
+                                         Style="{StaticResource ChipRadio}" Height="58">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Path Margin="0,0,0,4" Width="22" Height="22" Data="M12 4 A8 8 0 1 1 12 20 A8 8 0 1 1 12 4 M12 4 V8 M16 8 L12 4" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
                                     <TextBlock Style="{StaticResource TextMonoUpper}" Text="ORBIT" />
                                 </StackPanel>
                             </RadioButton>
-                            <RadioButton GroupName="camera" Style="{StaticResource ChipRadio}" Height="58">
+                            <RadioButton GroupName="camera"
+                                         Command="{Binding SetCameraCommand}" CommandParameter="Dolly"
+                                         IsChecked="{Binding Camera, Converter={StaticResource EnumEquals}, ConverterParameter=Dolly, Mode=OneWay}"
+                                         Style="{StaticResource ChipRadio}" Height="58">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Path Margin="0,0,0,4" Width="22" Height="22" Data="M3 12 H21 M9 6 L21 12 L9 18 Z" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
                                     <TextBlock Style="{StaticResource TextMonoUpper}" Text="DOLLY" />
@@ -1107,6 +1143,46 @@
                                                     Effect="{StaticResource ShadowGoldGlowSoft}"
                                                     Width="{Binding Progress, Converter={StaticResource PercentToWidth}, ConverterParameter=320}" />
                                             </Border>
+                                            <!--  Cancel button overlay (visible while Generating)  -->
+                                            <Button HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                    Width="44" Height="44" Padding="0"
+                                                    Command="{Binding DataContext.CancelShotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="Cancel this generation">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource ButtonIcon}">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Generating">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                                <Border Width="38" Height="38" Background="{StaticResource BrushBlackOverlay55}" BorderBrush="{StaticResource BrushLineCrimson}" BorderThickness="1" CornerRadius="19">
+                                                    <Path Width="14" Height="14" Data="{StaticResource IcoClose}" Stretch="Uniform" Stroke="{StaticResource BrushCrimson}" StrokeThickness="1.6" />
+                                                </Border>
+                                            </Button>
+                                            <!--  Play button overlay (visible when Done — clicking opens the saved file)  -->
+                                            <Button HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                    Width="48" Height="48" Padding="0"
+                                                    Command="{Binding DataContext.PlayShotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="Open output file">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource ButtonIcon}">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Done">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                                <Border Width="42" Height="42" Background="{StaticResource BrushBlackOverlay55}" BorderBrush="{StaticResource BrushGoldHi}" BorderThickness="1.5" CornerRadius="21" Effect="{StaticResource ShadowGoldGlowSoft}">
+                                                    <Path Width="13" Height="13" Margin="3,0,0,0" Data="{StaticResource IcoPlay}" Fill="{StaticResource BrushGoldHi}" Stretch="Uniform" />
+                                                </Border>
+                                            </Button>
                                         </Grid>
                                         <StackPanel Margin="12,10,12,12">
                                             <Grid>

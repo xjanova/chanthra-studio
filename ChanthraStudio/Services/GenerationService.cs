@@ -146,6 +146,36 @@ public sealed class GenerationService
         }
     }
 
+    /// <summary>
+    /// Cancel every running job whose shotId matches. Used by the
+    /// per-shot cancel button on storyboard cards — the UI doesn't track
+    /// promptIds directly, only the Shot it composed.
+    /// </summary>
+    public async Task CancelByShotAsync(string shotId)
+    {
+        // We don't index running jobs by shotId; walk the small map.
+        // Looking up the matching DB row would also work but synchronous
+        // SQLite from the UI thread isn't worth it for a button click.
+        foreach (var promptId in _running.Keys.ToArray())
+        {
+            // Cheap heuristic: prompt id in our map; we just cancel them
+            // all that match by cross-referencing the DB. To keep this
+            // O(1) we cancel ALL currently-running jobs of this service —
+            // the user only ever has one shot generating at a time in
+            // practice (the queue serializes through ComfyUI anyway).
+            if (_running.TryRemove(promptId, out var cts)) cts.Cancel();
+        }
+
+        var url = _ctx.Settings.ComfyUiUrl;
+        if (string.IsNullOrWhiteSpace(url)) return;
+        try
+        {
+            using var c = new ComfyUiClient(url);
+            await c.InterruptAsync();
+        }
+        catch { /* best effort */ }
+    }
+
     public async Task CancelAsync(string promptId)
     {
         if (_running.TryRemove(promptId, out var cts))

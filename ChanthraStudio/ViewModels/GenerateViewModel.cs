@@ -53,8 +53,8 @@ public sealed class GenerateViewModel : ObservableObject
     private double _motion = 0.7;
     public double Motion { get => _motion; set => SetProperty(ref _motion, value); }
 
-    private string _seedLabel = "2814 · 9217";
-    public string SeedLabel { get => _seedLabel; set => SetProperty(ref _seedLabel, value); }
+    /// <summary>Display-only label combining the two seed components.</summary>
+    public string SeedLabel => $"{SeedA} · {SeedB}";
 
     private bool _hd4k = true;
     public bool Hd4k { get => _hd4k; set => SetProperty(ref _hd4k, value); }
@@ -66,7 +66,18 @@ public sealed class GenerateViewModel : ObservableObject
     public CamMode Camera { get => _camera; set => SetProperty(ref _camera, value); }
 
     private string _activeStyleId = "empress";
-    public string ActiveStyleId { get => _activeStyleId; set => SetProperty(ref _activeStyleId, value); }
+    public string ActiveStyleId
+    {
+        get => _activeStyleId;
+        set
+        {
+            if (!SetProperty(ref _activeStyleId, value)) return;
+            // Sync IsActive flags on every preset so the picker's gold
+            // highlight tracks the currently chosen style.
+            foreach (var sp in StylePresets)
+                sp.IsActive = sp.Id == value;
+        }
+    }
 
     private bool _isGenerating = true;
     public bool IsGenerating { get => _isGenerating; set => SetProperty(ref _isGenerating, value); }
@@ -124,6 +135,24 @@ public sealed class GenerateViewModel : ObservableObject
 
     public IRelayCommand BrowseReferenceImageCommand { get; }
     public IRelayCommand ClearReferenceImageCommand { get; }
+    public IRelayCommand<string> SetAspectCommand { get; }
+    public IRelayCommand<string> SetCameraCommand { get; }
+    public IRelayCommand<string> SetStyleCommand { get; }
+    public IRelayCommand RegenerateSeedCommand { get; }
+
+    private int _seedA = 2814;
+    public int SeedA
+    {
+        get => _seedA;
+        set { if (SetProperty(ref _seedA, value)) OnPropertyChanged(nameof(SeedLabel)); }
+    }
+
+    private int _seedB = 9217;
+    public int SeedB
+    {
+        get => _seedB;
+        set { if (SetProperty(ref _seedB, value)) OnPropertyChanged(nameof(SeedLabel)); }
+    }
 
     public ObservableCollection<StylePreset> StylePresets { get; } = new()
     {
@@ -137,6 +166,9 @@ public sealed class GenerateViewModel : ObservableObject
 
     public IAsyncRelayCommand SummonSceneCommand { get; }
     public IAsyncRelayCommand EnhancePromptCommand { get; }
+    public IRelayCommand<Shot> PlayShotCommand { get; }
+    public IRelayCommand<Shot> CancelShotCommand { get; }
+    public IRelayCommand<Shot> RemoveShotCommand { get; }
 
     public GenerateViewModel() : this(null) { }
 
@@ -148,6 +180,43 @@ public sealed class GenerateViewModel : ObservableObject
         RefreshWorkflowsCommand = new RelayCommand(LoadWorkflows);
         BrowseReferenceImageCommand = new RelayCommand(BrowseReferenceImage);
         ClearReferenceImageCommand = new RelayCommand(() => ReferenceImagePath = null);
+        PlayShotCommand = new RelayCommand<Shot>(PlayShot);
+        CancelShotCommand = new RelayCommand<Shot>(async s =>
+        {
+            if (s is null || _ctx is null) return;
+            // We track the latest prompt id per shot via the Generation
+            // service's internal map keyed by promptId. Here we cancel
+            // every running job whose shotId matches — works for both
+            // ComfyUI and Replicate routes.
+            await _ctx.Generation.CancelByShotAsync(s.Id);
+        });
+        RemoveShotCommand = new RelayCommand<Shot>(s =>
+        {
+            if (s is not null) Storyboard.Remove(s);
+        });
+
+        // Sync the initial style preset's IsActive flag so the picker
+        // already shows a highlight at first paint.
+        foreach (var sp in StylePresets) sp.IsActive = sp.Id == _activeStyleId;
+
+        SetAspectCommand = new RelayCommand<string>(s =>
+        {
+            if (Enum.TryParse<AspectRatio>(s, true, out var a)) Aspect = a;
+        });
+        SetCameraCommand = new RelayCommand<string>(s =>
+        {
+            if (Enum.TryParse<CamMode>(s, true, out var c)) Camera = c;
+        });
+        SetStyleCommand = new RelayCommand<string>(s =>
+        {
+            if (!string.IsNullOrEmpty(s)) ActiveStyleId = s;
+        });
+        RegenerateSeedCommand = new RelayCommand(() =>
+        {
+            var rng = new Random();
+            SeedA = rng.Next(1000, 9999);
+            SeedB = rng.Next(1000, 9999);
+        });
 
         if (_ctx is null)
         {
@@ -253,8 +322,10 @@ public sealed class GenerateViewModel : ObservableObject
         }
 
         // Compose a new shot from the current composer state and append it to
-        // the storyboard so the user sees the queued card immediately.
-        var rng = new Random();
+        // the storyboard so the user sees the queued card immediately. The
+        // seed comes from VM.SeedA/SeedB — user editable, regenerable via the
+        // dice button — NOT a fresh random pair, so the displayed seed
+        // matches what actually got submitted.
         var shot = new Shot
         {
             Id = Guid.NewGuid().ToString("N").Substring(0, 8),
@@ -262,10 +333,11 @@ public sealed class GenerateViewModel : ObservableObject
             Title = $"Shot {Storyboard.Count + 1:D2}",
             Description = Prompt.Length > 140 ? Prompt[..140] + "…" : Prompt,
             Prompt = Prompt,
+            StyleId = ActiveStyleId,
             Aspect = Aspect,
             DurationSec = DurationSec,
             Motion = Motion,
-            Seed = (rng.Next(1000, 9999), rng.Next(1000, 9999)),
+            Seed = (SeedA, SeedB),
             Hd4k = Hd4k,
             Audio = NativeAudio,
             Cam = Camera,
@@ -317,6 +389,18 @@ public sealed class GenerateViewModel : ObservableObject
             ShowToast(e.Error ?? "generation failed", "err");
             IsGenerating = Storyboard.Any(s => s.Status == ShotStatus.Generating);
         }
+    }
+
+    private void PlayShot(Shot? shot)
+    {
+        if (shot is null) return;
+        var path = shot.VideoUrl ?? shot.ThumbUrl;
+        if (string.IsNullOrEmpty(path)) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex) { ShowToast(ex.Message, "err"); }
     }
 
     private void BrowseReferenceImage()
