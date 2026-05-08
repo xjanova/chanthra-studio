@@ -213,6 +213,43 @@ public sealed class ComfyUiClient : IDisposable
     }
 
     /// <summary>
+    /// Upload a local image into ComfyUI's input/ folder via /upload/image.
+    /// Returns the server-side filename (which may be suffixed if ComfyUI
+    /// renamed it to avoid collision). That filename is what the LoadImage
+    /// node references in the workflow JSON.
+    /// </summary>
+    public async Task<string> UploadImageAsync(string localPath, CancellationToken ct = default)
+    {
+        if (!File.Exists(localPath))
+            throw new FileNotFoundException("reference image not found", localPath);
+
+        await using var fs = File.OpenRead(localPath);
+        using var content = new MultipartFormDataContent();
+        var imageContent = new StreamContent(fs);
+        imageContent.Headers.ContentType = new MediaTypeHeaderValue(GuessImageMime(localPath));
+        content.Add(imageContent, "image", Path.GetFileName(localPath));
+        content.Add(new StringContent("input"), "type");
+        content.Add(new StringContent("true"), "overwrite");
+
+        using var resp = await _http.PostAsync("upload/image", content, ct);
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode)
+            throw new ComfyUiException($"upload/image failed (HTTP {(int)resp.StatusCode}): {body}");
+        var node = JsonNode.Parse(body) as JsonObject;
+        return node?["name"]?.GetValue<string>() ?? Path.GetFileName(localPath);
+    }
+
+    private static string GuessImageMime(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".webp" => "image/webp",
+        ".gif" => "image/gif",
+        ".bmp" => "image/bmp",
+        _ => "application/octet-stream",
+    };
+
+    /// <summary>
     /// Open a WebSocket and stream progress events. Yields one
     /// <see cref="ComfyUiEvent"/> per server message until the connection
     /// closes (server-side after "executed") or the cancellation token fires.

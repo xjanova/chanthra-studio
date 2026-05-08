@@ -318,6 +318,83 @@
                             </Grid>
                         </Border>
 
+                        <!--  3c-bis. Reference image — drop or browse, used by img2img / WAN i2v workflows  -->
+                        <Border
+                            Margin="0,18,0,0"
+                            Background="{StaticResource BrushBgSurface}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            AllowDrop="True"
+                            Drop="ReferenceImage_Drop"
+                            DragOver="ReferenceImage_DragOver"
+                            MouseLeftButtonUp="ReferenceImage_BrowseClick"
+                            Cursor="Hand">
+                            <Grid Margin="10,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <!--  Thumbnail or placeholder  -->
+                                <Border
+                                    Grid.Column="0"
+                                    Width="48"
+                                    Height="48"
+                                    Background="{StaticResource BrushBgInset}"
+                                    BorderBrush="{StaticResource BrushLineHairline}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    ClipToBounds="True">
+                                    <Grid>
+                                        <Path
+                                            Width="22"
+                                            Height="22"
+                                            Data="{StaticResource IcoImage}"
+                                            Stretch="Uniform"
+                                            Stroke="{StaticResource BrushText3}"
+                                            StrokeThickness="1.4"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center" />
+                                        <Image
+                                            Source="{Binding ReferenceImagePath, Converter={StaticResource ClipPathToImage}}"
+                                            Stretch="UniformToFill" />
+                                    </Grid>
+                                </Border>
+
+                                <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                    <TextBlock
+                                        Style="{StaticResource TextMonoUpper}"
+                                        Text="REFERENCE IMAGE" />
+                                    <TextBlock
+                                        Margin="0,2,0,0"
+                                        FontFamily="{StaticResource FontMono}"
+                                        FontSize="11"
+                                        Foreground="{StaticResource BrushText1}"
+                                        Text="{Binding ReferenceImageFileName}"
+                                        TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+
+                                <Button
+                                    Grid.Column="2"
+                                    Width="22"
+                                    Height="22"
+                                    Command="{Binding ClearReferenceImageCommand}"
+                                    Style="{StaticResource ButtonIcon}"
+                                    Visibility="{Binding HasReferenceImage, Converter={StaticResource BoolToVis}}"
+                                    ToolTip="Clear reference image">
+                                    <Path
+                                        Width="9"
+                                        Height="9"
+                                        Data="{StaticResource IcoClose}"
+                                        Stretch="Uniform"
+                                        Stroke="{StaticResource BrushText3}"
+                                        StrokeThickness="1.4" />
+                                </Button>
+                            </Grid>
+                        </Border>
+
                         <!--  3d. Parameters  -->
                         <Border
                             Margin="0,18,0,0"

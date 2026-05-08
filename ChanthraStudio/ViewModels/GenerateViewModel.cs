@@ -98,6 +98,33 @@ public sealed class GenerateViewModel : ObservableObject
     private string _toastKind = "info";
     public string ToastKind { get => _toastKind; set => SetProperty(ref _toastKind, value); }
 
+    private string? _referenceImagePath;
+    public string? ReferenceImagePath
+    {
+        get => _referenceImagePath;
+        set
+        {
+            if (SetProperty(ref _referenceImagePath, value))
+            {
+                OnPropertyChanged(nameof(HasReferenceImage));
+                OnPropertyChanged(nameof(ReferenceImageFileName));
+            }
+        }
+    }
+
+    public bool HasReferenceImage => !string.IsNullOrEmpty(_referenceImagePath);
+
+    public string ReferenceImageFileName =>
+        string.IsNullOrEmpty(_referenceImagePath)
+            ? "drag image here · or click to browse"
+            : System.IO.Path.GetFileName(_referenceImagePath);
+
+    private string _negativePrompt = "blurry, low quality, watermark, text, deformed, extra fingers";
+    public string NegativePrompt { get => _negativePrompt; set => SetProperty(ref _negativePrompt, value); }
+
+    public IRelayCommand BrowseReferenceImageCommand { get; }
+    public IRelayCommand ClearReferenceImageCommand { get; }
+
     public ObservableCollection<StylePreset> StylePresets { get; } = new()
     {
         new() { Id = "empress",     Name = "Empress",      ThumbPath = "/Assets/Brand/empress-portrait.png" },
@@ -119,6 +146,8 @@ public sealed class GenerateViewModel : ObservableObject
         SummonSceneCommand = new AsyncRelayCommand(SummonSceneAsync);
         EnhancePromptCommand = new AsyncRelayCommand(EnhancePromptAsync);
         RefreshWorkflowsCommand = new RelayCommand(LoadWorkflows);
+        BrowseReferenceImageCommand = new RelayCommand(BrowseReferenceImage);
+        ClearReferenceImageCommand = new RelayCommand(() => ReferenceImagePath = null);
 
         if (_ctx is null)
         {
@@ -243,6 +272,8 @@ public sealed class GenerateViewModel : ObservableObject
             Status = ShotStatus.Queue,
             DurationLabel = $"{DurationSec:F1}s",
             ThumbUrl = "/Assets/Brand/empress-portrait.png",
+            ReferenceImagePath = ReferenceImagePath,
+            NegativePrompt = NegativePrompt,
         };
         Storyboard.Add(shot);
 
@@ -286,6 +317,18 @@ public sealed class GenerateViewModel : ObservableObject
             ShowToast(e.Error ?? "generation failed", "err");
             IsGenerating = Storyboard.Any(s => s.Status == ShotStatus.Generating);
         }
+    }
+
+    private void BrowseReferenceImage()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Pick a reference image",
+            Filter = "Images|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif|All files|*.*",
+            CheckFileExists = true,
+        };
+        if (dlg.ShowDialog() == true)
+            ReferenceImagePath = dlg.FileName;
     }
 
     private async void ShowToast(string message, string kind)

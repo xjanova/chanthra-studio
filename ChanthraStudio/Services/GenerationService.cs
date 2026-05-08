@@ -76,28 +76,59 @@ public sealed class GenerationService
 
             workflow
                 .SetPositivePrompt(shot.Prompt)
+                .SetNegativePrompt(shot.NegativePrompt)
                 .SetSeed(shot.Seed.A)
                 .SetSize(shot.Aspect == AspectRatio.Wide ? 1024 : 768,
                          shot.Aspect == AspectRatio.Wide ? 576 : 768)
                 .SetFilenamePrefix($"chanthra/shot{shot.Number}");
 
-            var available = await client.GetAvailableCheckpointsAsync(ct);
-            if (available.Count == 0)
+            // If the workflow uses LoadImage AND the shot has a reference image
+            // attached, upload it to ComfyUI's input/ folder and patch the
+            // LoadImage node to reference the server-side filename. Without
+            // this step the workflow would error with "reference.png not found".
+            if (workflow.HasLoadImage() && !string.IsNullOrEmpty(shot.ReferenceImagePath))
+            {
+                if (!File.Exists(shot.ReferenceImagePath))
+                {
+                    client.Dispose();
+                    throw new ComfyUiException(
+                        $"Reference image not found: {shot.ReferenceImagePath}");
+                }
+                var uploaded = await client.UploadImageAsync(shot.ReferenceImagePath, ct);
+                workflow.SetReferenceImage(uploaded);
+            }
+            else if (workflow.HasLoadImage())
             {
                 client.Dispose();
                 throw new ComfyUiException(
-                    "No checkpoints found in ComfyUI. Drop a .safetensors model into " +
-                    "ComfyUI/models/checkpoints/ and restart the server.");
+                    "This workflow requires a reference image (LoadImage node). " +
+                    "Drag-drop or browse an image in the Generate panel first.");
             }
-            var requested = workflow.GetCheckpoint();
-            if (string.IsNullOrEmpty(requested) || !available.Contains(requested))
+
+            // Auto-pick a checkpoint only for SD-style workflows. Flux/Hunyuan/
+            // WAN use UNETLoader and DualCLIPLoader instead — those workflows
+            // bake in their own model names and we let the user fix the names
+            // in the JSON if they don't match what they have installed.
+            if (!workflow.UsesUnetLoader())
             {
-                var pick = available.FirstOrDefault(IsLikelySdxl)
-                           ?? available.FirstOrDefault(IsLikelySd15)
-                           ?? available[0];
-                workflow.SetCheckpoint(pick);
-                if (IsLikelySd15(pick) && shot.Aspect == AspectRatio.Wide)
-                    workflow.SetSize(768, 432);
+                var available = await client.GetAvailableCheckpointsAsync(ct);
+                if (available.Count == 0)
+                {
+                    client.Dispose();
+                    throw new ComfyUiException(
+                        "No checkpoints found in ComfyUI. Drop a .safetensors model into " +
+                        "ComfyUI/models/checkpoints/ and restart the server.");
+                }
+                var requested = workflow.GetCheckpoint();
+                if (string.IsNullOrEmpty(requested) || !available.Contains(requested))
+                {
+                    var pick = available.FirstOrDefault(IsLikelySdxl)
+                               ?? available.FirstOrDefault(IsLikelySd15)
+                               ?? available[0];
+                    workflow.SetCheckpoint(pick);
+                    if (IsLikelySd15(pick) && shot.Aspect == AspectRatio.Wide)
+                        workflow.SetSize(768, 432);
+                }
             }
 
             var promptId = await client.SubmitPromptAsync(workflow.Nodes, ct);

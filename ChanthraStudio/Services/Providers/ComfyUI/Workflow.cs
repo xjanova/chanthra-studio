@@ -90,6 +90,26 @@ public sealed class Workflow
         return this;
     }
 
+    /// <summary>
+    /// Replace the SECOND CLIPTextEncode node's text — convention is positive
+    /// first, negative second. No-op if the workflow has only one prompt node
+    /// (e.g. Flux dev where negative is just an empty string passthrough).
+    /// </summary>
+    public Workflow SetNegativePrompt(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return this;
+        bool first = true;
+        foreach (var (_, node) in Nodes)
+        {
+            if (node is not JsonObject obj) continue;
+            if (obj["class_type"]?.GetValue<string>() != "CLIPTextEncode") continue;
+            if (first) { first = false; continue; }
+            if (obj["inputs"] is JsonObject inputs) inputs["text"] = text;
+            return this;
+        }
+        return this;
+    }
+
     public Workflow SetSeed(long seed)
     {
         var inputs = InputsOf("KSampler");
@@ -101,6 +121,13 @@ public sealed class Workflow
     {
         var inputs = InputsOf("KSampler");
         if (inputs is not null) inputs["steps"] = steps;
+        return this;
+    }
+
+    public Workflow SetCfg(double cfg)
+    {
+        var inputs = InputsOf("KSampler");
+        if (inputs is not null) inputs["cfg"] = cfg;
         return this;
     }
 
@@ -129,6 +156,41 @@ public sealed class Workflow
 
     public string? GetCheckpoint()
         => InputsOf("CheckpointLoaderSimple")?["ckpt_name"]?.GetValue<string>();
+
+    /// <summary>True if the workflow contains a LoadImage node — i.e. it
+    /// expects a reference image to be uploaded before submission.</summary>
+    public bool HasLoadImage() => InputsOf("LoadImage") is not null;
+
+    /// <summary>
+    /// Set the LoadImage node's <c>image</c> input to the given filename.
+    /// The filename must match what ComfyUI's <c>/upload/image</c> returned
+    /// in its <c>name</c> field — already URL-safe.
+    /// </summary>
+    public Workflow SetReferenceImage(string filename)
+    {
+        var inputs = InputsOf("LoadImage");
+        if (inputs is not null) inputs["image"] = filename;
+        return this;
+    }
+
+    /// <summary>True if any node is a UNETLoader — flux/hunyuan/wan-style
+    /// workflows that don't use the SD CheckpointLoaderSimple path. We skip
+    /// the auto-checkpoint-pick logic for these.</summary>
+    public bool UsesUnetLoader() => InputsOf("UNETLoader") is not null;
+
+    /// <summary>True if the workflow saves animated/video output (so the
+    /// caller knows to expect a .webp/.mp4/.gif rather than a still .png).</summary>
+    public bool ProducesVideo()
+    {
+        foreach (var (_, node) in Nodes)
+        {
+            if (node is not JsonObject obj) continue;
+            var ct = obj["class_type"]?.GetValue<string>();
+            if (ct == "SaveAnimatedWEBP" || ct == "VHS_VideoCombine" || ct == "SaveAnimatedPNG")
+                return true;
+        }
+        return false;
+    }
 
     /// <summary>
     /// Walks the SaveImage / SaveAnimatedWEBP / VHS_VideoCombine outputs in a

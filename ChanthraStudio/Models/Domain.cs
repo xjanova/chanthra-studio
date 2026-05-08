@@ -22,6 +22,18 @@ public sealed class Shot : ObservableObject
     private string _prompt = "";
     public string Prompt { get => _prompt; set => SetProperty(ref _prompt, value); }
 
+    private string _negativePrompt = "blurry, low quality, watermark, text, deformed";
+    public string NegativePrompt { get => _negativePrompt; set => SetProperty(ref _negativePrompt, value); }
+
+    /// <summary>
+    /// Local file path of an optional reference image. If set and the active
+    /// ComfyUI workflow contains a LoadImage node, the file is uploaded to
+    /// ComfyUI before submission and the LoadImage input is patched to point
+    /// at the uploaded filename.
+    /// </summary>
+    private string? _referenceImagePath;
+    public string? ReferenceImagePath { get => _referenceImagePath; set => SetProperty(ref _referenceImagePath, value); }
+
     public string StyleId { get; set; } = "empress";
     public string ModelId { get; set; } = "chanthra-sora-lyra-2.4";
     public AspectRatio Aspect { get; set; } = AspectRatio.Wide;
