@@ -43,6 +43,46 @@ public sealed class ComfyUiClient : IDisposable
     public string ClientId => _clientId;
     public Uri BaseUri => _baseUri;
 
+    /// <summary>
+    /// Fetches /object_info — the schema dictionary that lists every node
+    /// type the server knows about, including the valid values for each
+    /// input (e.g. CheckpointLoaderSimple.input.required.ckpt_name carries
+    /// the list of installed .safetensors / .ckpt files).
+    /// </summary>
+    public async Task<JsonObject?> GetObjectInfoAsync(CancellationToken ct = default)
+    {
+        using var resp = await _http.GetAsync("object_info", ct);
+        if (!resp.IsSuccessStatusCode) return null;
+        var json = await resp.Content.ReadAsStringAsync(ct);
+        return JsonNode.Parse(json) as JsonObject;
+    }
+
+    /// <summary>List the checkpoints the server has installed. Empty if none.</summary>
+    public async Task<List<string>> GetAvailableCheckpointsAsync(CancellationToken ct = default)
+    {
+        var info = await GetObjectInfoAsync(ct);
+        return ExtractInputChoices(info, "CheckpointLoaderSimple", "ckpt_name");
+    }
+
+    /// <summary>
+    /// Walks <c>info[nodeType].input.required[inputName]</c> — the first
+    /// element is conventionally an array of valid values for combobox-style
+    /// inputs. Returns empty if the node or input doesn't exist.
+    /// </summary>
+    public static List<string> ExtractInputChoices(JsonObject? info, string nodeType, string inputName)
+    {
+        var result = new List<string>();
+        if (info?[nodeType] is not JsonObject node) return result;
+        if (node["input"]?["required"]?[inputName] is not JsonArray spec) return result;
+        if (spec.Count == 0 || spec[0] is not JsonArray choices) return result;
+        foreach (var c in choices)
+        {
+            var s = c?.GetValue<string>();
+            if (!string.IsNullOrEmpty(s)) result.Add(s!);
+        }
+        return result;
+    }
+
     public async Task<ComfyUiHealth> ProbeAsync(CancellationToken ct = default)
     {
         try
@@ -79,11 +119,69 @@ public sealed class ComfyUiClient : IDisposable
         using var resp = await _http.SendAsync(req, ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
-            throw new ComfyUiException($"submit failed: HTTP {(int)resp.StatusCode} — {body}");
-        var node = JsonNode.Parse(body);
+            throw new ComfyUiException(FormatValidationError(body, (int)resp.StatusCode));
+
+        var node = JsonNode.Parse(body) as JsonObject;
+        // ComfyUI sometimes returns 200 with an `error` object on the body
+        // (older builds) — treat that as a validation failure too.
+        if (node?["error"] is JsonNode err && node["prompt_id"] is null)
+            throw new ComfyUiException(FormatValidationError(body, 200));
+
         var promptId = node?["prompt_id"]?.GetValue<string>()
-            ?? throw new ComfyUiException($"no prompt_id in response: {body}");
+            ?? throw new ComfyUiException($"ComfyUI returned no prompt_id: {body}");
         return promptId;
+    }
+
+    /// <summary>
+    /// Turns a ComfyUI 400 validation response into a one-line human message.
+    /// Format from server (newer builds):
+    ///   { "error": { "type": "...", "message": "...", "details": "..." },
+    ///     "node_errors": { "<nodeId>": { "errors": [{ "type": ..., "message": ..., "details": ..., "extra_info": {...} }] } } }
+    /// </summary>
+    public static string FormatValidationError(string body, int httpStatus)
+    {
+        try
+        {
+            var node = JsonNode.Parse(body) as JsonObject;
+            if (node is null) return $"submit failed (HTTP {httpStatus}): {body}";
+
+            var topMessage = node["error"]?["message"]?.GetValue<string>();
+            var nodeErrors = node["node_errors"] as JsonObject;
+
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(topMessage)) parts.Add(topMessage!);
+
+            if (nodeErrors is not null)
+            {
+                foreach (var (nodeId, val) in nodeErrors)
+                {
+                    if (val?["errors"] is not JsonArray errs) continue;
+                    foreach (var e in errs)
+                    {
+                        var msg = e?["message"]?.GetValue<string>() ?? "";
+                        var details = e?["details"]?.GetValue<string>() ?? "";
+                        var extra = e?["extra_info"] as JsonObject;
+                        var input = extra?["input_name"]?.GetValue<string>();
+                        var bad = extra?["received_value"]?.GetValue<string>();
+
+                        var line = $"node {nodeId}";
+                        if (!string.IsNullOrEmpty(input)) line += $" · input \"{input}\"";
+                        if (!string.IsNullOrEmpty(bad)) line += $" = \"{bad}\"";
+                        if (!string.IsNullOrEmpty(msg)) line += $" — {msg}";
+                        if (!string.IsNullOrEmpty(details) && details != msg) line += $" ({details})";
+                        parts.Add(line);
+                    }
+                }
+            }
+
+            return parts.Count > 0
+                ? string.Join("  ·  ", parts)
+                : $"submit failed (HTTP {httpStatus}): {body}";
+        }
+        catch
+        {
+            return $"submit failed (HTTP {httpStatus}): {body}";
+        }
     }
 
     /// <summary>Fetch the history record for a completed prompt id.</summary>

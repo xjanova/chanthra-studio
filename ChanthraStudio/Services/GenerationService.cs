@@ -57,6 +57,29 @@ public sealed class GenerationService
                      shot.Aspect == AspectRatio.Wide ? 576 : 768)
             .SetFilenamePrefix($"chanthra/shot{shot.Number}");
 
+        // Swap in a checkpoint that the user actually has installed.
+        // The bundled default references SD1.5 which most users won't have.
+        var available = await client.GetAvailableCheckpointsAsync(ct);
+        if (available.Count == 0)
+        {
+            throw new ComfyUiException(
+                "No checkpoints found in ComfyUI. Drop a .safetensors model into " +
+                "ComfyUI/models/checkpoints/ and restart the server.");
+        }
+        var requested = workflow.GetCheckpoint();
+        if (string.IsNullOrEmpty(requested) || !available.Contains(requested))
+        {
+            // Prefer a model whose name hints SDXL > SD1.5 > whatever's first.
+            var pick = available.FirstOrDefault(IsLikelySdxl)
+                       ?? available.FirstOrDefault(IsLikelySd15)
+                       ?? available[0];
+            workflow.SetCheckpoint(pick);
+            // SDXL prefers 1024 base; SD1.5 prefers 512–768. Adjust if we picked SDXL
+            // and the requested aspect was Wide (which we set to 1024×576 already).
+            if (IsLikelySd15(pick) && shot.Aspect == AspectRatio.Wide)
+                workflow.SetSize(768, 432);
+        }
+
         var promptId = await client.SubmitPromptAsync(workflow.Nodes, ct);
 
         // Persist a generation_jobs row immediately so the queue UI can find it.
@@ -219,6 +242,20 @@ public sealed class GenerationService
         var sb = new System.Text.StringBuilder(raw.Length);
         foreach (var ch in raw) sb.Append(Array.IndexOf(invalid, ch) >= 0 ? '_' : ch);
         return sb.ToString();
+    }
+
+    private static bool IsLikelySdxl(string name)
+    {
+        var n = name.ToLowerInvariant();
+        return n.Contains("xl") || n.Contains("sdxl") || n.Contains("juggernaut")
+            || n.Contains("dreamshaper") && n.Contains("xl") || n.Contains("realvis");
+    }
+
+    private static bool IsLikelySd15(string name)
+    {
+        var n = name.ToLowerInvariant();
+        return n.Contains("v1-5") || n.Contains("v1.5") || n.Contains("sd15")
+            || n.Contains("epicrealism") || n.Contains("dreamshaper8");
     }
 }
 

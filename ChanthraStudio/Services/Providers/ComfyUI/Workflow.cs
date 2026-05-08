@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text.Json.Nodes;
@@ -97,6 +98,16 @@ public sealed class Workflow
         if (inputs is not null) inputs["filename_prefix"] = prefix;
         return this;
     }
+
+    public Workflow SetCheckpoint(string ckptName)
+    {
+        var inputs = InputsOf("CheckpointLoaderSimple");
+        if (inputs is not null) inputs["ckpt_name"] = ckptName;
+        return this;
+    }
+
+    public string? GetCheckpoint()
+        => InputsOf("CheckpointLoaderSimple")?["ckpt_name"]?.GetValue<string>();
 
     /// <summary>
     /// Walks the SaveImage / SaveAnimatedWEBP / VHS_VideoCombine outputs in a
