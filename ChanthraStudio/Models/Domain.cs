@@ -104,6 +104,39 @@ public sealed class Clip : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
         set => SetProperty(ref _isSelected, value);
     }
 
+    /// <summary>How many <c>post_history</c> rows reference this clip — drives
+    /// the small "Posted" badge on the Library card. Populated by the
+    /// ClipsRepository's left-join query, NOT live data.</summary>
+    private int _postCount;
+    public int PostCount
+    {
+        get => _postCount;
+        set
+        {
+            if (SetProperty(ref _postCount, value))
+            {
+                OnPropertyChanged(nameof(IsPosted));
+                OnPropertyChanged(nameof(PostBadgeLabel));
+            }
+        }
+    }
+
+    public bool IsPosted => _postCount > 0;
+    public string PostBadgeLabel => _postCount switch
+    {
+        0 => "",
+        1 => "✓ Posted",
+        _ => $"✓ Posted ×{_postCount}",
+    };
+
+    /// <summary>ISO date of the most recent post, "" if never posted.</summary>
+    private string _lastPostedLabel = "";
+    public string LastPostedLabel
+    {
+        get => _lastPostedLabel;
+        set => SetProperty(ref _lastPostedLabel, value);
+    }
+
     public string FileName => System.IO.Path.GetFileName(FilePath);
     public bool FileExists => System.IO.File.Exists(FilePath);
 

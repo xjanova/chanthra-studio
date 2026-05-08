@@ -96,6 +96,96 @@ public sealed class VoiceService
         catch { /* file in use / read-only — caller surfaces toast */ }
     }
 
+    public string MusicOutputDir
+    {
+        get
+        {
+            var p = Path.Combine(AppPaths.MediaFolder, "music");
+            Directory.CreateDirectory(p);
+            return p;
+        }
+    }
+
+    /// <summary>
+    /// Generate music via the chosen <see cref="IMusicProvider"/>, save the
+    /// resulting audio under <c>media/music/</c>, and return a <see cref="VoiceTake"/>
+    /// for the Voice view to display alongside speech takes.
+    /// </summary>
+    public async Task<VoiceTake> GenerateMusicAsync(
+        string providerId, string modelSlug, string prompt, double durationSec,
+        CancellationToken ct = default)
+    {
+        var provider = _ctx.Providers.Music.FirstOrDefault(p => p.Id == providerId)
+            ?? throw new InvalidOperationException($"Unknown music provider: {providerId}");
+
+        // The Replicate music provider shares the api key with the video
+        // provider — they're the same Replicate account. Look up "replicate"
+        // first, fall back to the provider's own id (so a future Suno
+        // provider with its own key still works).
+        var apiKey = _ctx.Settings["replicate"];
+        if (string.IsNullOrWhiteSpace(apiKey)) apiKey = _ctx.Settings[providerId];
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException(
+                $"No API key for {provider.DisplayName} — paste your r8_… token in Settings.");
+
+        var slugSafe = string.IsNullOrEmpty(modelSlug) ? "default" : modelSlug.Replace('/', '_');
+        var fileName = $"music_{DateTime.Now:yyyyMMdd_HHmmss}_{Sanitise(slugSafe)}.mp3";
+        var destPath = Path.Combine(MusicOutputDir, fileName);
+
+        var req = new MusicRequest
+        {
+            ApiKey = apiKey,
+            Model = modelSlug,
+            Prompt = prompt,
+            DurationSec = durationSec,
+        };
+        var path = await provider.GenerateAsync(req, destPath, ct);
+
+        return new VoiceTake
+        {
+            FilePath = path,
+            ProviderId = providerId,
+            ProviderDisplayName = provider.DisplayName,
+            VoiceId = modelSlug,
+            VoiceDisplayName = string.IsNullOrEmpty(modelSlug) ? "music" : modelSlug,
+            Text = prompt,
+            CreatedAt = DateTime.Now,
+        };
+    }
+
+    /// <summary>
+    /// Lists music files (alongside voice takes) so the Voice view can show
+    /// a unified history. Music files live under <c>media/music/</c>.
+    /// </summary>
+    public IReadOnlyList<VoiceTake> ListMusicTakes(int limit = 50)
+    {
+        if (!Directory.Exists(MusicOutputDir)) return Array.Empty<VoiceTake>();
+        var exts = new[] { "*.mp3", "*.wav", "*.flac", "*.m4a" };
+        return exts.SelectMany(e => Directory.EnumerateFiles(MusicOutputDir, e))
+            .Select(f => new FileInfo(f))
+            .OrderByDescending(fi => fi.LastWriteTimeUtc)
+            .Take(limit)
+            .Select(fi => new VoiceTake
+            {
+                FilePath = fi.FullName,
+                CreatedAt = fi.LastWriteTime,
+                ProviderId = "replicate-music",
+                ProviderDisplayName = "music",
+                VoiceId = "",
+                VoiceDisplayName = InferMusicSlug(fi.Name),
+                Text = "",
+            })
+            .ToList();
+    }
+
+    private static string InferMusicSlug(string fileName)
+    {
+        // Filename pattern: music_YYYYMMDD_HHMMSS_{owner_name}.mp3
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        var parts = stem.Split('_', 4);
+        return parts.Length >= 4 ? parts[3].Replace('_', '/') : "?";
+    }
+
     private static string Sanitise(string raw)
     {
         var sb = new System.Text.StringBuilder(raw.Length);

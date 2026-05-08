@@ -197,6 +197,25 @@
                                                 RenderOptions.BitmapScalingMode="HighQuality"
                                                 Source="{Binding FilePath, Converter={StaticResource ClipPathToImage}}"
                                                 Stretch="UniformToFill" />
+                                            <!--  Posted badge (top-right) — shown only when post_history has rows  -->
+                                            <Border
+                                                Margin="10"
+                                                Padding="7,3"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Top"
+                                                Background="#1F6DBF8C"
+                                                BorderBrush="#666DBF8C"
+                                                BorderThickness="1"
+                                                CornerRadius="99"
+                                                Effect="{StaticResource ShadowGoldGlowSoft}"
+                                                Visibility="{Binding IsPosted, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock
+                                                    FontFamily="{StaticResource FontMono}"
+                                                    FontSize="9"
+                                                    Foreground="{StaticResource BrushOk}"
+                                                    Text="{Binding PostBadgeLabel}" />
+                                            </Border>
+
                                             <!--  Selection checkbox overlay (top-left)  -->
                                             <CheckBox
                                                 Margin="10"
@@ -258,11 +277,19 @@
                                                     Foreground="{StaticResource BrushText1}"
                                                     Text="{Binding FileName}"
                                                     TextTrimming="CharacterEllipsis" />
-                                                <TextBlock
-                                                    Margin="0,3,0,0"
-                                                    FontSize="9.5"
-                                                    Style="{StaticResource TextMonoUpper}"
-                                                    Text="{Binding CreatedAt, StringFormat={}{0:yyyy-MM-dd HH:mm}}" />
+                                                <StackPanel Margin="0,3,0,0" Orientation="Horizontal">
+                                                    <TextBlock
+                                                        FontSize="9.5"
+                                                        Style="{StaticResource TextMonoUpper}"
+                                                        Text="{Binding CreatedAt, StringFormat={}{0:yyyy-MM-dd HH:mm}}" />
+                                                    <TextBlock
+                                                        Margin="6,0,0,0"
+                                                        FontSize="9.5"
+                                                        Style="{StaticResource TextMonoUpper}"
+                                                        Foreground="{StaticResource BrushOk}"
+                                                        Visibility="{Binding IsPosted, Converter={StaticResource BoolToVis}}"
+                                                        Text="{Binding LastPostedLabel, StringFormat=· FB {0}}" />
+                                                </StackPanel>
                                             </StackPanel>
                                             <Border
                                                 Grid.Column="1"

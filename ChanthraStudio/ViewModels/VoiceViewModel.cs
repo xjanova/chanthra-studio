@@ -17,6 +17,19 @@ public sealed class VoiceProviderOption
     public string DisplayName => Provider.DisplayName;
 }
 
+public sealed class MusicProviderOption
+{
+    public IMusicProvider Provider { get; init; } = null!;
+    public string Id => Provider.Id;
+    public string DisplayName => Provider.DisplayName;
+}
+
+/// <summary>
+/// "TTS" = synthesise speech via OpenAI/ElevenLabs.
+/// "Music" = generate music via Replicate (musicgen / ace-step / riffusion).
+/// </summary>
+public enum VoiceMode { Tts, Music }
+
 public sealed class VoiceViewModel : ObservableObject
 {
     private readonly StudioContext _ctx;
@@ -24,6 +37,26 @@ public sealed class VoiceViewModel : ObservableObject
     public ObservableCollection<VoiceProviderOption> Providers { get; } = new();
     public ObservableCollection<VoicePreset> Voices { get; } = new();
     public ObservableCollection<VoiceTake> Takes { get; } = new();
+
+    public ObservableCollection<MusicProviderOption> MusicProviders { get; } = new();
+    public ObservableCollection<VoiceTake> MusicTakes { get; } = new();
+
+    private VoiceMode _mode = VoiceMode.Tts;
+    public VoiceMode Mode
+    {
+        get => _mode;
+        set
+        {
+            if (SetProperty(ref _mode, value))
+            {
+                OnPropertyChanged(nameof(IsTtsMode));
+                OnPropertyChanged(nameof(IsMusicMode));
+            }
+        }
+    }
+
+    public bool IsTtsMode => _mode == VoiceMode.Tts;
+    public bool IsMusicMode => _mode == VoiceMode.Music;
 
     private VoiceProviderOption? _selectedProvider;
     public VoiceProviderOption? SelectedProvider
@@ -41,6 +74,31 @@ public sealed class VoiceViewModel : ObservableObject
     {
         get => _selectedVoice;
         set => SetProperty(ref _selectedVoice, value);
+    }
+
+    private MusicProviderOption? _selectedMusicProvider;
+    public MusicProviderOption? SelectedMusicProvider
+    {
+        get => _selectedMusicProvider;
+        set => SetProperty(ref _selectedMusicProvider, value);
+    }
+
+    private string _musicModel = "meta/musicgen";
+    /// <summary>Replicate model slug for music (owner/name).</summary>
+    public string MusicModel
+    {
+        get => _musicModel;
+        set => SetProperty(ref _musicModel, value);
+    }
+
+    private string _musicPrompt = "epic cinematic orchestra · slow build · 90 BPM · gold strings · empress theme";
+    public string MusicPrompt { get => _musicPrompt; set => SetProperty(ref _musicPrompt, value); }
+
+    private double _musicDuration = 30.0;
+    public double MusicDuration
+    {
+        get => _musicDuration;
+        set => SetProperty(ref _musicDuration, Math.Clamp(value, 4, 120));
     }
 
     private string _scriptText = "ราชินีจันทรา ดวงประจำวันที่ปลายเดือน — เปิดประตูแห่งโชคลาภและความรัก";
@@ -86,14 +144,18 @@ public sealed class VoiceViewModel : ObservableObject
     public string ToastKind { get => _toastKind; set => SetProperty(ref _toastKind, value); }
 
     public bool HasTakes => Takes.Count > 0;
+    public bool HasMusicTakes => MusicTakes.Count > 0;
 
     public IAsyncRelayCommand GenerateCommand { get; }
+    public IAsyncRelayCommand GenerateMusicCommand { get; }
     public IAsyncRelayCommand WriteScriptCommand { get; }
     public IRelayCommand RefreshTakesCommand { get; }
     public IRelayCommand<VoiceTake> PlayTakeCommand { get; }
     public IRelayCommand<VoiceTake> RevealTakeCommand { get; }
     public IRelayCommand<VoiceTake> CopyPathCommand { get; }
     public IRelayCommand<VoiceTake> DeleteTakeCommand { get; }
+    public IRelayCommand SwitchToTtsCommand { get; }
+    public IRelayCommand SwitchToMusicCommand { get; }
 
     public VoiceViewModel(StudioContext ctx)
     {
@@ -101,19 +163,25 @@ public sealed class VoiceViewModel : ObservableObject
 
         foreach (var p in ctx.Providers.Voice)
             Providers.Add(new VoiceProviderOption { Provider = p });
+        foreach (var p in ctx.Providers.Music)
+            MusicProviders.Add(new MusicProviderOption { Provider = p });
 
         // Default to whichever provider has its key set, otherwise the first.
         _selectedProvider = Providers.FirstOrDefault(o => ctx.Settings.HasApiKey(o.Id))
                           ?? Providers.FirstOrDefault();
+        _selectedMusicProvider = MusicProviders.FirstOrDefault();
         ReloadVoices();
 
         GenerateCommand = new AsyncRelayCommand(GenerateAsync);
+        GenerateMusicCommand = new AsyncRelayCommand(GenerateMusicAsync);
         WriteScriptCommand = new AsyncRelayCommand(WriteScriptAsync);
         RefreshTakesCommand = new RelayCommand(RefreshTakes);
         PlayTakeCommand = new RelayCommand<VoiceTake>(PlayTake);
         RevealTakeCommand = new RelayCommand<VoiceTake>(RevealTake);
         CopyPathCommand = new RelayCommand<VoiceTake>(CopyPath);
         DeleteTakeCommand = new RelayCommand<VoiceTake>(DeleteTake);
+        SwitchToTtsCommand = new RelayCommand(() => Mode = VoiceMode.Tts);
+        SwitchToMusicCommand = new RelayCommand(() => Mode = VoiceMode.Music);
 
         RefreshTakes();
     }
@@ -131,6 +199,10 @@ public sealed class VoiceViewModel : ObservableObject
         Takes.Clear();
         foreach (var t in _ctx.VoiceService.ListTakes()) Takes.Add(t);
         OnPropertyChanged(nameof(HasTakes));
+
+        MusicTakes.Clear();
+        foreach (var t in _ctx.VoiceService.ListMusicTakes()) MusicTakes.Add(t);
+        OnPropertyChanged(nameof(HasMusicTakes));
     }
 
     private async Task GenerateAsync()
@@ -155,6 +227,39 @@ public sealed class VoiceViewModel : ObservableObject
             Takes.Insert(0, take);
             OnPropertyChanged(nameof(HasTakes));
             ShowToast($"Voice ready · {take.FileName}", "ok");
+        }
+        catch (Exception ex)
+        {
+            ShowToast(ex.Message, "err");
+        }
+        finally
+        {
+            IsGenerating = false;
+        }
+    }
+
+    private async Task GenerateMusicAsync()
+    {
+        if (SelectedMusicProvider is null)
+        {
+            ShowToast("No music provider available.", "warn");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(MusicPrompt))
+        {
+            ShowToast("Describe the music you want first.", "warn");
+            return;
+        }
+
+        IsGenerating = true;
+        ShowToast($"Generating music via {SelectedMusicProvider.DisplayName}…", "info");
+        try
+        {
+            var take = await _ctx.VoiceService.GenerateMusicAsync(
+                SelectedMusicProvider.Id, MusicModel, MusicPrompt, MusicDuration);
+            MusicTakes.Insert(0, take);
+            OnPropertyChanged(nameof(HasMusicTakes));
+            ShowToast($"Music ready · {take.FileName}", "ok");
         }
         catch (Exception ex)
         {
@@ -233,7 +338,9 @@ public sealed class VoiceViewModel : ObservableObject
         if (take is null) return;
         _ctx.VoiceService.DeleteTake(take);
         Takes.Remove(take);
+        MusicTakes.Remove(take);
         OnPropertyChanged(nameof(HasTakes));
+        OnPropertyChanged(nameof(HasMusicTakes));
         ShowToast($"Deleted {take.FileName}", "ok");
     }
 

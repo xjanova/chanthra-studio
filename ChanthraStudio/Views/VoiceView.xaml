@@ -58,14 +58,48 @@
         </Border>
 
         <!--  Header  -->
-        <StackPanel Grid.Row="0" Margin="32,22,32,8">
-            <TextBlock Style="{StaticResource TextPanelHeader}" FontSize="22">
-                <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
-                <Run Text="Voice atelier" />
-            </TextBlock>
-            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12"
-                       Text="Generate voice-over from text via OpenAI / ElevenLabs. Output drops into media/voice/ — pick it in Render Film's audio picker." />
-        </StackPanel>
+        <Grid Grid.Row="0" Margin="32,22,32,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Style="{StaticResource TextPanelHeader}" FontSize="22">
+                    <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
+                    <Run Text="Sound atelier" />
+                </TextBlock>
+                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12">
+                    <Run Text="TTS voices via OpenAI / ElevenLabs · music gen via Replicate (musicgen / ace-step / riffusion). Output drops into media/voice/ or media/music/." />
+                </TextBlock>
+            </StackPanel>
+            <!--  Mode toggle: TTS · Music  -->
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
+                <Border
+                    Padding="3"
+                    Background="{StaticResource BrushBgInset}"
+                    BorderBrush="{StaticResource BrushLineHairline}"
+                    BorderThickness="1"
+                    CornerRadius="99">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton
+                            Margin="0,0,2,0"
+                            Padding="14,4"
+                            Command="{Binding SwitchToTtsCommand}"
+                            Content="◔ TTS"
+                            GroupName="voiceMode"
+                            IsChecked="{Binding IsTtsMode, Mode=OneWay}"
+                            Style="{StaticResource ChipRadio}" />
+                        <RadioButton
+                            Padding="14,4"
+                            Command="{Binding SwitchToMusicCommand}"
+                            Content="♪ Music"
+                            GroupName="voiceMode"
+                            IsChecked="{Binding IsMusicMode, Mode=OneWay}"
+                            Style="{StaticResource ChipRadio}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
 
         <!--  Body  -->
         <Grid Grid.Row="1" Margin="32,8,32,32">
@@ -74,8 +108,9 @@
                 <ColumnDefinition Width="380" />
             </Grid.ColumnDefinitions>
 
-            <!--  Left: composer  -->
-            <Border Grid.Column="0" Padding="20,18" Style="{StaticResource SurfaceCard}">
+            <!--  Left: TTS composer (visible in Tts mode)  -->
+            <Border Grid.Column="0" Padding="20,18" Style="{StaticResource SurfaceCard}"
+                    Visibility="{Binding IsTtsMode, Converter={StaticResource BoolToVis}}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -185,7 +220,80 @@
                 </Grid>
             </Border>
 
-            <!--  Right: takes  -->
+            <!--  Left: Music composer (visible in Music mode)  -->
+            <Border Grid.Column="0" Padding="20,18" Style="{StaticResource SurfaceCard}"
+                    Visibility="{Binding IsMusicMode, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!--  Music provider picker  -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                            <TextBlock Style="{StaticResource TextMonoUpper}" Text="MUSIC PROVIDER" />
+                            <Border Margin="0,6,0,0" Padding="12,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                <ComboBox ItemsSource="{Binding MusicProviders}" SelectedItem="{Binding SelectedMusicProvider, Mode=TwoWay}" DisplayMemberPath="DisplayName" />
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                            <TextBlock Style="{StaticResource TextMonoUpper}" Text="MODEL · OWNER/NAME" />
+                            <Border Margin="0,6,0,0" Padding="12,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding MusicModel, UpdateSourceTrigger=PropertyChanged}" />
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+
+                    <!--  Quick-pick model chips  -->
+                    <StackPanel Grid.Row="1" Margin="0,12,0,0" Orientation="Horizontal">
+                        <TextBlock VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="QUICK PICK" />
+                        <RadioButton Margin="10,0,4,0" Content="meta/musicgen" GroupName="musicQuick"
+                                     Click="MusicQuickPick_Click" Tag="meta/musicgen" Style="{StaticResource ChipRadio}" />
+                        <RadioButton Margin="0,0,4,0" Content="lucataco/ace-step" GroupName="musicQuick"
+                                     Click="MusicQuickPick_Click" Tag="lucataco/ace-step" Style="{StaticResource ChipRadio}" />
+                        <RadioButton Margin="0,0,4,0" Content="riffusion/riffusion" GroupName="musicQuick"
+                                     Click="MusicQuickPick_Click" Tag="riffusion/riffusion" Style="{StaticResource ChipRadio}" />
+                    </StackPanel>
+
+                    <!--  Music prompt  -->
+                    <Grid Grid.Row="2" Margin="0,16,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Margin="0,0,0,6" Style="{StaticResource TextMonoUpper}" Text="MUSIC PROMPT · STYLE / TEMPO / INSTRUMENTS" />
+                        <Border Grid.Row="1" MinHeight="200" Padding="14,12" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
+                            <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontThai}" FontSize="13" Foreground="{StaticResource BrushText1}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Text="{Binding MusicPrompt, UpdateSourceTrigger=PropertyChanged}" />
+                        </Border>
+                    </Grid>
+
+                    <!--  Duration slider  -->
+                    <Grid Grid.Row="3" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="74" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextLabel}" Text="Duration" />
+                        <Slider Grid.Column="1" Margin="6,0" Minimum="4" Maximum="120" SmallChange="1" LargeChange="10" Style="{StaticResource GoldSlider}" Value="{Binding MusicDuration, Mode=TwoWay}" />
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding MusicDuration, StringFormat={}{0:F0}s}" />
+                    </Grid>
+
+                    <!--  Generate music CTA  -->
+                    <Button Grid.Row="4" Margin="0,18,0,0" HorizontalAlignment="Right" Padding="22,8" Command="{Binding GenerateMusicCommand}" Content="♪  Generate music" Style="{StaticResource ButtonPillGold}"
+                            IsEnabled="{Binding IsGenerating, Converter={StaticResource InvBoolToVis}, FallbackValue=True}" />
+                </Grid>
+            </Border>
+
+            <!--  Right: takes (TTS or Music depending on mode)  -->
             <Border Grid.Column="1" Margin="14,0,0,0" Padding="16,14" Style="{StaticResource SurfaceCard}">
                 <DockPanel>
                     <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
@@ -195,6 +303,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Style="{StaticResource TextPanelHeader}">
                             <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
+                            <Run Text="{Binding IsTtsMode, Converter={StaticResource BoolToVis}, FallbackValue=Takes}" />
                             <Run Text="Takes" />
                         </TextBlock>
                         <Button Grid.Column="1" Padding="10,4" Command="{Binding RefreshTakesCommand}" Content="Refresh" Style="{StaticResource ButtonPill}" />
@@ -205,10 +314,12 @@
                                Margin="0,0,0,12"
                                Visibility="{Binding HasTakes, Converter={StaticResource InvBoolToVis}}"
                                TextWrapping="Wrap"
-                               Text="No takes yet. Generated MP3s appear here, sorted newest first." />
+                               Text="No takes yet. Generated audio appears here, sorted newest first." />
 
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding Takes}">
+                        <Grid>
+                            <ItemsControl ItemsSource="{Binding Takes}"
+                                          Visibility="{Binding IsTtsMode, Converter={StaticResource BoolToVis}}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Margin="0,0,0,8" Padding="12,10" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8" Background="{StaticResource BrushBgInset}">
@@ -244,6 +355,43 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding MusicTakes}"
+                                          Visibility="{Binding IsMusicMode, Converter={StaticResource BoolToVis}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,8" Padding="12,10" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8" Background="{StaticResource BrushBgInset}">
+                                            <Border.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Command="{Binding DataContext.PlayTakeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Header="Play" />
+                                                    <MenuItem Command="{Binding DataContext.RevealTakeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Header="Reveal in Explorer" />
+                                                    <MenuItem Command="{Binding DataContext.CopyPathCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Header="Copy path" />
+                                                    <Separator />
+                                                    <MenuItem Command="{Binding DataContext.DeleteTakeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Header="Delete take" />
+                                                </ContextMenu>
+                                            </Border.ContextMenu>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Button Grid.Column="0" Width="32" Height="32" Margin="0,0,10,0" Command="{Binding DataContext.PlayTakeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Style="{StaticResource ButtonSummonCta}" Padding="0">
+                                                    <Path Width="11" Height="11" Data="{StaticResource IcoPlay}" Fill="#FF1A0D05" Stretch="Uniform" />
+                                                </Button>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock FontFamily="{StaticResource FontUI}" FontSize="11.5" Foreground="{StaticResource BrushText1}" Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
+                                                    <StackPanel Margin="0,3,0,0" Orientation="Horizontal">
+                                                        <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}" Text="♪" />
+                                                        <TextBlock Margin="6,0,0,0" Style="{StaticResource TextMonoUpper}" Text="{Binding VoiceDisplayName}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" FontSize="10.5" Text="{Binding DurationLabel}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
                     </ScrollViewer>
                 </DockPanel>
             </Border>
