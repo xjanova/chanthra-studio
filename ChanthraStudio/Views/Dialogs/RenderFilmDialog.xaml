@@ -1,0 +1,141 @@
+<Window
+    x:Class="ChanthraStudio.Views.Dialogs.RenderFilmDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+    Title="Render film"
+    Width="540"
+    Height="500"
+    AllowsTransparency="True"
+    Background="Transparent"
+    FontFamily="{StaticResource FontUI}"
+    Foreground="{StaticResource BrushText1}"
+    ResizeMode="NoResize"
+    SnapsToDevicePixels="True"
+    UseLayoutRounding="True"
+    WindowStartupLocation="CenterOwner"
+    WindowStyle="None"
+    mc:Ignorable="d">
+
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome
+            CaptionHeight="36"
+            CornerRadius="0"
+            GlassFrameThickness="0"
+            ResizeBorderThickness="0"
+            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid Margin="14" Background="Transparent">
+        <Border CornerRadius="12" Effect="{StaticResource ShadowWindow}" />
+        <Border
+            Background="{StaticResource BrushBgMica}"
+            BorderBrush="{StaticResource BrushLineHairline}"
+            BorderThickness="1"
+            ClipToBounds="True"
+            CornerRadius="12">
+            <Grid>
+                <Border Background="{StaticResource BrushMicaCrimsonGlow}" />
+                <Border Background="{StaticResource BrushMicaGoldGlow}" />
+                <Border Background="{StaticResource BrushInnerTopHighlight}" Height="2" VerticalAlignment="Top" />
+
+                <Grid Margin="22,16,22,18">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!--  Header  -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource TextPanelHeader}" FontSize="18">
+                            <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
+                            <Run Text="Render film" />
+                        </TextBlock>
+                        <Button
+                            Grid.Column="1"
+                            Width="32"
+                            Height="32"
+                            Click="Cancel_Click"
+                            Style="{StaticResource ButtonIcon}">
+                            <Path Width="11" Height="11" Data="{StaticResource IcoClose}" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
+                        </Button>
+                    </Grid>
+
+                    <TextBlock Grid.Row="1" Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="11.5"
+                               Text="{Binding Subtitle, RelativeSource={RelativeSource AncestorType=Window}}"
+                               TextWrapping="Wrap" />
+
+                    <!--  ffmpeg status  -->
+                    <Border Grid.Row="2" Margin="0,16,0,0" Padding="12,8" Style="{StaticResource SurfaceInset}">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="6" Height="6" Margin="0,0,8,0" VerticalAlignment="Center"
+                                     Fill="{Binding FfmpegStatusBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
+                            <TextBlock Style="{StaticResource TextMono}" FontSize="11"
+                                       Text="{Binding FfmpegStatusLabel, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!--  Output filename  -->
+                    <StackPanel Grid.Row="3" Margin="0,14,0,0">
+                        <TextBlock Style="{StaticResource TextMonoUpper}" Text="OUTPUT FILENAME" />
+                        <Border Margin="0,6,0,0" Padding="12,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                            <TextBox x:Name="NameBox" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushText1}" />
+                        </Border>
+                    </StackPanel>
+
+                    <!--  Per-clip duration  -->
+                    <Grid Grid.Row="4" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Style="{StaticResource TextMonoUpper}" Text="SECONDS PER CLIP" />
+                            <Slider x:Name="DurationSlider" Margin="0,8,0,0" Minimum="1" Maximum="10" SmallChange="0.5" LargeChange="1" Value="3" Width="320" Style="{StaticResource GoldSlider}" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" VerticalAlignment="Bottom" Style="{StaticResource TextMonoGold}" FontSize="12"
+                                   Text="{Binding Value, ElementName=DurationSlider, StringFormat={}{0:F1}s}" />
+                    </Grid>
+
+                    <!--  FPS chips  -->
+                    <StackPanel Grid.Row="5" Margin="0,14,0,0">
+                        <TextBlock Style="{StaticResource TextMonoUpper}" Text="FRAME RATE" />
+                        <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                            <RadioButton x:Name="Fps24" GroupName="fps" Margin="0,0,4,0" Content="24" Style="{StaticResource ChipRadio}" />
+                            <RadioButton x:Name="Fps30" GroupName="fps" Margin="0,0,4,0" Content="30" IsChecked="True" Style="{StaticResource ChipRadio}" />
+                            <RadioButton x:Name="Fps60" GroupName="fps" Content="60" Style="{StaticResource ChipRadio}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!--  spacer  -->
+                    <Border Grid.Row="6" />
+
+                    <!--  Footer  -->
+                    <Grid Grid.Row="7" Margin="0,18,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="1" Margin="0,0,8,0" Padding="18,7" Click="Cancel_Click" Content="Cancel" Style="{StaticResource ButtonPill}" />
+                        <Button Grid.Column="2" Padding="22,7" Click="Confirm_Click" Content="✦  Render"
+                                IsEnabled="{Binding FfmpegFound, RelativeSource={RelativeSource AncestorType=Window}}"
+                                Style="{StaticResource ButtonPillGold}" />
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

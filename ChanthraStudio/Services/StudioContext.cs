@@ -16,6 +16,8 @@ public sealed class StudioContext
     public ClipsRepository Clips { get; }
     public ChanthraStudio.Services.Providers.ComfyUI.WorkflowRepository Workflows { get; }
     public PostingService Posting { get; }
+    public FFmpegService FFmpeg { get; }
+    public SlideshowRenderer SlideshowRenderer { get; }
 
     public StudioContext()
     {
@@ -29,5 +31,7 @@ public sealed class StudioContext
         Workflows = new ChanthraStudio.Services.Providers.ComfyUI.WorkflowRepository();
         Generation = new GenerationService(this);
         Posting = new PostingService(this);
+        FFmpeg = new FFmpegService(this);
+        SlideshowRenderer = new SlideshowRenderer(this);
     }
 }

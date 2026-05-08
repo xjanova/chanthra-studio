@@ -37,6 +37,9 @@ public sealed class AppSettings
     public int AutosaveSeconds { get; set; } = 30;
     public string Theme { get; set; } = "lunar";
 
+    /// <summary>Optional manual override. Empty = auto-detect from PATH.</summary>
+    public string FfmpegPath { get; set; } = "";
+
     public DateTime? LastSavedAt { get; private set; }
 
     public AppSettings(Database db) { _db = db; }
@@ -99,6 +102,7 @@ public sealed class AppSettings
         Upsert(c, tx, "postWebhookUrl", PostWebhookUrl, false, now);
         Upsert(c, tx, "autosaveSeconds", AutosaveSeconds.ToString(), false, now);
         Upsert(c, tx, "theme", Theme, false, now);
+        Upsert(c, tx, "ffmpegPath", FfmpegPath, false, now);
 
         // Encrypted API keys — value column carries the ciphertext as-is.
         foreach (var (id, ciphertext) in EncryptedKeys)
@@ -149,6 +153,7 @@ public sealed class AppSettings
             case "postWebhookUrl":     s.PostWebhookUrl = r.Value; break;
             case "autosaveSeconds":    if (int.TryParse(r.Value, out var n)) s.AutosaveSeconds = n; break;
             case "theme":              s.Theme = r.Value; break;
+            case "ffmpegPath":         s.FfmpegPath = r.Value; break;
             // unknown keys are silently dropped — likely a downgrade or a
             // future-version setting we don't recognise.
         }

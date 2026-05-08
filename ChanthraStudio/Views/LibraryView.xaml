@@ -68,12 +68,20 @@
                 </TextBlock>
                 <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12" Text="{Binding Summary}" />
             </StackPanel>
-            <Button
-                Grid.Column="1"
-                VerticalAlignment="Center"
-                Command="{Binding RefreshCommand}"
-                Content="Refresh"
-                Style="{StaticResource ButtonPill}" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
+                <!--  Render bar — visible only when something selected  -->
+                <StackPanel Orientation="Horizontal" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
+                    <Border Padding="10,6" VerticalAlignment="Center" Background="{StaticResource BrushSurface03}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="99">
+                        <TextBlock FontSize="11" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}">
+                            <Run Text="{Binding SelectedCount}" /><Run Text=" SELECTED" />
+                        </TextBlock>
+                    </Border>
+                    <Button Margin="8,0,0,0" Command="{Binding ClearSelectionCommand}" Content="Clear" Style="{StaticResource ButtonPill}" />
+                    <Button Margin="8,0,0,0" Command="{Binding RenderFilmCommand}" Content="✦  Render film" Style="{StaticResource ButtonPillGold}" />
+                    <Border Width="14" />
+                </StackPanel>
+                <Button Command="{Binding RefreshCommand}" Content="Refresh" Style="{StaticResource ButtonPill}" />
+            </StackPanel>
         </Grid>
 
         <!--  Body  -->
@@ -173,6 +181,46 @@
                                                 Stretch="UniformToFill"
                                                 Source="{Binding FilePath, IsAsync=True}"
                                                 RenderOptions.BitmapScalingMode="HighQuality" />
+                                            <!--  Selection checkbox overlay (top-left)  -->
+                                            <CheckBox
+                                                Margin="10"
+                                                HorizontalAlignment="Left"
+                                                VerticalAlignment="Top"
+                                                IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                Cursor="Hand">
+                                                <CheckBox.Template>
+                                                    <ControlTemplate TargetType="CheckBox">
+                                                        <Border
+                                                            x:Name="bd"
+                                                            Width="22"
+                                                            Height="22"
+                                                            Background="{StaticResource BrushBlackOverlay55}"
+                                                            BorderBrush="{StaticResource BrushLineHairline}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="4">
+                                                            <Path
+                                                                x:Name="check"
+                                                                Width="11"
+                                                                Height="11"
+                                                                Data="M3 7 L7 11 L13 4"
+                                                                Stretch="Uniform"
+                                                                Stroke="#FF1A0D05"
+                                                                StrokeThickness="2"
+                                                                Visibility="Collapsed" />
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsChecked" Value="True">
+                                                                <Setter TargetName="bd" Property="Background" Value="{StaticResource BrushGoldHi}" />
+                                                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushGold}" />
+                                                                <Setter TargetName="check" Property="Visibility" Value="Visible" />
+                                                            </Trigger>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushLineGold}" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </CheckBox.Template>
+                                            </CheckBox>
                                         </Grid>
                                     </Border>
                                     <!--  Meta footer  -->

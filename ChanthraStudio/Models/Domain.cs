@@ -75,7 +75,7 @@ public sealed class StylePreset
 }
 
 /// <summary>Persisted clip — one row in the <c>clips</c> table.</summary>
-public sealed class Clip
+public sealed class Clip : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
 {
     public string Id { get; set; } = "";
     public string ShotId { get; set; } = "";
@@ -83,6 +83,14 @@ public sealed class Clip
     public string FilePath { get; set; } = "";
     public string? PosterPath { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+
+    private bool _isSelected;
+    /// <summary>UI-only — drives the multi-select checkbox in Library.</summary>
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
 
     public string FileName => System.IO.Path.GetFileName(FilePath);
     public bool FileExists => System.IO.File.Exists(FilePath);

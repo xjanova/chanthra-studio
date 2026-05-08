@@ -33,6 +33,14 @@ public sealed class LibraryViewModel : ObservableObject
     public IRelayCommand<Clip> CopyPathCommand { get; }
     public IRelayCommand<Clip> DeleteClipCommand { get; }
     public IAsyncRelayCommand<Clip> PostClipCommand { get; }
+    public IAsyncRelayCommand RenderFilmCommand { get; }
+    public IRelayCommand ClearSelectionCommand { get; }
+
+    private int _selectedCount;
+    public int SelectedCount { get => _selectedCount; set => SetProperty(ref _selectedCount, value); }
+
+    private bool _hasSelection;
+    public bool HasSelection { get => _hasSelection; set => SetProperty(ref _hasSelection, value); }
 
     public LibraryViewModel(StudioContext ctx)
     {
@@ -43,6 +51,12 @@ public sealed class LibraryViewModel : ObservableObject
         CopyPathCommand = new RelayCommand<Clip>(CopyPath);
         DeleteClipCommand = new RelayCommand<Clip>(DeleteClip);
         PostClipCommand = new AsyncRelayCommand<Clip>(PostClipAsync);
+        RenderFilmCommand = new AsyncRelayCommand(RenderFilmAsync);
+        ClearSelectionCommand = new RelayCommand(() =>
+        {
+            foreach (var c in Clips) c.IsSelected = false;
+            UpdateSelectionState();
+        });
 
         // Auto-refresh whenever a generation completes — the ProgressChanged
         // event fires on the UI thread already (GenerationService dispatches).
@@ -56,13 +70,32 @@ public sealed class LibraryViewModel : ObservableObject
 
     public void Refresh()
     {
+        // Detach old clips' PropertyChanged handlers before discarding them.
+        foreach (var old in Clips) old.PropertyChanged -= OnClipPropertyChanged;
         Clips.Clear();
+
         var rows = _ctx.Clips.RecentClips();
-        foreach (var c in rows) Clips.Add(c);
+        foreach (var c in rows)
+        {
+            c.PropertyChanged += OnClipPropertyChanged;
+            Clips.Add(c);
+        }
         HasClips = Clips.Count > 0;
         Summary = HasClips
             ? $"{Clips.Count} clip{(Clips.Count == 1 ? "" : "s")} · {AppPaths.MediaFolder}"
             : $"No clips yet · {AppPaths.MediaFolder}";
+        UpdateSelectionState();
+    }
+
+    private void OnClipPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Clip.IsSelected)) UpdateSelectionState();
+    }
+
+    private void UpdateSelectionState()
+    {
+        SelectedCount = Clips.Count(c => c.IsSelected);
+        HasSelection = SelectedCount > 0;
     }
 
     private void OpenClip(Clip? clip)
@@ -114,6 +147,45 @@ public sealed class LibraryViewModel : ObservableObject
             ShowToast($"Deleted {clip.FileName}", "ok");
         }
         catch (Exception ex) { ShowToast($"Delete failed: {ex.Message}", "err"); }
+    }
+
+    private async System.Threading.Tasks.Task RenderFilmAsync()
+    {
+        var selected = Clips.Where(c => c.IsSelected && c.FileExists).ToList();
+        if (selected.Count == 0)
+        {
+            ShowToast("No clips selected.", "warn");
+            return;
+        }
+
+        var defaultName = $"film_{DateTime.UtcNow:yyyyMMdd_HHmmss}";
+        var dialog = new Views.Dialogs.RenderFilmDialog(_ctx, selected.Count, defaultName)
+        {
+            Owner = System.Windows.Application.Current?.MainWindow,
+        };
+        dialog.ShowDialog();
+        if (!dialog.Confirmed) return;
+
+        ShowToast("Rendering film…", "info");
+        var spec = new SlideshowRenderer.Spec
+        {
+            Clips = selected,
+            SecondsPerClip = dialog.SecondsPerClip,
+            Fps = dialog.Fps,
+            OutputName = dialog.OutputName,
+        };
+        var progress = new Progress<string>(line => { /* could surface frame counts later */ });
+        var result = await _ctx.SlideshowRenderer.RenderAsync(spec, progress);
+        if (!result.Ok)
+        {
+            ShowToast(result.Error ?? "render failed", "err");
+            return;
+        }
+
+        ShowToast($"Film rendered · {System.IO.Path.GetFileName(result.OutputPath)}", "ok");
+        // Clear selection + reload so the new MP4 shows up at the top.
+        foreach (var c in Clips) c.IsSelected = false;
+        Refresh();
     }
 
     private async System.Threading.Tasks.Task PostClipAsync(Clip? clip)
