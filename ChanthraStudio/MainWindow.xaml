@@ -83,7 +83,7 @@
                 <DataTrigger Binding="{Binding ActiveView}" Value="Settings">
                     <Setter Property="Content">
                         <Setter.Value>
-                            <views:StubView Tag="Settings" />
+                            <views:SettingsView />
                         </Setter.Value>
                     </Setter>
                 </DataTrigger>
@@ -93,26 +93,44 @@
 
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome
-            CaptionHeight="38"
+            CaptionHeight="52"
             CornerRadius="0"
             GlassFrameThickness="0"
-            ResizeBorderThickness="6"
+            ResizeBorderThickness="14"
             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
 
-    <Grid>
+    <Grid Margin="14">
+        <!--  Layer 0: warm under-glow (sits behind everything for halo effect)  -->
+        <Border
+            Margin="-6"
+            CornerRadius="16"
+            Effect="{StaticResource ShadowWindowWarm}"
+            Opacity="0.6" />
+
+        <!--  Layer 1: cold cast shadow  -->
+        <Border CornerRadius="14" Effect="{StaticResource ShadowWindow}" />
+
+        <!--  Layer 2: window body  -->
         <Border
             x:Name="MainBorder"
             Background="{StaticResource BrushBgMica}"
-            BorderBrush="{StaticResource BrushLineHairline}"
-            BorderThickness="1"
             ClipToBounds="True"
-            CornerRadius="12"
-            Effect="{StaticResource ShadowWindow}">
+            CornerRadius="12">
             <Grid>
+                <!--  Mica gradient stack  -->
                 <Border Background="{StaticResource BrushMicaCrimsonGlow}" />
                 <Border Background="{StaticResource BrushMicaGoldGlow}" />
                 <Border Background="{StaticResource BrushMicaMauveMid}" />
+
+                <!--  Iridescent millennium sheen  -->
+                <Border Background="{StaticResource BrushIridescentSheen}" Opacity="0.55" />
+
+                <!--  Inner top highlight (1px white→transparent gradient — chrome bevel)  -->
+                <Border Background="{StaticResource BrushInnerTopHighlight}" Height="2" VerticalAlignment="Top" />
+
+                <!--  Inner edge stroke  -->
+                <Border BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="12" />
 
                 <Grid>
                     <Grid.RowDefinitions>

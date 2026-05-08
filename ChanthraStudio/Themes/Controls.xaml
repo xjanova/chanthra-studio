@@ -117,36 +117,74 @@
         </Setter>
     </Style>
 
-    <!--  Generate gold CTA button  -->
+    <!--
+        Generate gold CTA — chiseled chrome with 4-layer bevel:
+        1. outer gold glow (DropShadow)
+        2. main gradient body
+        3. top inner highlight (light)
+        4. bottom inner shadow (dark)
+    -->
     <Style x:Key="ButtonSummonCta" TargetType="Button">
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Height" Value="48" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Background" Value="{StaticResource BrushSummonCta}" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border
-                        x:Name="bd"
-                        Background="{TemplateBinding Background}"
-                        CornerRadius="10"
-                        Effect="{StaticResource ShadowSummonCta}">
-                        <Border CornerRadius="10">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop Offset="0" Color="#26FFFFFF" />
-                                    <GradientStop Offset="1" Color="#00FFFFFF" />
-                                </LinearGradientBrush>
-                            </Border.Background>
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Grid>
+                        <Border
+                            x:Name="bd"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="10"
+                            Effect="{StaticResource ShadowSummonCta}">
+                            <Grid>
+                                <!--  top light bevel  -->
+                                <Border CornerRadius="10">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Offset="0" Color="#52FFFFFF" />
+                                            <GradientStop Offset="0.4" Color="#00FFFFFF" />
+                                            <GradientStop Offset="1" Color="#33000000" />
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                </Border>
+                                <!--  hairline gold border  -->
+                                <Border BorderBrush="#80FFE7B0" BorderThickness="1" CornerRadius="10" />
+                                <!--  inner top 1px white  -->
+                                <Border Height="1" Margin="2,1,2,0" VerticalAlignment="Top" Background="#80FFFFFF" CornerRadius="1" />
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Grid>
                         </Border>
-                    </Border>
+                    </Grid>
                     <ControlTemplate.Triggers>
+                        <EventTrigger RoutedEvent="Loaded">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <DoubleAnimation
+                                        Storyboard.TargetName="bd"
+                                        Storyboard.TargetProperty="(Effect).(DropShadowEffect.Opacity)"
+                                        From="0.45"
+                                        To="0.75"
+                                        Duration="0:0:2.4"
+                                        AutoReverse="True"
+                                        RepeatBehavior="Forever" />
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bd" Property="RenderTransform">
                                 <Setter.Value>
-                                    <TranslateTransform Y="-1" />
+                                    <TranslateTransform Y="-2" />
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="bd" Property="RenderTransform">
+                                <Setter.Value>
+                                    <TranslateTransform Y="1" />
                                 </Setter.Value>
                             </Setter>
                         </Trigger>
@@ -154,6 +192,42 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!--  Reusable pulsing-dot Style — for live indicators  -->
+    <Style x:Key="PulsingGoldDot" TargetType="Ellipse">
+        <Setter Property="Fill" Value="{StaticResource BrushGoldHi}" />
+        <Setter Property="Effect" Value="{StaticResource ShadowGoldGlowSoft}" />
+        <Style.Triggers>
+            <EventTrigger RoutedEvent="Loaded">
+                <BeginStoryboard>
+                    <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                         From="1" To="0.35"
+                                         Duration="0:0:1.6"
+                                         AutoReverse="True"
+                                         RepeatBehavior="Forever" />
+                    </Storyboard>
+                </BeginStoryboard>
+            </EventTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="PulsingOkDot" TargetType="Ellipse">
+        <Setter Property="Fill" Value="{StaticResource BrushOk}" />
+        <Style.Triggers>
+            <EventTrigger RoutedEvent="Loaded">
+                <BeginStoryboard>
+                    <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                         From="1" To="0.5"
+                                         Duration="0:0:2"
+                                         AutoReverse="True"
+                                         RepeatBehavior="Forever" />
+                    </Storyboard>
+                </BeginStoryboard>
+            </EventTrigger>
+        </Style.Triggers>
     </Style>
 
     <!--  Outline pill button (Export, History, etc.)  -->
@@ -288,12 +362,13 @@
         </Setter>
     </Style>
 
-    <!--  Generic surface card  -->
+    <!--  Generic surface card — gradient body + bevel  -->
     <Style x:Key="SurfaceCard" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource BrushBgSurface}" />
+        <Setter Property="Background" Value="{StaticResource BrushCardElevation}" />
         <Setter Property="BorderBrush" Value="{StaticResource BrushLineHairline}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Effect" Value="{StaticResource ShadowCardRest}" />
     </Style>
 
     <Style
@@ -302,6 +377,7 @@
         TargetType="Border">
         <Setter Property="Background" Value="{StaticResource BrushBgInset}" />
         <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Effect" Value="{x:Null}" />
     </Style>
 
     <!--  Toggle (28x16 pill switch)  -->

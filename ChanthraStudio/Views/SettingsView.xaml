@@ -1,0 +1,295 @@
+<UserControl
+    x:Class="ChanthraStudio.Views.SettingsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="clr-namespace:ChanthraStudio.ViewModels"
+    Background="{StaticResource BrushBgBase}"
+    d:DataContext="{d:DesignInstance vm:SettingsViewModel}"
+    d:DesignHeight="900"
+    d:DesignWidth="1500"
+    mc:Ignorable="d">
+    <UserControl.Resources>
+        <!--  Provider row template — shared across the 3 sections  -->
+        <DataTemplate x:Key="ProviderRowTemplate" DataType="{x:Type vm:ProviderRow}">
+            <Border
+                Margin="0,0,0,10"
+                Padding="16,14"
+                Style="{StaticResource SurfaceCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!--  Heading + status  -->
+                    <StackPanel
+                        Grid.Row="0"
+                        Grid.Column="0"
+                        Orientation="Horizontal">
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontFamily="{StaticResource FontDisplay}"
+                            FontSize="15"
+                            FontWeight="Medium"
+                            Foreground="{StaticResource BrushText1}"
+                            Text="{Binding DisplayName}" />
+                        <Border
+                            Margin="10,0,0,0"
+                            Padding="6,2"
+                            VerticalAlignment="Center"
+                            CornerRadius="99">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="{StaticResource BrushSurface03}" />
+                                    <Setter Property="BorderBrush" Value="{StaticResource BrushLineHairline}" />
+                                    <Setter Property="BorderThickness" Value="1" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding StatusKind}" Value="ok">
+                                            <Setter Property="Background" Value="#1F6DBF8C" />
+                                            <Setter Property="BorderBrush" Value="#666DBF8C" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding StatusKind}" Value="warn">
+                                            <Setter Property="Background" Value="#1FE0B056" />
+                                            <Setter Property="BorderBrush" Value="#66E0B056" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding StatusKind}" Value="err">
+                                            <Setter Property="Background" Value="#1FD05A5A" />
+                                            <Setter Property="BorderBrush" Value="#66D05A5A" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding StatusKind}" Value="probing">
+                                            <Setter Property="Background" Value="#1FD4A76A" />
+                                            <Setter Property="BorderBrush" Value="#66D4A76A" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock FontSize="9.5" Style="{StaticResource TextMonoUpper}" Text="{Binding StatusLabel}" />
+                        </Border>
+                    </StackPanel>
+
+                    <TextBlock
+                        Grid.Row="1"
+                        Grid.Column="0"
+                        Margin="0,4,0,10"
+                        Style="{StaticResource TextLabel}"
+                        Text="{Binding ApiKeyHint}" />
+
+                    <!--  Test + Save buttons  -->
+                    <StackPanel
+                        Grid.Row="0"
+                        Grid.RowSpan="2"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal">
+                        <Button
+                            Margin="0,0,8,0"
+                            Command="{Binding TestCommand}"
+                            Content="Probe"
+                            Style="{StaticResource ButtonPill}" />
+                        <Button
+                            Command="{Binding SaveCommand}"
+                            Content="✦  Save"
+                            Style="{StaticResource ButtonPillGold}">
+                            <Button.IsEnabled>
+                                <Binding Path="IsDirty" />
+                            </Button.IsEnabled>
+                        </Button>
+                    </StackPanel>
+
+                    <!--  Key entry row (spans both columns)  -->
+                    <Grid
+                        Grid.Row="2"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="2"
+                        Margin="0,4,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Border
+                            Padding="12,8"
+                            Background="{StaticResource BrushBgInset}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Visibility="{Binding RequiresApiKey, Converter={StaticResource BoolToVis}}">
+                            <PasswordBox
+                                x:Name="keyBox"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                CaretBrush="{StaticResource BrushGoldHi}"
+                                FontFamily="{StaticResource FontMono}"
+                                FontSize="11.5"
+                                Foreground="{StaticResource BrushText1}"
+                                Loaded="ProviderKey_Loaded"
+                                PasswordChanged="ProviderKey_PasswordChanged"
+                                PasswordChar="•"
+                                Tag="{Binding}" />
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!--  Section nav (left)  -->
+        <Border
+            Grid.Column="0"
+            Padding="14,18"
+            Background="{StaticResource BrushBgBase}"
+            BorderBrush="{StaticResource BrushLineHairline}"
+            BorderThickness="0,0,1,0">
+            <StackPanel>
+                <TextBlock Style="{StaticResource TextPanelHeader}" Margin="0,0,0,16">
+                    <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
+                    <Run Text="Settings" />
+                </TextBlock>
+                <TextBlock Margin="0,0,0,4" Style="{StaticResource TextSectionDivider}" Text="API · runtime" />
+                <TextBlock Style="{StaticResource TextSecondary}" FontSize="11.5" TextWrapping="Wrap" Text="Keys are encrypted with Windows DPAPI before they touch disk. Only this Windows account can read them." />
+
+                <Border Margin="0,18,0,0" Style="{StaticResource SurfaceInset}" Padding="10,8">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource TextMonoUpper}" Text="DATA FOLDER" />
+                        <TextBlock
+                            Margin="0,4,0,0"
+                            Style="{StaticResource TextMonoGold}"
+                            FontSize="9.5"
+                            Text="{Binding DataPath}"
+                            TextWrapping="Wrap" />
+                        <Button
+                            Margin="0,8,0,0"
+                            HorizontalAlignment="Left"
+                            Command="{Binding RevealDataFolderCommand}"
+                            Content="Reveal in Explorer"
+                            Style="{StaticResource ButtonPill}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!--  Body  -->
+        <ScrollViewer Grid.Column="1" Padding="32,18,32,18" VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="900" HorizontalAlignment="Stretch">
+
+                <!--  LLM section  -->
+                <TextBlock
+                    Margin="0,0,0,4"
+                    Style="{StaticResource TextSectionDivider}"
+                    Text="LLM PROVIDERS · script generation" />
+                <TextBlock Margin="0,0,0,12" Style="{StaticResource TextSecondary}" FontSize="11.5" Text="Used for script writing, prompt expansion, voice script polishing." />
+                <ItemsControl ItemTemplate="{StaticResource ProviderRowTemplate}" ItemsSource="{Binding LlmProviders}" />
+
+                <!--  Video section  -->
+                <TextBlock
+                    Margin="0,28,0,4"
+                    Style="{StaticResource TextSectionDivider}"
+                    Text="VIDEO PROVIDERS · image · video generation" />
+                <TextBlock Margin="0,0,0,12" Style="{StaticResource TextSecondary}" FontSize="11.5" Text="ComfyUI uses your local GPU. The cloud providers run remotely and consume credits." />
+
+                <Border Margin="0,0,0,10" Padding="16,14" Style="{StaticResource SurfaceCard}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            FontFamily="{StaticResource FontDisplay}"
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Foreground="{StaticResource BrushText1}"
+                            Text="ComfyUI server URL" />
+                        <Border
+                            Grid.Column="1"
+                            Margin="14,0,0,0"
+                            Padding="12,8"
+                            Background="{StaticResource BrushBgInset}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                            <TextBox
+                                Background="Transparent"
+                                BorderThickness="0"
+                                FontFamily="{StaticResource FontMono}"
+                                FontSize="11.5"
+                                Foreground="{StaticResource BrushText1}"
+                                Text="{Binding ComfyUiUrl, UpdateSourceTrigger=PropertyChanged}" />
+                        </Border>
+                    </Grid>
+                </Border>
+                <ItemsControl ItemTemplate="{StaticResource ProviderRowTemplate}" ItemsSource="{Binding VideoProviders}" />
+
+                <!--  Posting section  -->
+                <TextBlock
+                    Margin="0,28,0,4"
+                    Style="{StaticResource TextSectionDivider}"
+                    Text="POSTING · auto-publish targets" />
+                <TextBlock Margin="0,0,0,12" Style="{StaticResource TextSecondary}" FontSize="11.5" Text="After a render completes, the queue can publish the clip to these endpoints automatically." />
+
+                <Border Margin="0,0,0,10" Padding="16,14" Style="{StaticResource SurfaceCard}">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextLabel}" Text="Facebook Page ID" />
+                            <Border
+                                Grid.Column="1"
+                                Margin="14,0,0,0"
+                                Padding="12,8"
+                                Background="{StaticResource BrushBgInset}"
+                                BorderBrush="{StaticResource BrushLineHairline}"
+                                BorderThickness="1"
+                                CornerRadius="6">
+                                <TextBox Background="Transparent" BorderThickness="0" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText1}" Text="{Binding PostFacebookPageId, UpdateSourceTrigger=PropertyChanged}" />
+                            </Border>
+                        </Grid>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextLabel}" Text="Webhook URL" />
+                            <Border
+                                Grid.Column="1"
+                                Margin="14,0,0,0"
+                                Padding="12,8"
+                                Background="{StaticResource BrushBgInset}"
+                                BorderBrush="{StaticResource BrushLineHairline}"
+                                BorderThickness="1"
+                                CornerRadius="6">
+                                <TextBox Background="Transparent" BorderThickness="0" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText1}" Text="{Binding PostWebhookUrl, UpdateSourceTrigger=PropertyChanged}" />
+                            </Border>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+                <ItemsControl ItemTemplate="{StaticResource ProviderRowTemplate}" ItemsSource="{Binding PostingProviders}" />
+
+                <!--  Footer  -->
+                <Border Height="24" />
+                <Button
+                    Margin="0,16,0,0"
+                    HorizontalAlignment="Right"
+                    Padding="22,8"
+                    Command="{Binding SaveAllCommand}"
+                    Content="✦  Save all"
+                    Style="{StaticResource ButtonPillGold}" />
+                <Border Height="40" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

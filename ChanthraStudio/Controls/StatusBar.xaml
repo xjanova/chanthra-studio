@@ -28,7 +28,7 @@
                     Width="6"
                     Height="6"
                     Margin="0,0,6,0"
-                    Fill="{StaticResource BrushOk}"
+                    Style="{StaticResource PulsingOkDot}"
                     Effect="{StaticResource ShadowGoldGlowSoft}" />
                 <TextBlock
                     Margin="0,0,14,0"

@@ -474,8 +474,7 @@
                                 Height="5"
                                 Margin="0,0,8,0"
                                 VerticalAlignment="Center"
-                                Fill="{StaticResource BrushGoldHi}"
-                                Effect="{StaticResource ShadowGoldGlowSoft}" />
+                                Style="{StaticResource PulsingGoldDot}" />
                             <TextBlock
                                 FontSize="11"
                                 Foreground="{StaticResource BrushGoldHi}"
