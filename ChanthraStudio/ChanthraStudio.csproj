@@ -25,7 +25,14 @@
   <ItemGroup>
     <Resource Include="Assets\Fonts\*.ttf" />
     <Resource Include="Assets\Brand\*.png" />
-    <Resource Include="Assets\Workflows\*.json" />
+    <!--
+      Workflows are shipped as plain Content (copied to bin), not embedded
+      Resources, so users can edit them on disk and WorkflowRepository can
+      discover them by scanning Assets/Workflows/ next to the .exe.
+    -->
+    <Content Include="Assets\Workflows\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <!--

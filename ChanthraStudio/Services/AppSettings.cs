@@ -31,6 +31,7 @@ public sealed class AppSettings
 
     public string ActiveLlm { get; set; } = "gemini";
     public string ActiveVideo { get; set; } = "comfyui";
+    public string ActiveWorkflow { get; set; } = "default_text2img";
     public string PostFacebookPageId { get; set; } = "";
     public string PostWebhookUrl { get; set; } = "";
     public int AutosaveSeconds { get; set; } = 30;
@@ -93,6 +94,7 @@ public sealed class AppSettings
         Upsert(c, tx, "comfyUiUrl", ComfyUiUrl, false, now);
         Upsert(c, tx, "activeLlm", ActiveLlm, false, now);
         Upsert(c, tx, "activeVideo", ActiveVideo, false, now);
+        Upsert(c, tx, "activeWorkflow", ActiveWorkflow, false, now);
         Upsert(c, tx, "postFacebookPageId", PostFacebookPageId, false, now);
         Upsert(c, tx, "postWebhookUrl", PostWebhookUrl, false, now);
         Upsert(c, tx, "autosaveSeconds", AutosaveSeconds.ToString(), false, now);
@@ -142,6 +144,7 @@ public sealed class AppSettings
             case "comfyUiUrl":         s.ComfyUiUrl = r.Value; break;
             case "activeLlm":          s.ActiveLlm = r.Value; break;
             case "activeVideo":        s.ActiveVideo = r.Value; break;
+            case "activeWorkflow":     s.ActiveWorkflow = r.Value; break;
             case "postFacebookPageId": s.PostFacebookPageId = r.Value; break;
             case "postWebhookUrl":     s.PostWebhookUrl = r.Value; break;
             case "autosaveSeconds":    if (int.TryParse(r.Value, out var n)) s.AutosaveSeconds = n; break;

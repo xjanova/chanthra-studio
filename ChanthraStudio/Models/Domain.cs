@@ -104,6 +104,21 @@ public sealed class Clip
     }
 }
 
+/// <summary>
+/// Descriptor for a ComfyUI workflow file the user can pick in the Composer.
+/// Loaded lazily — we keep just the metadata in memory; the JSON itself is
+/// re-read from disk on every generation so user edits land instantly.
+/// </summary>
+public sealed class WorkflowDescriptor
+{
+    public string Name { get; init; } = "";          // file name without .json
+    public string DisplayName { get; init; } = "";   // human-friendly title
+    public string Path { get; init; } = "";          // absolute disk path
+    public string Description { get; init; } = "";   // first line of `// header` comment, if any
+    public bool IsBuiltin { get; init; }             // shipped under bin/Assets/Workflows
+    public string Spec { get; init; } = "";          // short uppercase mono caption (e.g. "SD1.5 · text→image")
+}
+
 /// <summary>Generation job row — submission record for any provider.</summary>
 public sealed class GenerationJob
 {

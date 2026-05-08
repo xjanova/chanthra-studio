@@ -184,6 +184,7 @@ public sealed class SettingsViewModel : ObservableObject
 
     public IRelayCommand SaveAllCommand { get; }
     public IRelayCommand RevealDataFolderCommand { get; }
+    public IRelayCommand RevealWorkflowsFolderCommand { get; }
 
     public SettingsViewModel(AppSettings settings, ProviderRegistry registry)
     {
@@ -196,21 +197,32 @@ public sealed class SettingsViewModel : ObservableObject
 
         SaveAllCommand = new RelayCommand(SaveAll);
 
-        RevealDataFolderCommand = new RelayCommand(() =>
+        RevealDataFolderCommand = new RelayCommand(() => RevealFolder(AppPaths.Root));
+        RevealWorkflowsFolderCommand = new RelayCommand(() =>
         {
-            try
-            {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = AppPaths.Root,
-                    UseShellExecute = true,
-                });
-            }
-            catch
-            {
-                // ignore — user can still see the path on the page.
-            }
+            // The workflows folder lives next to the .exe (built-ins) AND under
+            // the user data folder (drop-ins). We open the user folder, since
+            // that's the one users actually edit.
+            var userWorkflows = System.IO.Path.Combine(AppPaths.Root, "workflows");
+            try { System.IO.Directory.CreateDirectory(userWorkflows); } catch { }
+            RevealFolder(userWorkflows);
         });
+    }
+
+    private static void RevealFolder(string path)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true,
+            });
+        }
+        catch
+        {
+            // ignore — path is shown on the page.
+        }
     }
 
     private void SaveAll()

@@ -20,11 +20,29 @@ public sealed class GenerateViewModel : ObservableObject
     private string _sceneLabel = "Scene 03 · Shot 02";
     public string SceneLabel { get => _sceneLabel; set => SetProperty(ref _sceneLabel, value); }
 
-    private string _engineLabel = "Chanthra · Sora-Lyra v2.4";
-    public string EngineLabel { get => _engineLabel; set => SetProperty(ref _engineLabel, value); }
+    public ObservableCollection<WorkflowDescriptor> Workflows { get; } = new();
 
-    private string _engineSpec = "1080p · 24fps · text+image→video";
-    public string EngineSpec { get => _engineSpec; set => SetProperty(ref _engineSpec, value); }
+    private WorkflowDescriptor? _activeWorkflow;
+    public WorkflowDescriptor? ActiveWorkflow
+    {
+        get => _activeWorkflow;
+        set
+        {
+            if (!SetProperty(ref _activeWorkflow, value)) return;
+            OnPropertyChanged(nameof(EngineLabel));
+            OnPropertyChanged(nameof(EngineSpec));
+            if (value is not null && _ctx is not null)
+            {
+                _ctx.Settings.ActiveWorkflow = value.Name;
+                try { _ctx.Settings.Save(); } catch { /* non-fatal */ }
+            }
+        }
+    }
+
+    public IRelayCommand RefreshWorkflowsCommand { get; }
+
+    public string EngineLabel => ActiveWorkflow?.DisplayName ?? "Chanthra · Sora-Lyra v2.4";
+    public string EngineSpec => ActiveWorkflow?.Spec ?? "1080p · 24fps · text+image→video";
 
     private AspectRatio _aspect = AspectRatio.Wide;
     public AspectRatio Aspect { get => _aspect; set => SetProperty(ref _aspect, value); }
@@ -132,9 +150,31 @@ public sealed class GenerateViewModel : ObservableObject
     {
         _ctx = ctx;
         SummonSceneCommand = new AsyncRelayCommand(SummonSceneAsync);
+        RefreshWorkflowsCommand = new RelayCommand(LoadWorkflows);
 
         if (_ctx is not null)
+        {
             _ctx.Generation.ProgressChanged += OnGenerationProgress;
+            LoadWorkflows();
+        }
+    }
+
+    private void LoadWorkflows()
+    {
+        if (_ctx is null) return;
+        _ctx.Workflows.Refresh();
+        Workflows.Clear();
+        foreach (var wf in _ctx.Workflows.All) Workflows.Add(wf);
+        // Pick the persisted active, falling back to the first available.
+        var match = Workflows.FirstOrDefault(w => w.Name == _ctx.Settings.ActiveWorkflow)
+                  ?? Workflows.FirstOrDefault();
+        if (!ReferenceEquals(match, _activeWorkflow))
+        {
+            _activeWorkflow = match;
+            OnPropertyChanged(nameof(ActiveWorkflow));
+            OnPropertyChanged(nameof(EngineLabel));
+            OnPropertyChanged(nameof(EngineSpec));
+        }
     }
 
     private async Task SummonSceneAsync()

@@ -65,7 +65,16 @@ public sealed class GenerationService
                 throw new ComfyUiException($"ComfyUI not reachable at {url} — {probe.Status}");
             }
 
-            var workflow = Workflow.LoadDefault()
+            // Load the user's active workflow from the repository — falls
+            // back to the bundled default if the saved name has been removed
+            // from disk since last save.
+            var descriptor = _ctx.Workflows.FindByName(_ctx.Settings.ActiveWorkflow)
+                          ?? _ctx.Workflows.Default();
+            var workflow = descriptor is not null
+                ? Workflow.LoadFromPath(descriptor.Path)
+                : Workflow.LoadDefault();
+
+            workflow
                 .SetPositivePrompt(shot.Prompt)
                 .SetSeed(shot.Seed.A)
                 .SetSize(shot.Aspect == AspectRatio.Wide ? 1024 : 768,

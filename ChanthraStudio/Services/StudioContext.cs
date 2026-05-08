@@ -14,6 +14,7 @@ public sealed class StudioContext
     public ProviderRegistry Providers { get; }
     public GenerationService Generation { get; }
     public ClipsRepository Clips { get; }
+    public ChanthraStudio.Services.Providers.ComfyUI.WorkflowRepository Workflows { get; }
 
     public StudioContext()
     {
@@ -24,6 +25,7 @@ public sealed class StudioContext
         Settings = AppSettings.Load(Db);
         Providers = new ProviderRegistry();
         Clips = new ClipsRepository(Db);
+        Workflows = new ChanthraStudio.Services.Providers.ComfyUI.WorkflowRepository();
         Generation = new GenerationService(this);
     }
 }

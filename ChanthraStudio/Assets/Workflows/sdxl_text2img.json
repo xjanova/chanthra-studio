@@ -1,13 +1,13 @@
-// "Default · text → image" · SD1.5 · text→image — Stock 7-node SD1.5 graph. Auto-picks installed checkpoint.
+// "SDXL · text → image" · SDXL · text→image — 1024-base SDXL graph, 30 steps. Pick an SDXL checkpoint in Settings or auto.
 {
   "3": {
     "class_type": "KSampler",
     "inputs": {
-      "seed": 8566257,
-      "steps": 20,
-      "cfg": 7.5,
-      "sampler_name": "euler",
-      "scheduler": "normal",
+      "seed": 1024,
+      "steps": 30,
+      "cfg": 6.5,
+      "sampler_name": "dpmpp_2m_sde",
+      "scheduler": "karras",
       "denoise": 1.0,
       "model": ["4", 0],
       "positive": ["6", 0],
@@ -18,14 +18,14 @@
   "4": {
     "class_type": "CheckpointLoaderSimple",
     "inputs": {
-      "ckpt_name": "v1-5-pruned-emaonly-fp16.safetensors"
+      "ckpt_name": "sd_xl_base_1.0.safetensors"
     }
   },
   "5": {
     "class_type": "EmptyLatentImage",
     "inputs": {
       "width": 1024,
-      "height": 576,
+      "height": 1024,
       "batch_size": 1
     }
   },
@@ -39,7 +39,7 @@
   "7": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "text": "blurry, low quality, watermark, text",
+      "text": "blurry, low quality, watermark, text, extra fingers, deformed",
       "clip": ["4", 1]
     }
   },
@@ -53,7 +53,7 @@
   "9": {
     "class_type": "SaveImage",
     "inputs": {
-      "filename_prefix": "ChanthraStudio",
+      "filename_prefix": "ChanthraStudio_SDXL",
       "images": ["8", 0]
     }
   }

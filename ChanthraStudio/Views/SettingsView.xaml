@@ -181,6 +181,24 @@
                             Style="{StaticResource ButtonPill}" />
                     </StackPanel>
                 </Border>
+
+                <Border Margin="0,12,0,0" Style="{StaticResource SurfaceInset}" Padding="10,8">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource TextMonoUpper}" Text="WORKFLOWS" />
+                        <TextBlock
+                            Margin="0,4,0,0"
+                            Style="{StaticResource TextSecondary}"
+                            FontSize="11"
+                            TextWrapping="Wrap"
+                            Text="Drop ComfyUI API-format workflows (.json) into the user folder. They appear in the Composer's engine picker." />
+                        <Button
+                            Margin="0,8,0,0"
+                            HorizontalAlignment="Left"
+                            Command="{Binding RevealWorkflowsFolderCommand}"
+                            Content="Open workflows folder"
+                            Style="{StaticResource ButtonPill}" />
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </Border>
 

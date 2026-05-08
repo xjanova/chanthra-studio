@@ -240,16 +240,14 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <!--  3c. Engine picker  -->
+                        <!--  3c. Engine / workflow picker (real ComboBox, styled to match)  -->
                         <Border
                             Margin="0,18,0,0"
-                            Padding="10,10"
                             Background="{StaticResource BrushBgSurface}"
                             BorderBrush="{StaticResource BrushLineHairline}"
                             BorderThickness="1"
-                            CornerRadius="10"
-                            Cursor="Hand">
-                            <Grid>
+                            CornerRadius="10">
+                            <Grid Margin="10,10">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
@@ -273,18 +271,49 @@
                                         Foreground="{StaticResource BrushGoldHi}"
                                         Text="✦" />
                                 </Border>
-                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Style="{StaticResource TextBody}" FontSize="12.5" Text="{Binding EngineLabel}" />
-                                    <TextBlock Margin="0,2,0,0" Style="{StaticResource TextMonoUpper}" Text="{Binding EngineSpec}" />
-                                </StackPanel>
-                                <Path
+                                <ComboBox
+                                    Grid.Column="1"
+                                    Margin="10,0,0,0"
+                                    Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="0"
+                                    Foreground="{StaticResource BrushText1}"
+                                    FontFamily="{StaticResource FontUI}"
+                                    FontSize="12.5"
+                                    ItemsSource="{Binding Workflows}"
+                                    SelectedItem="{Binding ActiveWorkflow, Mode=TwoWay}"
+                                    Cursor="Hand">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel>
+                                                <TextBlock
+                                                    FontFamily="{StaticResource FontUI}"
+                                                    FontSize="12.5"
+                                                    Foreground="{StaticResource BrushText1}"
+                                                    Text="{Binding DisplayName}" />
+                                                <TextBlock
+                                                    Margin="0,2,0,0"
+                                                    Style="{StaticResource TextMonoUpper}"
+                                                    Text="{Binding Spec}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Button
                                     Grid.Column="2"
-                                    Width="11"
-                                    Height="11"
-                                    Data="{StaticResource IcoChevronRight}"
-                                    Stretch="Uniform"
-                                    Stroke="{StaticResource BrushText3}"
-                                    StrokeThickness="1.4" />
+                                    Width="22"
+                                    Height="22"
+                                    Command="{Binding RefreshWorkflowsCommand}"
+                                    Style="{StaticResource ButtonIcon}"
+                                    ToolTip="Refresh workflows folder">
+                                    <Path
+                                        Width="11"
+                                        Height="11"
+                                        Data="M3 12 A9 9 0 1 1 12 21 M12 21 L8 17 M12 21 L8 25"
+                                        Stretch="Uniform"
+                                        Stroke="{StaticResource BrushText3}"
+                                        StrokeThickness="1.4" />
+                                </Button>
                             </Grid>
                         </Border>
 

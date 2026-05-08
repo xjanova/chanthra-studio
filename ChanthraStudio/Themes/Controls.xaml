@@ -502,6 +502,112 @@
         <Setter Property="CaretBrush" Value="{StaticResource BrushGoldHi}" />
     </Style>
 
+    <!--  ComboBox — dark themed, gold accents, popup matches surface card  -->
+    <Style x:Key="LunarComboBox" TargetType="ComboBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
+        <Setter Property="FontFamily" Value="{StaticResource FontUI}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="ComboBoxItem">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
+                    <Setter Property="Padding" Value="12,8" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ComboBoxItem">
+                                <Border
+                                    x:Name="bd"
+                                    Background="{TemplateBinding Background}"
+                                    Padding="{TemplateBinding Padding}"
+                                    CornerRadius="4">
+                                    <ContentPresenter />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter TargetName="bd" Property="Background" Value="{StaticResource BrushHover06}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="bd" Property="Background" Value="#1FD4A76A" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ToggleButton
+                            x:Name="toggle"
+                            Grid.ColumnSpan="2"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Focusable="False"
+                            IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                            ClickMode="Press">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border Background="Transparent" />
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <ContentPresenter
+                            Grid.Column="0"
+                            Margin="0,0,8,0"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Center"
+                            Content="{TemplateBinding SelectionBoxItem}"
+                            ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                            IsHitTestVisible="False" />
+                        <Path
+                            Grid.Column="1"
+                            Width="9"
+                            Height="9"
+                            VerticalAlignment="Center"
+                            Data="{StaticResource IcoChevronDown}"
+                            IsHitTestVisible="False"
+                            Stretch="Uniform"
+                            Stroke="{StaticResource BrushText3}"
+                            StrokeThickness="1.4" />
+                        <Popup
+                            AllowsTransparency="True"
+                            IsOpen="{TemplateBinding IsDropDownOpen}"
+                            Placement="Bottom"
+                            PopupAnimation="Fade"
+                            VerticalOffset="6">
+                            <Border
+                                MinWidth="{TemplateBinding ActualWidth}"
+                                Background="{StaticResource BrushBgElevated}"
+                                BorderBrush="{StaticResource BrushLineGold}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Effect="{StaticResource ShadowCardRest}">
+                                <ScrollViewer MaxHeight="320" Margin="6">
+                                    <ItemsPresenter />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style BasedOn="{StaticResource LunarComboBox}" TargetType="ComboBox" />
+
     <!--  Mini scrollbar  -->
     <Style x:Key="ThinScrollBar" TargetType="ScrollBar">
         <Setter Property="Background" Value="Transparent" />

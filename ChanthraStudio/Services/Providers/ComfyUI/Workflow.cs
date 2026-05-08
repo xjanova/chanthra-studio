@@ -22,32 +22,53 @@ public sealed class Workflow
 
     public Workflow(JsonObject nodes) => Nodes = nodes;
 
-    /// <summary>Load the bundled default text2img workflow from embedded resources.</summary>
+    /// <summary>Load the bundled default text2img workflow from disk.</summary>
     public static Workflow LoadDefault()
     {
         var asm = Assembly.GetExecutingAssembly();
-        // Resource is included as application Resource (pack URI) — in the
-        // self-contained .exe path it's bundled; in dev it's also on disk.
-        // We try the disk path first (faster + supports user edits), then
-        // fall back to the embedded copy.
         var diskPath = Path.Combine(
             Path.GetDirectoryName(asm.Location) ?? AppContext.BaseDirectory,
             "Assets", "Workflows", "default_text2img.json");
-        string json;
-        if (File.Exists(diskPath))
-        {
-            json = File.ReadAllText(diskPath);
-        }
-        else
-        {
-            var uri = new Uri("pack://application:,,,/Assets/Workflows/default_text2img.json");
-            using var stream = System.Windows.Application.GetResourceStream(uri)!.Stream;
-            using var sr = new StreamReader(stream);
-            json = sr.ReadToEnd();
-        }
+        if (!File.Exists(diskPath))
+            throw new FileNotFoundException(
+                "default_text2img.json not found next to the .exe — broken install?",
+                diskPath);
+        return LoadFromPath(diskPath);
+    }
+
+    /// <summary>Load any workflow file from disk. Tolerates leading <c>//</c> header comments.</summary>
+    public static Workflow LoadFromPath(string path)
+    {
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"workflow file not found: {path}", path);
+        return Parse(File.ReadAllText(path));
+    }
+
+    private static Workflow Parse(string raw)
+    {
+        var json = StripLeadingComments(raw);
         var node = JsonNode.Parse(json) as JsonObject
-            ?? throw new InvalidOperationException("default workflow is not a JSON object");
+            ?? throw new InvalidOperationException("workflow is not a JSON object");
         return new Workflow(node);
+    }
+
+    /// <summary>
+    /// Strips any contiguous run of <c>//</c> lines from the head of the file,
+    /// so users can document a workflow inline without breaking JSON parsing.
+    /// </summary>
+    private static string StripLeadingComments(string raw)
+    {
+        var idx = 0;
+        while (idx < raw.Length)
+        {
+            // Skip whitespace at line start
+            while (idx < raw.Length && (raw[idx] == ' ' || raw[idx] == '\t')) idx++;
+            if (idx + 1 >= raw.Length || raw[idx] != '/' || raw[idx + 1] != '/') break;
+            // Advance to end of line
+            while (idx < raw.Length && raw[idx] != '\n') idx++;
+            if (idx < raw.Length) idx++; // consume \n
+        }
+        return idx == 0 ? raw : raw[idx..];
     }
 
     /// <summary>Find the first node with a given class_type. Returns its inputs object.</summary>
