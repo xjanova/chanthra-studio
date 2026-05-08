@@ -62,7 +62,7 @@
                 <DataTrigger Binding="{Binding ActiveView}" Value="Library">
                     <Setter Property="Content">
                         <Setter.Value>
-                            <views:StubView Tag="Library" />
+                            <views:LibraryView />
                         </Setter.Value>
                     </Setter>
                 </DataTrigger>
@@ -76,7 +76,7 @@
                 <DataTrigger Binding="{Binding ActiveView}" Value="Queue">
                     <Setter Property="Content">
                         <Setter.Value>
-                            <views:StubView Tag="Queue" />
+                            <views:QueueView />
                         </Setter.Value>
                     </Setter>
                 </DataTrigger>

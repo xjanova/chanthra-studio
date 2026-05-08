@@ -73,3 +73,49 @@ public sealed class StylePreset
     public string Name { get; set; } = "";
     public string ThumbPath { get; set; } = "";
 }
+
+/// <summary>Persisted clip — one row in the <c>clips</c> table.</summary>
+public sealed class Clip
+{
+    public string Id { get; set; } = "";
+    public string ShotId { get; set; } = "";
+    public int DurationMs { get; set; }
+    public string FilePath { get; set; } = "";
+    public string? PosterPath { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public string FileName => System.IO.Path.GetFileName(FilePath);
+    public bool FileExists => System.IO.File.Exists(FilePath);
+
+    public string SizeLabel
+    {
+        get
+        {
+            try
+            {
+                if (!FileExists) return "missing";
+                var bytes = new System.IO.FileInfo(FilePath).Length;
+                if (bytes < 1024) return $"{bytes} B";
+                if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+                return $"{bytes / 1024.0 / 1024.0:F1} MB";
+            }
+            catch { return "?"; }
+        }
+    }
+}
+
+/// <summary>Generation job row — submission record for any provider.</summary>
+public sealed class GenerationJob
+{
+    public string Id { get; set; } = "";              // = ComfyUI prompt_id (or provider equivalent)
+    public string ShotId { get; set; } = "";
+    public string Provider { get; set; } = "comfyui";
+    public string Status { get; set; } = "queued";    // queued | running | done | error | cancelled
+    public DateTimeOffset SubmittedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public string? ErrorMessage { get; set; }
+
+    public string ShortId => Id.Length > 8 ? Id[..8] : Id;
+    public TimeSpan? Duration => CompletedAt is { } end ? end - SubmittedAt : null;
+    public string DurationLabel => Duration is { } d ? $"{d.TotalSeconds:F0}s" : "—";
+}

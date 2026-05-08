@@ -13,6 +13,7 @@ public sealed class StudioContext
     public Database Db { get; }
     public ProviderRegistry Providers { get; }
     public GenerationService Generation { get; }
+    public ClipsRepository Clips { get; }
 
     public StudioContext()
     {
@@ -22,6 +23,7 @@ public sealed class StudioContext
         Db.Bootstrap();
         Settings = AppSettings.Load(Db);
         Providers = new ProviderRegistry();
+        Clips = new ClipsRepository(Db);
         Generation = new GenerationService(this);
     }
 }
