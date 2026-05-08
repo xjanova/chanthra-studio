@@ -354,6 +354,128 @@
                 </Border>
                 <ItemsControl ItemTemplate="{StaticResource ProviderRowTemplate}" ItemsSource="{Binding PostingProviders}" />
 
+                <!--  License & Updates section  -->
+                <TextBlock
+                    Margin="0,28,0,4"
+                    Style="{StaticResource TextSectionDivider}"
+                    Text="LICENSE &amp; UPDATES" />
+                <TextBlock
+                    Margin="0,0,0,12"
+                    FontFamily="{StaticResource FontThai}"
+                    FontSize="11.5"
+                    Foreground="{StaticResource BrushText2}"
+                    Text="Activate กับ License key จาก xman4289.com เพื่อปลดล็อค auto-update และฟีเจอร์เต็ม" />
+
+                <Border Margin="0,0,0,10" Padding="18,16" Style="{StaticResource SurfaceCard}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontFamily="{StaticResource FontDisplay}"
+                                FontSize="14"
+                                FontWeight="Medium"
+                                Foreground="{StaticResource BrushText1}"
+                                Text="License" />
+                            <Border
+                                x:Name="LicenseBadge"
+                                Margin="10,0,0,0"
+                                Padding="8,2"
+                                VerticalAlignment="Center"
+                                Background="#1FE0B056"
+                                BorderBrush="#66E0B056"
+                                BorderThickness="1"
+                                CornerRadius="99">
+                                <TextBlock
+                                    x:Name="LicenseBadgeLabel"
+                                    FontFamily="{StaticResource FontMono}"
+                                    FontSize="9.5"
+                                    Foreground="{StaticResource BrushText1}"
+                                    Text="not activated" />
+                            </Border>
+                        </StackPanel>
+
+                        <TextBlock
+                            x:Name="LicenseDetail"
+                            Grid.Row="1"
+                            Grid.Column="0"
+                            Margin="0,8,0,0"
+                            FontFamily="{StaticResource FontMono}"
+                            FontSize="10.5"
+                            Foreground="{StaticResource BrushText3}"
+                            Text="Activate to unlock auto-update from GitHub Releases."
+                            TextWrapping="Wrap" />
+
+                        <Button
+                            Grid.Row="0"
+                            Grid.RowSpan="2"
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Click="ManageLicense_Click"
+                            Content="✦  Manage license"
+                            Style="{StaticResource ButtonPillGold}" />
+                    </Grid>
+                </Border>
+
+                <Border Margin="0,0,0,10" Padding="18,16" Style="{StaticResource SurfaceCard}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontFamily="{StaticResource FontDisplay}"
+                                FontSize="14"
+                                FontWeight="Medium"
+                                Foreground="{StaticResource BrushText1}"
+                                Text="Updates" />
+                            <TextBlock
+                                x:Name="VersionLabel"
+                                Margin="10,0,0,0"
+                                VerticalAlignment="Center"
+                                FontFamily="{StaticResource FontMono}"
+                                FontSize="10"
+                                Foreground="{StaticResource BrushText3}"
+                                Text="v 0.0.0" />
+                        </StackPanel>
+
+                        <TextBlock
+                            x:Name="UpdateStatus"
+                            Grid.Row="1"
+                            Grid.Column="0"
+                            Margin="0,8,0,0"
+                            FontFamily="{StaticResource FontMono}"
+                            FontSize="10.5"
+                            Foreground="{StaticResource BrushText3}"
+                            Text="Click to check GitHub for new releases."
+                            TextWrapping="Wrap" />
+
+                        <Button
+                            Grid.Row="0"
+                            Grid.RowSpan="2"
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Click="CheckForUpdates_Click"
+                            Content="Check for updates"
+                            Style="{StaticResource ButtonPill}" />
+                    </Grid>
+                </Border>
+
                 <!--  Footer  -->
                 <Border Height="24" />
                 <Button

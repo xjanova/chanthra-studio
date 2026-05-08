@@ -55,7 +55,7 @@
                 <DataTrigger Binding="{Binding ActiveView}" Value="Flow">
                     <Setter Property="Content">
                         <Setter.Value>
-                            <views:StubView Tag="Node flow" />
+                            <views:NodeFlowView />
                         </Setter.Value>
                     </Setter>
                 </DataTrigger>

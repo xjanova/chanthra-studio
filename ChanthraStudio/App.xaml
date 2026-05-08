@@ -23,6 +23,8 @@
             <helpers:ClipPathToImageConverter x:Key="ClipPathToImage" />
             <helpers:PercentToWidthConverter x:Key="PercentToWidth" />
             <helpers:StatusToBrushConverter x:Key="StatusToBrush" />
+            <helpers:ResourceLookupConverter x:Key="ResourceLookup" />
+            <helpers:MultiplyConverter x:Key="MultiplyConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

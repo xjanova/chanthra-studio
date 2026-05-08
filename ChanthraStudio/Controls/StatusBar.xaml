@@ -71,10 +71,38 @@
                 Grid.Column="2"
                 VerticalAlignment="Center"
                 Orientation="Horizontal">
-                <TextBlock
+                <Border
                     Margin="0,0,14,0"
-                    Style="{StaticResource TextMonoGold}"
-                    Text="{Binding CreditsLabel}" />
+                    Padding="6,2"
+                    VerticalAlignment="Center"
+                    CornerRadius="99">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="#1FE0B056" />
+                            <Setter Property="BorderBrush" Value="#66E0B056" />
+                            <Setter Property="BorderThickness" Value="1" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding LicenseKind}" Value="ok">
+                                    <Setter Property="Background" Value="#1F6DBF8C" />
+                                    <Setter Property="BorderBrush" Value="#666DBF8C" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding LicenseKind}" Value="warn">
+                                    <Setter Property="Background" Value="#1FE0B056" />
+                                    <Setter Property="BorderBrush" Value="#66E0B056" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding LicenseKind}" Value="err">
+                                    <Setter Property="Background" Value="#1FD05A5A" />
+                                    <Setter Property="BorderBrush" Value="#66D05A5A" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock
+                        FontFamily="{StaticResource FontMono}"
+                        FontSize="10"
+                        Foreground="{StaticResource BrushText1}"
+                        Text="{Binding LicenseLabel}" />
+                </Border>
                 <TextBlock
                     Margin="0,0,14,0"
                     Style="{StaticResource TextMono}"

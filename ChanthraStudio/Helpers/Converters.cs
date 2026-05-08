@@ -135,3 +135,39 @@ public sealed class StatusToBrushConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => Binding.DoNothing;
 }
+
+/// <summary>
+/// Looks up a resource by string key from <c>Application.Current.Resources</c>.
+/// Used in the Node Flow editor where each node's accent brush is selected
+/// by a string property (so the model stays POCO without WPF dependencies).
+/// </summary>
+public sealed class ResourceLookupConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not string key || string.IsNullOrEmpty(key)) return null;
+        return Application.Current?.Resources[key];
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => Binding.DoNothing;
+}
+
+/// <summary>
+/// Multiplies a numeric value by a constant factor passed via ConverterParameter.
+/// Used by the Node Flow mini-map to scale canvas-space coords down by 0.16
+/// without baking the factor into the model.
+/// </summary>
+public sealed class MultiplyConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is null || parameter is null) return 0d;
+        if (!double.TryParse(value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) return 0d;
+        if (!double.TryParse(parameter.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var f)) return 0d;
+        return v * f;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => Binding.DoNothing;
+}
