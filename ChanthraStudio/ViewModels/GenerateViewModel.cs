@@ -199,7 +199,8 @@ public sealed class GenerateViewModel : ObservableObject
 
         if (e.Status == ShotStatus.Done)
         {
-            ShowToast($"Shot {shot.Number} ready", "ok");
+            var fileName = e.MediaPath is null ? "" : " · " + System.IO.Path.GetFileName(e.MediaPath);
+            ShowToast($"Shot {shot.Number} ready{fileName}", "ok");
             IsGenerating = Storyboard.Any(s => s.Status == ShotStatus.Generating);
         }
         else if (e.Status == ShotStatus.Error)
