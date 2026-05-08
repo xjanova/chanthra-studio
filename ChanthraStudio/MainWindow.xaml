@@ -69,7 +69,7 @@
                 <DataTrigger Binding="{Binding ActiveView}" Value="Models">
                     <Setter Property="Content">
                         <Setter.Value>
-                            <views:StubView Tag="Models" />
+                            <views:ModelsView />
                         </Setter.Value>
                     </Setter>
                 </DataTrigger>

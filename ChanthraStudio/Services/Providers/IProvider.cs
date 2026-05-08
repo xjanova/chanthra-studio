@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace ChanthraStudio.Services.Providers;
 
-public enum ProviderKind { Llm, Video, Posting, Voice }
+public enum ProviderKind { Llm, Video, Posting, Voice, Music }
 
 public interface IProvider
 {
@@ -102,6 +102,32 @@ public sealed class VoiceRequest
 public interface IPostingProvider : IProvider
 {
     Task<PostResult> PostAsync(PostRequest req, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Music generation. Decoupled from <see cref="IVoiceProvider"/> because
+/// the input model is different (no speaker ID, has duration + style),
+/// and the same backend (Replicate) hosts both speech and music models
+/// but they're separate categories in the UI.
+/// </summary>
+public interface IMusicProvider : IProvider
+{
+    /// <summary>Submit + poll + return the local path to the generated audio file.</summary>
+    Task<string> GenerateAsync(MusicRequest req, string destPath, CancellationToken ct = default);
+}
+
+public sealed class MusicRequest
+{
+    public string ApiKey { get; set; } = "";
+
+    /// <summary>Replicate model slug ("meta/musicgen", "lucataco/ace-step", etc.).</summary>
+    public string Model { get; set; } = "";
+
+    /// <summary>Free-form description ("epic cinematic with strings, 90 BPM").</summary>
+    public string Prompt { get; set; } = "";
+
+    public double DurationSec { get; set; } = 30.0;
+    public int? Seed { get; set; }
 }
 
 public sealed class PostRequest

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using ChanthraStudio.Services.Providers.Llm;
+using ChanthraStudio.Services.Providers.Music;
 using ChanthraStudio.Services.Providers.Posting;
 using ChanthraStudio.Services.Providers.Video;
 using ChanthraStudio.Services.Providers.Voice;
@@ -19,9 +20,10 @@ public sealed class ProviderRegistry
     public IReadOnlyList<IVideoProvider> Video { get; }
     public IReadOnlyList<IPostingProvider> Posting { get; }
     public IReadOnlyList<IVoiceProvider> Voice { get; }
+    public IReadOnlyList<IMusicProvider> Music { get; }
 
     public IEnumerable<IProvider> All
-        => Llm.Cast<IProvider>().Concat(Video).Concat(Posting).Concat(Voice);
+        => Llm.Cast<IProvider>().Concat(Video).Concat(Posting).Concat(Voice).Concat(Music);
 
     public ProviderRegistry()
     {
@@ -52,6 +54,11 @@ public sealed class ProviderRegistry
         {
             new OpenAiTtsProvider(),
             new ElevenLabsTtsProvider(),
+        };
+
+        Music = new IMusicProvider[]
+        {
+            new ReplicateMusicProvider(),
         };
     }
 

@@ -44,8 +44,21 @@ public sealed class GenerationService
               ?? System.Windows.Threading.Dispatcher.CurrentDispatcher;
     }
 
-    /// <summary>Submit a shot for generation. Returns the prompt id.</summary>
-    public async Task<string> SubmitAsync(Shot shot, CancellationToken ct = default)
+    /// <summary>Submit a shot for generation. Returns a job id (the ComfyUI
+    /// prompt_id when routed locally, or the Replicate prediction id when
+    /// routed to the cloud). Routing is driven by <c>Settings.ActiveVideo</c>:
+    /// "comfyui" → local GPU pipeline, "replicate" → SubmitToReplicate.</summary>
+    public Task<string> SubmitAsync(Shot shot, CancellationToken ct = default)
+    {
+        var route = (_ctx.Settings.ActiveVideo ?? "comfyui").ToLowerInvariant();
+        return route switch
+        {
+            "replicate" => SubmitToReplicateAsync(shot, ct),
+            _ => SubmitToComfyUiAsync(shot, ct),
+        };
+    }
+
+    private async Task<string> SubmitToComfyUiAsync(Shot shot, CancellationToken ct)
     {
         var url = _ctx.Settings.ComfyUiUrl;
         if (string.IsNullOrWhiteSpace(url))
@@ -137,10 +150,124 @@ public sealed class GenerationService
     {
         if (_running.TryRemove(promptId, out var cts))
             cts.Cancel();
+        // Replicate cancellation is handled by the linked CTS above — the
+        // poll loop checks ct on every tick. ComfyUI also gets a hard
+        // /interrupt so the in-flight prompt stops chewing GPU.
         var url = _ctx.Settings.ComfyUiUrl;
         if (string.IsNullOrWhiteSpace(url)) return;
-        using var c = new ComfyUiClient(url);
-        await c.InterruptAsync();
+        try
+        {
+            using var c = new ComfyUiClient(url);
+            await c.InterruptAsync();
+        }
+        catch
+        {
+            // Cancel is best-effort — server may already be down.
+        }
+    }
+
+    /// <summary>
+    /// Cloud route: submit the shot to Replicate, poll the prediction id
+    /// every ~3s, download the resulting video/image into media/, then
+    /// raise the same Done event that ComfyUI submissions raise. This way
+    /// the GenerateView storyboard cards work identically for both routes.
+    /// </summary>
+    private async Task<string> SubmitToReplicateAsync(Shot shot, CancellationToken ct)
+    {
+        var apiKey = _ctx.Settings["replicate"];
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException(
+                "Replicate API key missing — paste your r8_… token in Settings → Video Providers.");
+
+        var provider = new Providers.Video.ReplicateVideoProvider();
+        var aspect = shot.Aspect switch
+        {
+            AspectRatio.Vertical => "9:16",
+            AspectRatio.Square => "1:1",
+            AspectRatio.Cinema => "21:9",
+            _ => "16:9",
+        };
+        var req = new Providers.VideoRequest
+        {
+            ApiKey = apiKey,
+            // Settings.ActiveWorkflow doubles as the Replicate model slug
+            // when ActiveVideo == "replicate". Falls back to the provider's
+            // default (flux-schnell) for users who haven't picked one yet.
+            Model = LooksLikeReplicateSlug(_ctx.Settings.ActiveWorkflow)
+                    ? _ctx.Settings.ActiveWorkflow
+                    : Providers.Video.ReplicateVideoProvider.DefaultModel,
+            Prompt = shot.Prompt,
+            NegativePrompt = shot.NegativePrompt,
+            ReferenceImagePath = shot.ReferenceImagePath,
+            Aspect = aspect,
+            Seed = shot.Seed.A,
+        };
+
+        // Replicate ids are unique enough to use as our internal jobId.
+        // We mint a temporary one until the first poll returns the real one,
+        // so the storyboard card has something to bind progress against.
+        var jobId = Guid.NewGuid().ToString("N").Substring(0, 16);
+        WriteJobRow(shot.Id, jobId, "queued");
+
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _running[jobId] = cts;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                Raise(jobId, shot.Id, ShotStatus.Generating, 1, null);
+                var progress = new Progress<double>(p => Raise(jobId, shot.Id, ShotStatus.Generating, p, null));
+
+                var outputUrl = await provider.SubmitAndWaitAsync(req, progress, cts.Token);
+
+                // Replicate returns a public CDN URL — pull it down into
+                // media/ so the rest of the app (Library, Render film) treats
+                // it the same as a ComfyUI output.
+                var ext = Path.GetExtension(new Uri(outputUrl).AbsolutePath);
+                if (string.IsNullOrEmpty(ext)) ext = ".mp4";
+                var safeName = SafeFilename($"{shot.Id}_replicate{ext}");
+                var dest = Path.Combine(AppPaths.MediaFolder, safeName);
+                using (var dl = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) })
+                {
+                    using var resp = await dl.GetAsync(outputUrl, cts.Token);
+                    resp.EnsureSuccessStatusCode();
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? ".");
+                    await using var fs = File.Create(dest);
+                    await resp.Content.CopyToAsync(fs, cts.Token);
+                }
+
+                WriteClipRow(shot.Id, dest, ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ? "videos" : "images");
+                WriteJobUpdate(jobId, "done", null);
+                Raise(jobId, shot.Id, ShotStatus.Done, 100, null, dest);
+            }
+            catch (OperationCanceledException)
+            {
+                WriteJobUpdate(jobId, "cancelled", null);
+                Raise(jobId, shot.Id, ShotStatus.Error, 0, "cancelled");
+            }
+            catch (Exception ex)
+            {
+                WriteJobUpdate(jobId, "error", ex.Message);
+                Raise(jobId, shot.Id, ShotStatus.Error, 0, ex.Message);
+            }
+            finally
+            {
+                _running.TryRemove(jobId, out _);
+            }
+        });
+
+        return jobId;
+    }
+
+    /// <summary>Heuristic: a Replicate model slug looks like "owner/name".
+    /// Anything else (bare workflow name, JSON file) fails this check and we
+    /// fall through to the provider's default model.</summary>
+    private static bool LooksLikeReplicateSlug(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        var slash = s.IndexOf('/');
+        return slash > 0 && slash < s.Length - 1 && !s.Contains(' ');
     }
 
     private async Task RunListenerAsync(Shot shot, string promptId, ComfyUiClient client, CancellationToken ct)

@@ -264,6 +264,57 @@
                     Text="VIDEO PROVIDERS · image · video generation" />
                 <TextBlock Margin="0,0,0,12" Style="{StaticResource TextSecondary}" FontSize="11.5" Text="ComfyUI uses your local GPU. The cloud providers run remotely and consume credits." />
 
+                <!--  Primary route picker — drives where SubmitAsync sends the shot  -->
+                <Border Margin="0,0,0,10" Padding="16,14" Style="{StaticResource SurfaceCard}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                Grid.Column="0"
+                                VerticalAlignment="Center"
+                                FontFamily="{StaticResource FontDisplay}"
+                                FontSize="13"
+                                FontWeight="Medium"
+                                Foreground="{StaticResource BrushText1}"
+                                Text="Primary route" />
+                            <StackPanel
+                                Grid.Column="1"
+                                Margin="14,0,0,0"
+                                HorizontalAlignment="Right"
+                                Orientation="Horizontal">
+                                <RadioButton
+                                    Margin="0,0,6,0"
+                                    Content="ComfyUI · local"
+                                    GroupName="primaryVideo"
+                                    IsChecked="{Binding ActiveVideo, Converter={StaticResource StringEquals}, ConverterParameter=comfyui}"
+                                    Style="{StaticResource ChipRadio}"
+                                    Click="ActiveVideoComfy_Click" />
+                                <RadioButton
+                                    Content="Replicate · cloud"
+                                    GroupName="primaryVideo"
+                                    IsChecked="{Binding ActiveVideo, Converter={StaticResource StringEquals}, ConverterParameter=replicate}"
+                                    Style="{StaticResource ChipRadio}"
+                                    Click="ActiveVideoReplicate_Click" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock
+                            Grid.Row="1"
+                            Margin="0,8,0,0"
+                            FontFamily="{StaticResource FontMono}"
+                            FontSize="10"
+                            Foreground="{StaticResource BrushText3}"
+                            TextWrapping="Wrap"
+                            Text="When set to ComfyUI the Generate panel uses the active workflow. When set to Replicate the active workflow name is interpreted as a model slug (e.g. black-forest-labs/flux-schnell) — anything that's not owner/name falls back to flux-schnell." />
+                    </Grid>
+                </Border>
+
                 <Border Margin="0,0,0,10" Padding="16,14" Style="{StaticResource SurfaceCard}">
                     <Grid>
                         <Grid.ColumnDefinitions>

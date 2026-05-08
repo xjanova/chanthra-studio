@@ -100,4 +100,14 @@ public partial class SettingsView : UserControl
                 row.ApiKeyDraft = pb.Password;
         }
     }
+
+    private void ActiveVideoComfy_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm) vm.ActiveVideo = "comfyui";
+    }
+
+    private void ActiveVideoReplicate_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm) vm.ActiveVideo = "replicate";
+    }
 }

@@ -189,6 +189,40 @@
                                     MinHeight="92"
                                     Style="{StaticResource PromptTextBox}"
                                     Text="{Binding Prompt, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <!--  Negative prompt — collapsed by default to keep the panel tidy  -->
+                                <Expander
+                                    Margin="0,4,0,0"
+                                    BorderBrush="{StaticResource BrushLineHairline}"
+                                    BorderThickness="0,1,0,0"
+                                    Background="Transparent"
+                                    Foreground="{StaticResource BrushText3}">
+                                    <Expander.Header>
+                                        <TextBlock
+                                            Style="{StaticResource TextMonoUpper}"
+                                            Foreground="{StaticResource BrushText3}"
+                                            Text="NEGATIVE · what to avoid" />
+                                    </Expander.Header>
+                                    <Border
+                                        Margin="0,4,0,0"
+                                        Background="{StaticResource BrushBgInset}"
+                                        BorderBrush="{StaticResource BrushLineHairline}"
+                                        BorderThickness="1"
+                                        CornerRadius="6">
+                                        <TextBox
+                                            MinHeight="48"
+                                            Padding="10,8"
+                                            FontFamily="{StaticResource FontMono}"
+                                            FontSize="11"
+                                            Foreground="{StaticResource BrushText2}"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            CaretBrush="{StaticResource BrushGoldHi}"
+                                            AcceptsReturn="True"
+                                            TextWrapping="Wrap"
+                                            Text="{Binding NegativePrompt, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Border>
+                                </Expander>
                             </DockPanel>
                         </Border>
 
