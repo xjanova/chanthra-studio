@@ -1,0 +1,156 @@
+<Window
+    x:Class="ChanthraStudio.Views.Dialogs.PostDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+    Title="Post clip"
+    Width="540"
+    Height="420"
+    AllowsTransparency="True"
+    Background="Transparent"
+    FontFamily="{StaticResource FontUI}"
+    Foreground="{StaticResource BrushText1}"
+    ResizeMode="NoResize"
+    SnapsToDevicePixels="True"
+    UseLayoutRounding="True"
+    WindowStartupLocation="CenterOwner"
+    WindowStyle="None"
+    mc:Ignorable="d">
+
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome
+            CaptionHeight="36"
+            CornerRadius="0"
+            GlassFrameThickness="0"
+            ResizeBorderThickness="0"
+            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid Margin="14" Background="Transparent">
+        <Border CornerRadius="12" Effect="{StaticResource ShadowWindow}" />
+        <Border
+            Background="{StaticResource BrushBgMica}"
+            BorderBrush="{StaticResource BrushLineHairline}"
+            BorderThickness="1"
+            ClipToBounds="True"
+            CornerRadius="12">
+            <Grid>
+                <Border Background="{StaticResource BrushMicaCrimsonGlow}" />
+                <Border Background="{StaticResource BrushMicaGoldGlow}" />
+                <Border Background="{StaticResource BrushInnerTopHighlight}" Height="2" VerticalAlignment="Top" />
+
+                <Grid Margin="22,16,22,18">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!--  Header  -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource TextPanelHeader}" FontSize="18">
+                            <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
+                            <Run Text="Post clip" />
+                        </TextBlock>
+                        <Button
+                            Grid.Column="1"
+                            Width="32"
+                            Height="32"
+                            Click="Cancel_Click"
+                            Style="{StaticResource ButtonIcon}">
+                            <Path
+                                Width="11"
+                                Height="11"
+                                Data="{StaticResource IcoClose}"
+                                Stretch="Uniform"
+                                Stroke="{StaticResource BrushText3}"
+                                StrokeThickness="1.4" />
+                        </Button>
+                    </Grid>
+
+                    <!--  Provider picker  -->
+                    <StackPanel Grid.Row="1" Margin="0,16,0,0">
+                        <TextBlock Style="{StaticResource TextMonoUpper}" Text="TARGET" />
+                        <Border Margin="0,6,0,0" Padding="12,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                            <ComboBox
+                                x:Name="ProviderBox"
+                                ItemsSource="{Binding ProviderOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                SelectedItem="{Binding SelectedProvider, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="12.5" Text="{Binding DisplayName}" Foreground="{StaticResource BrushText1}" />
+                                            <TextBlock Margin="0,2,0,0" Style="{StaticResource TextSecondary}" FontSize="10.5" Text="{Binding ConfigSummary}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Border>
+                    </StackPanel>
+
+                    <!--  Clip identifier  -->
+                    <StackPanel Grid.Row="2" Margin="0,14,0,0">
+                        <TextBlock Style="{StaticResource TextMonoUpper}" Text="CLIP" />
+                        <TextBlock Margin="0,6,0,0" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText2}" Text="{Binding ClipFileName, RelativeSource={RelativeSource AncestorType=Window}}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <!--  Caption  -->
+                    <StackPanel Grid.Row="3" Margin="0,14,0,0">
+                        <TextBlock Style="{StaticResource TextMonoUpper}" Text="CAPTION" />
+                        <Border
+                            Margin="0,6,0,0"
+                            Padding="12,10"
+                            Background="{StaticResource BrushBgInset}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                            <TextBox
+                                x:Name="CaptionBox"
+                                MinHeight="120"
+                                AcceptsReturn="True"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                CaretBrush="{StaticResource BrushGoldHi}"
+                                FontFamily="{StaticResource FontThai}"
+                                FontSize="13"
+                                Foreground="{StaticResource BrushText1}"
+                                TextWrapping="Wrap"
+                                VerticalAlignment="Stretch"
+                                VerticalScrollBarVisibility="Auto" />
+                        </Border>
+                    </StackPanel>
+
+                    <!--  Footer  -->
+                    <Grid Grid.Row="4" Margin="0,18,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            Grid.Column="1"
+                            Margin="0,0,8,0"
+                            Padding="18,7"
+                            Click="Cancel_Click"
+                            Content="Cancel"
+                            Style="{StaticResource ButtonPill}" />
+                        <Button
+                            Grid.Column="2"
+                            Padding="22,7"
+                            Click="Confirm_Click"
+                            Content="✦  Post"
+                            Style="{StaticResource ButtonPillGold}" />
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

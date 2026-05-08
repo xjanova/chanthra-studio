@@ -150,6 +150,11 @@
                                             Header="Copy path" />
                                         <Separator />
                                         <MenuItem
+                                            Command="{Binding DataContext.PostClipCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            Header="✦ Post…" />
+                                        <Separator />
+                                        <MenuItem
                                             Command="{Binding DataContext.DeleteClipCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             Header="Delete clip and file" />

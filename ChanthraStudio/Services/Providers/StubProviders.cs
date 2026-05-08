@@ -137,19 +137,5 @@ internal sealed class FalVideoProvider : StubVideoProvider
     public override string ApiKeyHint => "fal-… · fal.ai/dashboard/keys";
 }
 
-// ---------------- Posting concrete shells ----------------
-
-internal sealed class FacebookPostingProvider : StubPostingProvider
-{
-    public override string Id => "facebook";
-    public override string DisplayName => "Facebook Page · Graph API";
-    public override string ApiKeyHint => "Page access token · developers.facebook.com";
-}
-
-internal sealed class WebhookPostingProvider : StubPostingProvider
-{
-    public override string Id => "webhook";
-    public override string DisplayName => "Generic webhook";
-    public override string ApiKeyHint => "Optional bearer/secret — empty for public endpoints";
-    public override bool RequiresApiKey => false;
-}
+// Posting providers moved to Services/Providers/Posting/ — they have real
+// HTTP implementations rather than stubs.

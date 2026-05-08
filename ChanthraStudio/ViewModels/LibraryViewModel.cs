@@ -32,6 +32,7 @@ public sealed class LibraryViewModel : ObservableObject
     public IRelayCommand<Clip> RevealCommand { get; }
     public IRelayCommand<Clip> CopyPathCommand { get; }
     public IRelayCommand<Clip> DeleteClipCommand { get; }
+    public IAsyncRelayCommand<Clip> PostClipCommand { get; }
 
     public LibraryViewModel(StudioContext ctx)
     {
@@ -41,6 +42,7 @@ public sealed class LibraryViewModel : ObservableObject
         RevealCommand = new RelayCommand<Clip>(RevealInExplorer);
         CopyPathCommand = new RelayCommand<Clip>(CopyPath);
         DeleteClipCommand = new RelayCommand<Clip>(DeleteClip);
+        PostClipCommand = new AsyncRelayCommand<Clip>(PostClipAsync);
 
         // Auto-refresh whenever a generation completes — the ProgressChanged
         // event fires on the UI thread already (GenerationService dispatches).
@@ -112,6 +114,41 @@ public sealed class LibraryViewModel : ObservableObject
             ShowToast($"Deleted {clip.FileName}", "ok");
         }
         catch (Exception ex) { ShowToast($"Delete failed: {ex.Message}", "err"); }
+    }
+
+    private async System.Threading.Tasks.Task PostClipAsync(Clip? clip)
+    {
+        if (clip is null) return;
+        if (!clip.FileExists)
+        {
+            ShowToast("File missing on disk — can't post a deleted clip.", "err");
+            return;
+        }
+        var dialog = new Views.Dialogs.PostDialog(_ctx, clip.FileName, BuildDefaultCaption(clip))
+        {
+            Owner = System.Windows.Application.Current?.MainWindow,
+        };
+        dialog.ShowDialog();
+        if (!dialog.Confirmed || string.IsNullOrEmpty(dialog.ProviderId)) return;
+
+        ShowToast($"Posting to {dialog.ProviderId}…", "info");
+        var result = await _ctx.Posting.PostAsync(dialog.ProviderId, clip, dialog.Caption);
+        if (result.Ok)
+        {
+            var idHint = string.IsNullOrEmpty(result.PostId) ? "" : $" · {result.PostId}";
+            ShowToast($"Posted ✓{idHint}", "ok");
+        }
+        else
+        {
+            ShowToast($"Post failed: {result.Error}", "err");
+        }
+    }
+
+    private static string BuildDefaultCaption(Clip clip)
+    {
+        // Sensible starter — user almost always edits this. Includes the
+        // brand mark + the shot id so multi-shot threads stay traceable.
+        return $"✦ {System.IO.Path.GetFileNameWithoutExtension(clip.FileName)}";
     }
 
     private async void ShowToast(string message, string kind)
