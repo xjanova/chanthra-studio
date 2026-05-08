@@ -64,6 +64,35 @@ public sealed class ComfyUiClient : IDisposable
         return ExtractInputChoices(info, "CheckpointLoaderSimple", "ckpt_name");
     }
 
+    /// <summary>List installed LoRAs (LoraLoader.lora_name choices).</summary>
+    public async Task<List<string>> GetAvailableLorasAsync(CancellationToken ct = default)
+        => ExtractInputChoices(await GetObjectInfoAsync(ct), "LoraLoader", "lora_name");
+
+    /// <summary>List installed UNet diffusion models (Flux/Hunyuan/WAN).</summary>
+    public async Task<List<string>> GetAvailableUnetsAsync(CancellationToken ct = default)
+        => ExtractInputChoices(await GetObjectInfoAsync(ct), "UNETLoader", "unet_name");
+
+    /// <summary>List installed VAE files (VAELoader.vae_name choices).</summary>
+    public async Task<List<string>> GetAvailableVaesAsync(CancellationToken ct = default)
+        => ExtractInputChoices(await GetObjectInfoAsync(ct), "VAELoader", "vae_name");
+
+    /// <summary>List installed CLIP encoders (DualCLIPLoader.clip_name1).</summary>
+    public async Task<List<string>> GetAvailableClipsAsync(CancellationToken ct = default)
+    {
+        var info = await GetObjectInfoAsync(ct);
+        // Try DualCLIPLoader first (Flux/Hunyuan/SD3 use this), fall back
+        // to single CLIPLoader (WAN). Take the union.
+        var dual = ExtractInputChoices(info, "DualCLIPLoader", "clip_name1");
+        var single = ExtractInputChoices(info, "CLIPLoader", "clip_name");
+        var set = new HashSet<string>(dual);
+        foreach (var c in single) set.Add(c);
+        return set.OrderBy(s => s).ToList();
+    }
+
+    /// <summary>List installed CLIPVision models (used by WAN i2v + IPAdapter).</summary>
+    public async Task<List<string>> GetAvailableClipVisionAsync(CancellationToken ct = default)
+        => ExtractInputChoices(await GetObjectInfoAsync(ct), "CLIPVisionLoader", "clip_name");
+
     /// <summary>
     /// Walks <c>info[nodeType].input.required[inputName]</c> — the first
     /// element is conventionally an array of valid values for combobox-style

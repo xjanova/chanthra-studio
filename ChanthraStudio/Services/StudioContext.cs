@@ -20,6 +20,7 @@ public sealed class StudioContext
     public SlideshowRenderer SlideshowRenderer { get; }
     public VoiceService VoiceService { get; }
     public LlmService Llm { get; }
+    public GpuTelemetryService GpuTelemetry { get; }
 
     public StudioContext()
     {
@@ -37,5 +38,6 @@ public sealed class StudioContext
         SlideshowRenderer = new SlideshowRenderer(this);
         VoiceService = new VoiceService(this);
         Llm = new LlmService(this);
+        GpuTelemetry = new GpuTelemetryService();
     }
 }

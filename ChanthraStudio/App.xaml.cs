@@ -17,6 +17,11 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Kick off the nvidia-smi poller so the StatusBar shows real numbers
+        // within ~2 seconds of launch. Service detects no-NVIDIA and goes
+        // dormant — safe to start unconditionally.
+        Studio.GpuTelemetry.Start();
+
         // Fire and forget — the UI is responsive while the license validates
         // and the update check pings GitHub. The status bar reflects the
         // result via LicenseGuard.LicenseChanged.
@@ -69,6 +74,7 @@ public partial class App : Application
         {
             // Best-effort save on exit — don't block the shutdown if disk is full.
         }
+        try { Studio.GpuTelemetry.Dispose(); } catch { /* dispose is best effort */ }
         base.OnExit(e);
     }
 }

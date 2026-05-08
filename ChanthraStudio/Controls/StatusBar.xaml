@@ -2,6 +2,7 @@
     x:Class="ChanthraStudio.Controls.StatusBar"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:c="clr-namespace:ChanthraStudio.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="clr-namespace:ChanthraStudio.ViewModels"
@@ -35,32 +36,71 @@
                     Style="{StaticResource TextMono}"
                     Text="{Binding ConnectionLabel}" />
 
+                <!--  GPU name + utilisation bar  -->
                 <TextBlock
                     Margin="0,0,8,0"
                     Style="{StaticResource TextMono}"
                     Text="{Binding GpuLabel}" />
-                <Border
-                    Width="60"
-                    Height="3"
+
+                <c:Sparkline
+                    Width="56"
+                    Height="16"
                     Margin="0,0,6,0"
-                    VerticalAlignment="Center"
-                    Background="{StaticResource BrushBgInset}"
-                    CornerRadius="1.5">
-                    <Border
-                        Width="44"
-                        HorizontalAlignment="Left"
-                        Background="{StaticResource BrushSliderFill}"
-                        CornerRadius="1.5" />
-                </Border>
+                    MaxValue="100"
+                    Stroke="{StaticResource BrushGoldHi}"
+                    Values="{Binding UtilHistory}" />
                 <TextBlock
                     Margin="0,0,14,0"
                     Style="{StaticResource TextMono}"
-                    Text="73%" />
+                    Text="{Binding GpuUtilLabel}" />
+
+                <!--  Temperature pill (color-coded)  -->
+                <Border
+                    Margin="0,0,10,0"
+                    Padding="6,1"
+                    VerticalAlignment="Center"
+                    CornerRadius="99">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="#1F6DBF8C" />
+                            <Setter Property="BorderBrush" Value="#666DBF8C" />
+                            <Setter Property="BorderThickness" Value="1" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding TempKind}" Value="cool">
+                                    <Setter Property="Background" Value="#1F6DBF8C" />
+                                    <Setter Property="BorderBrush" Value="#666DBF8C" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding TempKind}" Value="warm">
+                                    <Setter Property="Background" Value="#1FE0B056" />
+                                    <Setter Property="BorderBrush" Value="#66E0B056" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding TempKind}" Value="hot">
+                                    <Setter Property="Background" Value="#1FD05A5A" />
+                                    <Setter Property="BorderBrush" Value="#66D05A5A" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock
+                        FontFamily="{StaticResource FontMono}"
+                        FontSize="10"
+                        Foreground="{StaticResource BrushText1}"
+                        Text="{Binding TempLabel}" />
+                </Border>
 
                 <TextBlock
                     Margin="0,0,14,0"
                     Style="{StaticResource TextMono}"
                     Text="{Binding VramLabel}" />
+                <TextBlock
+                    Margin="0,0,14,0"
+                    Style="{StaticResource TextMono}"
+                    Text="{Binding PowerLabel}" />
+                <TextBlock
+                    Margin="0,0,14,0"
+                    Style="{StaticResource TextMono}"
+                    Foreground="{StaticResource BrushText3}"
+                    Text="{Binding FanLabel, StringFormat=fan {0}}" />
                 <TextBlock
                     Margin="0,0,14,0"
                     Style="{StaticResource TextMono}"

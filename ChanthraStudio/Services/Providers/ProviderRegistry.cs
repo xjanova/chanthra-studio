@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using ChanthraStudio.Services.Providers.Llm;
 using ChanthraStudio.Services.Providers.Posting;
+using ChanthraStudio.Services.Providers.Video;
 using ChanthraStudio.Services.Providers.Voice;
 
 namespace ChanthraStudio.Services.Providers;

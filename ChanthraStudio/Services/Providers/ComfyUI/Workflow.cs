@@ -157,6 +157,64 @@ public sealed class Workflow
     public string? GetCheckpoint()
         => InputsOf("CheckpointLoaderSimple")?["ckpt_name"]?.GetValue<string>();
 
+    /// <summary>
+    /// Generic helper: walk every node, and for any node whose <c>class_type</c>
+    /// is in <paramref name="nodeTypes"/>, replace the <paramref name="inputKey"/>
+    /// input by passing the current value through <paramref name="resolve"/>.
+    /// Used by the GenerationService auto-substitution to fix model name
+    /// mismatches across UNETLoader, VAELoader, DualCLIPLoader, CLIPLoader,
+    /// CLIPVisionLoader, and LoraLoader.
+    /// </summary>
+    public Workflow PatchInputs(IEnumerable<string> nodeTypes, string inputKey, System.Func<string, string?> resolve)
+    {
+        var typeSet = new System.Collections.Generic.HashSet<string>(nodeTypes);
+        foreach (var (_, node) in Nodes)
+        {
+            if (node is not JsonObject obj) continue;
+            var ct = obj["class_type"]?.GetValue<string>();
+            if (ct is null || !typeSet.Contains(ct)) continue;
+            if (obj["inputs"] is not JsonObject inputs) continue;
+            var current = inputs[inputKey]?.GetValue<string>();
+            if (string.IsNullOrEmpty(current)) continue;
+            var fixedName = resolve(current);
+            if (!string.IsNullOrEmpty(fixedName) && fixedName != current)
+                inputs[inputKey] = fixedName;
+        }
+        return this;
+    }
+
+    /// <summary>List every model-loader node's referenced filename, paired
+    /// with the input key it lives under. Used by the auto-substitution to
+    /// know what to validate.</summary>
+    public IEnumerable<(string ClassType, string InputKey, string FileName)> EnumerateModelReferences()
+    {
+        var loaders = new (string ct, string key)[]
+        {
+            ("CheckpointLoaderSimple", "ckpt_name"),
+            ("UNETLoader", "unet_name"),
+            ("VAELoader", "vae_name"),
+            ("DualCLIPLoader", "clip_name1"),
+            ("DualCLIPLoader", "clip_name2"),
+            ("CLIPLoader", "clip_name"),
+            ("CLIPVisionLoader", "clip_name"),
+            ("LoraLoader", "lora_name"),
+        };
+        foreach (var (_, node) in Nodes)
+        {
+            if (node is not JsonObject obj) continue;
+            var ct = obj["class_type"]?.GetValue<string>();
+            if (ct is null) continue;
+            if (obj["inputs"] is not JsonObject inputs) continue;
+            foreach (var (ltype, key) in loaders)
+            {
+                if (ltype != ct) continue;
+                var v = inputs[key]?.GetValue<string>();
+                if (!string.IsNullOrEmpty(v))
+                    yield return (ct, key, v!);
+            }
+        }
+    }
+
     /// <summary>True if the workflow contains a LoadImage node — i.e. it
     /// expects a reference image to be uploaded before submission.</summary>
     public bool HasLoadImage() => InputsOf("LoadImage") is not null;

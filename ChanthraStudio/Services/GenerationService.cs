@@ -105,31 +105,11 @@ public sealed class GenerationService
                     "Drag-drop or browse an image in the Generate panel first.");
             }
 
-            // Auto-pick a checkpoint only for SD-style workflows. Flux/Hunyuan/
-            // WAN use UNETLoader and DualCLIPLoader instead — those workflows
-            // bake in their own model names and we let the user fix the names
-            // in the JSON if they don't match what they have installed.
-            if (!workflow.UsesUnetLoader())
-            {
-                var available = await client.GetAvailableCheckpointsAsync(ct);
-                if (available.Count == 0)
-                {
-                    client.Dispose();
-                    throw new ComfyUiException(
-                        "No checkpoints found in ComfyUI. Drop a .safetensors model into " +
-                        "ComfyUI/models/checkpoints/ and restart the server.");
-                }
-                var requested = workflow.GetCheckpoint();
-                if (string.IsNullOrEmpty(requested) || !available.Contains(requested))
-                {
-                    var pick = available.FirstOrDefault(IsLikelySdxl)
-                               ?? available.FirstOrDefault(IsLikelySd15)
-                               ?? available[0];
-                    workflow.SetCheckpoint(pick);
-                    if (IsLikelySd15(pick) && shot.Aspect == AspectRatio.Wide)
-                        workflow.SetSize(768, 432);
-                }
-            }
+            // Auto-substitute model names in EVERY loader node (checkpoint,
+            // unet, vae, clip, clip-vision, lora) so a workflow that bakes
+            // in "flux1-dev.safetensors" still runs on a server that only
+            // has "flux1-dev-fp8.safetensors". We use FuzzyResolve below.
+            await AutoFixModelReferencesAsync(client, workflow, shot, ct);
 
             var promptId = await client.SubmitPromptAsync(workflow.Nodes, ct);
             WriteJobRow(shot.Id, promptId, "queued");
@@ -419,6 +399,134 @@ public sealed class GenerationService
         var n = name.ToLowerInvariant();
         return n.Contains("v1-5") || n.Contains("v1.5") || n.Contains("sd15")
             || n.Contains("epicrealism") || n.Contains("dreamshaper8");
+    }
+
+    /// <summary>
+    /// For each model-loader node in the workflow, check whether the
+    /// referenced file exists on the ComfyUI server. If it doesn't,
+    /// substring-match against the available files (e.g. "flux1-dev.safetensors"
+    /// → "flux1-dev-fp8.safetensors") and substitute. If no match exists,
+    /// throw a friendly error listing what IS available.
+    /// </summary>
+    private static async Task AutoFixModelReferencesAsync(
+        ComfyUiClient client, ChanthraStudio.Services.Providers.ComfyUI.Workflow workflow, Shot shot, CancellationToken ct)
+    {
+        // Pre-fetch all relevant lists once — these calls hit /object_info
+        // which is cheap on the server but we still avoid hitting it 6x.
+        var checkpoints = await client.GetAvailableCheckpointsAsync(ct);
+        var unets = await client.GetAvailableUnetsAsync(ct);
+        var vaes = await client.GetAvailableVaesAsync(ct);
+        var clips = await client.GetAvailableClipsAsync(ct);
+        var clipVision = await client.GetAvailableClipVisionAsync(ct);
+        var loras = await client.GetAvailableLorasAsync(ct);
+
+        // Special case: SD-style workflow with no checkpoints installed at all
+        // — surface the early-return error users hit in v0.2.x.
+        if (!workflow.UsesUnetLoader() && checkpoints.Count == 0)
+            throw new ComfyUiException(
+                "No checkpoints found in ComfyUI. Drop a .safetensors model into " +
+                "ComfyUI/models/checkpoints/ and restart the server.");
+
+        // For SD checkpoints, prefer SDXL if the workflow seems SDXL-shaped
+        // and SD 1.5 otherwise — keeps the legacy 0.1 auto-pick behaviour.
+        workflow.PatchInputs(new[] { "CheckpointLoaderSimple" }, "ckpt_name", current =>
+        {
+            if (checkpoints.Contains(current)) return current;
+            var fuzzy = FuzzyMatch(current, checkpoints);
+            if (fuzzy is not null) return fuzzy;
+            return checkpoints.FirstOrDefault(IsLikelySdxl)
+                ?? checkpoints.FirstOrDefault(IsLikelySd15)
+                ?? (checkpoints.Count > 0 ? checkpoints[0] : null);
+        });
+
+        workflow.PatchInputs(new[] { "UNETLoader" }, "unet_name", current =>
+            unets.Contains(current) ? current : FuzzyMatch(current, unets));
+
+        workflow.PatchInputs(new[] { "VAELoader" }, "vae_name", current =>
+            vaes.Contains(current) ? current : FuzzyMatch(current, vaes));
+
+        workflow.PatchInputs(new[] { "DualCLIPLoader" }, "clip_name1", current =>
+            clips.Contains(current) ? current : FuzzyMatch(current, clips));
+        workflow.PatchInputs(new[] { "DualCLIPLoader" }, "clip_name2", current =>
+            clips.Contains(current) ? current : FuzzyMatch(current, clips));
+        workflow.PatchInputs(new[] { "CLIPLoader" }, "clip_name", current =>
+            clips.Contains(current) ? current : FuzzyMatch(current, clips));
+
+        workflow.PatchInputs(new[] { "CLIPVisionLoader" }, "clip_name", current =>
+            clipVision.Contains(current) ? current : FuzzyMatch(current, clipVision));
+
+        workflow.PatchInputs(new[] { "LoraLoader" }, "lora_name", current =>
+            loras.Contains(current) ? current : FuzzyMatch(current, loras));
+
+        // After patching, walk the workflow once more and assemble a list
+        // of any references that STILL don't resolve — those will fail at
+        // submit time with cryptic node_errors. Throw early with a friendly
+        // message instead.
+        var missing = new List<string>();
+        foreach (var (cls, key, file) in workflow.EnumerateModelReferences())
+        {
+            var pool = cls switch
+            {
+                "CheckpointLoaderSimple" => checkpoints,
+                "UNETLoader" => unets,
+                "VAELoader" => vaes,
+                "DualCLIPLoader" or "CLIPLoader" => clips,
+                "CLIPVisionLoader" => clipVision,
+                "LoraLoader" => loras,
+                _ => null,
+            };
+            if (pool is not null && !pool.Contains(file))
+                missing.Add($"  · {cls}.{key} = \"{file}\"");
+        }
+        if (missing.Count > 0)
+        {
+            var hint = "Install the missing files into your ComfyUI/models/<type>/ folder, " +
+                       "or pick a different workflow that uses what you have.";
+            throw new ComfyUiException(
+                "This workflow references models that aren't installed:\n" +
+                string.Join("\n", missing) + "\n\n" + hint);
+        }
+
+        // Final safety: if the picked checkpoint is SD 1.5 and the user is
+        // shooting wide, the legacy default workflow's 1024-base latent
+        // crashes on low-VRAM cards. Drop to 768x432 — same heuristic as before.
+        var ckpt = workflow.GetCheckpoint();
+        if (!string.IsNullOrEmpty(ckpt) && IsLikelySd15(ckpt) && shot.Aspect == AspectRatio.Wide)
+            workflow.SetSize(768, 432);
+    }
+
+    /// <summary>
+    /// Best-effort filename matcher. Tries: exact (handled by caller),
+    /// case-insensitive equality, then a "stem" comparison that strips
+    /// common suffix tokens like -fp8, -fp16, _v2, _scaled, _emaonly,
+    /// _pruned. Returns the chosen pool entry or null if nothing usable.
+    /// </summary>
+    private static string? FuzzyMatch(string requested, List<string> pool)
+    {
+        if (pool.Count == 0) return null;
+        // Case-insensitive exact match
+        var ci = pool.FirstOrDefault(p => string.Equals(p, requested, StringComparison.OrdinalIgnoreCase));
+        if (ci is not null) return ci;
+        // Stem match — strip extension + common suffix tokens
+        var stem = Stem(requested);
+        var match = pool.FirstOrDefault(p => Stem(p).Equals(stem, StringComparison.OrdinalIgnoreCase));
+        if (match is not null) return match;
+        // Substring fallback — first pool entry that contains the stem (useful when
+        // request is "flux1-dev" and pool has "flux1-dev-Q4_K_S.gguf")
+        match = pool.FirstOrDefault(p => p.Contains(stem, StringComparison.OrdinalIgnoreCase));
+        return match;
+    }
+
+    private static string Stem(string fileName)
+    {
+        var noExt = Path.GetFileNameWithoutExtension(fileName);
+        // Strip suffix tokens that vary across quantizations / repacks.
+        string[] strip = { "-fp8", "-fp16", "-bf16", "_fp8", "_fp16", "_bf16",
+                           "_e4m3fn", "_scaled", "_emaonly", "_pruned",
+                           "-Q4_K_S", "-Q5_K_S", "-Q8_0", "-fp8_e4m3fn" };
+        foreach (var s in strip)
+            noExt = noExt.Replace(s, "", StringComparison.OrdinalIgnoreCase);
+        return noExt;
     }
 }
 

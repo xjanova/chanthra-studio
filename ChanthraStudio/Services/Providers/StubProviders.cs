@@ -83,32 +83,28 @@ internal sealed class ComfyUiVideoProvider : StubVideoProvider
     public override bool RequiresApiKey => false;
 }
 
-internal sealed class ReplicateVideoProvider : StubVideoProvider
-{
-    public override string Id => "replicate";
-    public override string DisplayName => "Replicate (Kling · Veo · Sora)";
-    public override string ApiKeyHint => "r8_… · replicate.com/account/api-tokens";
-}
+// Replicate is now a real implementation in Services/Providers/Video/ —
+// the registry instantiates it directly.
 
 internal sealed class RunwayVideoProvider : StubVideoProvider
 {
     public override string Id => "runway";
     public override string DisplayName => "Runway · Gen-3";
-    public override string ApiKeyHint => "key_… · dev.runwayml.com";
+    public override string ApiKeyHint => "key_… · dev.runwayml.com (not yet wired — use Replicate or ComfyUI)";
 }
 
 internal sealed class PikaVideoProvider : StubVideoProvider
 {
     public override string Id => "pika";
     public override string DisplayName => "Pika Labs";
-    public override string ApiKeyHint => "pk_… · pika.art";
+    public override string ApiKeyHint => "pk_… · pika.art (not yet wired — use Replicate or ComfyUI)";
 }
 
 internal sealed class FalVideoProvider : StubVideoProvider
 {
     public override string Id => "fal";
     public override string DisplayName => "fal.ai";
-    public override string ApiKeyHint => "fal-… · fal.ai/dashboard/keys";
+    public override string ApiKeyHint => "fal-… · fal.ai/dashboard/keys (not yet wired — use Replicate or ComfyUI)";
 }
 
 // Posting providers moved to Services/Providers/Posting/ — they have real
