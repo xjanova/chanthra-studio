@@ -1,18 +1,10 @@
 name: Release
 
-# Build a self-contained portable Windows .exe and publish it to a
-# GitHub Release whenever a tag like v0.2.0 is pushed. The auto-update
-# system in the desktop app reads /releases/latest from this repo,
-# so what's attached here is what users actually pull down.
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*'
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to release (e.g. v0.2.0). Leave blank to use the current ref.'
-        required: false
 
 permissions:
   contents: write
@@ -27,32 +19,29 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve version
-        id: ver
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ github.event.inputs.tag }}" -ne "") {
-            $tag = "${{ github.event.inputs.tag }}"
-          }
-          $version = $tag -replace '^v', ''
-          # Strip any pre-release suffix for the AssemblyVersion (must be 1.2.3.4)
-          $clean = $version -replace '-.*$', ''
-          if (($clean.Split('.').Count) -lt 3) { $clean = "$clean.0.0".Substring(0, ($clean.Length + 4)) }
-          $assemblyVersion = "$clean.0"
-          echo "tag=$tag"               | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          echo "version=$version"        | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          echo "assemblyVersion=$assemblyVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
+          $clean = $version -replace '-.*$',''
+          $parts = $clean.Split('.')
+          while ($parts.Count -lt 3) { $parts += '0' }
+          $assemblyVersion = ($parts[0..2] -join '.') + '.0'
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "assemblyVersion=$assemblyVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
       - name: Restore
         run: dotnet restore ChanthraStudio/ChanthraStudio.csproj
 
-      - name: Publish (self-contained, single-file, win-x64)
+      - name: Publish
         shell: pwsh
         run: |
           dotnet publish ChanthraStudio/ChanthraStudio.csproj `
@@ -68,53 +57,34 @@ jobs:
             -o publish
 
       - name: Package portable zip
+        id: pkg
         shell: pwsh
         run: |
           $zipName = "ChanthraStudio-${{ steps.ver.outputs.tag }}-win-x64.zip"
           Compress-Archive -Path publish/* -DestinationPath $zipName -Force
-          # SHA-256 hash for integrity checks in the release notes
           $hash = (Get-FileHash $zipName -Algorithm SHA256).Hash.ToLowerInvariant()
-          echo "zipName=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          echo "sha256=$hash"      | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        id: pkg
+          "zipName=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Generate release notes
-        id: notes
         shell: pwsh
         run: |
           $tag = "${{ steps.ver.outputs.tag }}"
-          $prev = (git tag --sort=-v:refname | Where-Object { $_ -ne $tag } | Select-Object -First 1)
+          $prev = git tag --sort=-v:refname | Where-Object { $_ -ne $tag } | Select-Object -First 1
           if ([string]::IsNullOrEmpty($prev)) {
-            $range = "HEAD"
+            $log = "Initial release."
           } else {
-            $range = "$prev..HEAD"
+            $log = (git log "$prev..HEAD" --pretty=format:"- %s (%h)" --no-merges) -join "`n"
           }
-          $log = git log $range --pretty=format:"- %s (%h)" --no-merges
-          $notes = @"
-## Chanthra Studio $tag
-
-$( if ($log) { $log -join "`n" } else { "Initial release." } )
-
----
-
-**Auto-update:** ผู้ใช้ที่ Activate License แล้ว แอปจะเด้งให้กดอัพเดทเอง
-**Manual install:** ดาวน์โหลด ``${{ steps.pkg.outputs.zipName }}`` แล้วแตกไฟล์ทับโฟลเดอร์เดิม
-**SHA-256:** ``${{ steps.pkg.outputs.sha256 }}``
-
-ซื้อ License ที่ https://xman4289.com/products/chanthra-studio
-อ่านคู่มือการใช้งาน https://xman4289.com/chanthra-studio/manual
-"@
-          $notes | Out-File -Encoding utf8 release-notes.md
-          # Newlines are preserved when we pass the file path to gh release create
+          $sha = "${{ steps.pkg.outputs.sha256 }}"
+          $zip = "${{ steps.pkg.outputs.zipName }}"
+          $body = "## Chanthra Studio $tag`n`n$log`n`n---`n`nManual install: download ``$zip`` and extract over the existing folder.`nSHA-256: ``$sha```n`nLicense: https://xman4289.com/products/chanthra-studio`nManual: https://xman4289.com/chanthra-studio/manual`n"
+          $body | Out-File -Encoding utf8 release-notes.md
 
       - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: pwsh
-        run: |
-          $tag = "${{ steps.ver.outputs.tag }}"
-          $zipName = "${{ steps.pkg.outputs.zipName }}"
-          gh release create $tag $zipName `
-            --title "Chanthra Studio $tag" `
-            --notes-file release-notes.md `
-            --target ${{ github.sha }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: Chanthra Studio ${{ steps.ver.outputs.tag }}
+          body_path: release-notes.md
+          files: ${{ steps.pkg.outputs.zipName }}
