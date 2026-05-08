@@ -51,6 +51,23 @@ public sealed class Database
 
         var current = GetSchemaVersion(c, tx);
 
+        if (current < 2)
+        {
+            // settings — primary store for AppSettings since v2.
+            // Values are plaintext for non-secrets; DPAPI ciphertext for
+            // apikey:* rows (caller protects/unprotects before/after we touch
+            // the column). The is_secret flag is descriptive metadata —
+            // useful for backups + inspection, not enforced.
+            Exec(c, tx, """
+                CREATE TABLE IF NOT EXISTS settings (
+                    key        TEXT PRIMARY KEY,
+                    value      TEXT NOT NULL,
+                    is_secret  INTEGER NOT NULL DEFAULT 0,
+                    updated_at INTEGER NOT NULL
+                )
+                """);
+        }
+
         if (current < 1)
         {
             Exec(c, tx, """
@@ -128,7 +145,10 @@ public sealed class Database
             SetSchemaVersion(c, tx, 1);
         }
 
-        // Future migrations: if (current < 2) { ...; SetSchemaVersion(c, tx, 2); }
+        if (current < 2)
+        {
+            SetSchemaVersion(c, tx, 2);
+        }
     }
 
     private static int GetSchemaVersion(IDbConnection c, IDbTransaction tx)

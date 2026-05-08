@@ -1,3 +1,4 @@
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -36,7 +37,8 @@ public sealed class ProviderRow : ObservableObject
     private string _statusLabel = "";
     public string StatusLabel { get => _statusLabel; set => SetProperty(ref _statusLabel, value); }
 
-    private string _statusKind = "";   // "" | ok | warn | err | probing
+    /// <summary>"" | ok | warn | err | probing | saved</summary>
+    private string _statusKind = "";
     public string StatusKind { get => _statusKind; set => SetProperty(ref _statusKind, value); }
 
     public IAsyncRelayCommand TestCommand { get; }
@@ -82,12 +84,26 @@ public sealed class ProviderRow : ObservableObject
         StatusKind = health.Ok ? "ok" : "err";
     }
 
-    private void Save()
+    private async void Save()
     {
         _settings.SetApiKey(Id, ApiKeyDraft);
-        _settings.Save();
-        IsDirty = false;
-        UpdateStatusFromStorage();
+        try
+        {
+            _settings.Save();
+            IsDirty = false;
+            StatusLabel = "saved ✓";
+            StatusKind = "saved";
+            // Hold the green flash for a beat, then revert to "key saved".
+            try { await Task.Delay(2500); } catch { }
+            UpdateStatusFromStorage();
+        }
+        catch (Exception ex)
+        {
+            StatusLabel = "save failed";
+            StatusKind = "err";
+            // best-effort surface; full diagnosis lands when we add ILogger.
+            System.Diagnostics.Debug.WriteLine($"settings save failed: {ex}");
+        }
     }
 }
 
@@ -99,6 +115,13 @@ public sealed class SettingsViewModel : ObservableObject
     public ObservableCollection<ProviderRow> LlmProviders { get; } = new();
     public ObservableCollection<ProviderRow> VideoProviders { get; } = new();
     public ObservableCollection<ProviderRow> PostingProviders { get; } = new();
+
+    private string? _toastMessage;
+    public string? ToastMessage { get => _toastMessage; set => SetProperty(ref _toastMessage, value); }
+
+    /// <summary>"" | ok | warn | err | info</summary>
+    private string _toastKind = "info";
+    public string ToastKind { get => _toastKind; set => SetProperty(ref _toastKind, value); }
 
     public string ComfyUiUrl
     {
@@ -157,7 +180,7 @@ public sealed class SettingsViewModel : ObservableObject
 
     public string DataPath => AppPaths.Root;
     public string DatabasePath => AppPaths.DatabaseFile;
-    public string SettingsPath => AppPaths.SettingsFile;
+    public string SettingsStorageHint => $"SQLite · {AppPaths.DatabaseFile}";
 
     public IRelayCommand SaveAllCommand { get; }
     public IRelayCommand RevealDataFolderCommand { get; }
@@ -171,12 +194,7 @@ public sealed class SettingsViewModel : ObservableObject
         foreach (var p in registry.Video) VideoProviders.Add(new ProviderRow(p, settings));
         foreach (var p in registry.Posting) PostingProviders.Add(new ProviderRow(p, settings));
 
-        SaveAllCommand = new RelayCommand(() =>
-        {
-            foreach (var row in LlmProviders.Concat(VideoProviders).Concat(PostingProviders))
-                if (row.IsDirty) row.SaveCommand.Execute(null);
-            _settings.Save();
-        });
+        SaveAllCommand = new RelayCommand(SaveAll);
 
         RevealDataFolderCommand = new RelayCommand(() =>
         {
@@ -193,5 +211,36 @@ public sealed class SettingsViewModel : ObservableObject
                 // ignore — user can still see the path on the page.
             }
         });
+    }
+
+    private void SaveAll()
+    {
+        try
+        {
+            // Per-row Save mutates the in-memory dict; final Save below
+            // persists everything in one transaction.
+            foreach (var row in LlmProviders.Concat(VideoProviders).Concat(PostingProviders))
+            {
+                if (row.IsDirty) row.SaveCommand.Execute(null);
+            }
+            _settings.Save();
+            ShowToast("All settings saved · written to SQLite", "ok");
+        }
+        catch (Exception ex)
+        {
+            ShowToast("Save failed: " + ex.Message, "err");
+        }
+    }
+
+    private async void ShowToast(string message, string kind)
+    {
+        ToastMessage = message;
+        ToastKind = kind;
+        try
+        {
+            await Task.Delay(3500);
+            if (ToastMessage == message) ToastMessage = null;
+        }
+        catch { }
     }
 }

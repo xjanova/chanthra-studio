@@ -16,9 +16,11 @@ public sealed class StudioContext
 
     public StudioContext()
     {
-        Settings = AppSettings.Load();
+        // Order matters: the DB has to be bootstrapped before AppSettings.Load
+        // can read its rows (and run the legacy-JSON import on first run).
         Db = new Database();
         Db.Bootstrap();
+        Settings = AppSettings.Load(Db);
         Providers = new ProviderRegistry();
         Generation = new GenerationService(this);
     }
