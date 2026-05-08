@@ -19,6 +19,7 @@
             <helpers:StringEqualsConverter x:Key="StringEquals" />
             <helpers:BoolToVisibilityConverter x:Key="BoolToVis" />
             <helpers:InverseBoolToVisibilityConverter x:Key="InvBoolToVis" />
+            <helpers:NotNullOrEmptyToVisibilityConverter x:Key="NotNullOrEmpty" />
             <helpers:PercentToWidthConverter x:Key="PercentToWidth" />
             <helpers:StatusToBrushConverter x:Key="StatusToBrush" />
         </ResourceDictionary>

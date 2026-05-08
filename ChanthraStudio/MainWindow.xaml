@@ -96,11 +96,19 @@
             CaptionHeight="52"
             CornerRadius="0"
             GlassFrameThickness="0"
-            ResizeBorderThickness="14"
+            ResizeBorderThickness="18"
             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
 
-    <Grid Margin="14">
+    <!--
+        IMPORTANT: AllowsTransparency=True makes null-background regions
+        click-through, which would prevent WindowChrome's resize hit-test
+        in the 14px outer margin. Background="Transparent" is invisible
+        BUT hit-testable, so the resize border lights up correctly.
+        ResizeBorderThickness is bumped to 18 so it overlaps a few px
+        into the visible window edge — users naturally grab there.
+    -->
+    <Grid Margin="14" Background="Transparent">
         <!--  Layer 0: warm under-glow (sits behind everything for halo effect)  -->
         <Border
             Margin="-6"

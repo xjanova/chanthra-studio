@@ -25,6 +25,7 @@
   <ItemGroup>
     <Resource Include="Assets\Fonts\*.ttf" />
     <Resource Include="Assets\Brand\*.png" />
+    <Resource Include="Assets\Workflows\*.json" />
   </ItemGroup>
 
   <!--

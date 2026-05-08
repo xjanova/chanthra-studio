@@ -12,6 +12,7 @@ public sealed class StudioContext
     public AppSettings Settings { get; }
     public Database Db { get; }
     public ProviderRegistry Providers { get; }
+    public GenerationService Generation { get; }
 
     public StudioContext()
     {
@@ -19,5 +20,6 @@ public sealed class StudioContext
         Db = new Database();
         Db.Bootstrap();
         Providers = new ProviderRegistry();
+        Generation = new GenerationService(this);
     }
 }

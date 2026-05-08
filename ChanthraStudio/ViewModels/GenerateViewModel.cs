@@ -1,5 +1,10 @@
+using System;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows.Media.Imaging;
 using ChanthraStudio.Models;
+using ChanthraStudio.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -7,6 +12,8 @@ namespace ChanthraStudio.ViewModels;
 
 public sealed class GenerateViewModel : ObservableObject
 {
+    private readonly StudioContext? _ctx;
+
     private string _prompt = "ราชินีจันทรา on a throne of black silk and floating lotuses; ribbons of crimson smoke; gold halo splitting into eight beams; sloooow camera push, 24fps cinematic.";
     public string Prompt { get => _prompt; set => SetProperty(ref _prompt, value); }
 
@@ -67,6 +74,12 @@ public sealed class GenerateViewModel : ObservableObject
     private string _shotMetaSeed = "SEED 2814·9217";
     public string ShotMetaSeed { get => _shotMetaSeed; set => SetProperty(ref _shotMetaSeed, value); }
 
+    private string? _toastMessage;
+    public string? ToastMessage { get => _toastMessage; set => SetProperty(ref _toastMessage, value); }
+
+    private string _toastKind = "info";
+    public string ToastKind { get => _toastKind; set => SetProperty(ref _toastKind, value); }
+
     public ObservableCollection<StylePreset> StylePresets { get; } = new()
     {
         new() { Id = "empress",     Name = "Empress",      ThumbPath = "/Assets/Brand/empress-portrait.png" },
@@ -111,15 +124,100 @@ public sealed class GenerateViewModel : ObservableObject
         },
     };
 
-    public IRelayCommand SummonSceneCommand { get; }
+    public IAsyncRelayCommand SummonSceneCommand { get; }
 
-    public GenerateViewModel()
+    public GenerateViewModel() : this(null) { }
+
+    public GenerateViewModel(StudioContext? ctx)
     {
-        SummonSceneCommand = new RelayCommand(SummonScene);
+        _ctx = ctx;
+        SummonSceneCommand = new AsyncRelayCommand(SummonSceneAsync);
+
+        if (_ctx is not null)
+            _ctx.Generation.ProgressChanged += OnGenerationProgress;
     }
 
-    private void SummonScene()
+    private async Task SummonSceneAsync()
     {
-        IsGenerating = true;
+        if (_ctx is null)
+        {
+            ShowToast("Studio context not wired", "warn");
+            return;
+        }
+
+        // Compose a new shot from the current composer state and append it to
+        // the storyboard so the user sees the queued card immediately.
+        var rng = new Random();
+        var shot = new Shot
+        {
+            Id = Guid.NewGuid().ToString("N").Substring(0, 8),
+            Number = (Storyboard.Count + 1).ToString("D2"),
+            Title = $"Shot {Storyboard.Count + 1:D2}",
+            Description = Prompt.Length > 140 ? Prompt[..140] + "…" : Prompt,
+            Prompt = Prompt,
+            Aspect = Aspect,
+            DurationSec = DurationSec,
+            Motion = Motion,
+            Seed = (rng.Next(1000, 9999), rng.Next(1000, 9999)),
+            Hd4k = Hd4k,
+            Audio = NativeAudio,
+            Cam = Camera,
+            Status = ShotStatus.Queue,
+            DurationLabel = $"{DurationSec:F1}s",
+            ThumbUrl = "/Assets/Brand/empress-portrait.png",
+        };
+        Storyboard.Add(shot);
+
+        try
+        {
+            IsGenerating = true;
+            ShowToast("Submitting to ComfyUI…", "info");
+            var promptId = await _ctx.Generation.SubmitAsync(shot);
+            shot.Status = ShotStatus.Generating;
+            ShowToast($"Queued · {promptId[..8]}", "ok");
+            // The card progress + final completion arrive via OnGenerationProgress.
+        }
+        catch (Exception ex)
+        {
+            shot.Status = ShotStatus.Error;
+            ShowToast(ex.Message, "err");
+            IsGenerating = false;
+        }
+    }
+
+    private void OnGenerationProgress(object? sender, GenerationProgressEventArgs e)
+    {
+        var shot = Storyboard.FirstOrDefault(s => s.Id == e.ShotId);
+        if (shot is null) return;
+        shot.Status = e.Status;
+        shot.Progress = e.Progress;
+        if (e.MediaPath is not null)
+        {
+            shot.VideoUrl = e.MediaPath;
+            shot.ThumbUrl = e.MediaPath;
+        }
+
+        if (e.Status == ShotStatus.Done)
+        {
+            ShowToast($"Shot {shot.Number} ready", "ok");
+            IsGenerating = Storyboard.Any(s => s.Status == ShotStatus.Generating);
+        }
+        else if (e.Status == ShotStatus.Error)
+        {
+            ShowToast(e.Error ?? "generation failed", "err");
+            IsGenerating = Storyboard.Any(s => s.Status == ShotStatus.Generating);
+        }
+    }
+
+    private async void ShowToast(string message, string kind)
+    {
+        ToastMessage = message;
+        ToastKind = kind;
+        try
+        {
+            await Task.Delay(3500);
+            if (ToastMessage == message) ToastMessage = null;
+        }
+        catch { }
     }
 }

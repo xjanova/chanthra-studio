@@ -451,6 +451,49 @@
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
+            <!--  Floating toast (sits above everything in this column)  -->
+            <Border
+                Grid.Row="0"
+                Grid.RowSpan="3"
+                Margin="0,18,0,0"
+                Padding="14,8"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Panel.ZIndex="50"
+                CornerRadius="99"
+                Effect="{StaticResource ShadowGoldGlowSoft}"
+                Visibility="{Binding ToastMessage, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Background" Value="{StaticResource BrushSurface03}" />
+                        <Setter Property="BorderBrush" Value="{StaticResource BrushLineHairline}" />
+                        <Setter Property="BorderThickness" Value="1" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ToastKind}" Value="ok">
+                                <Setter Property="Background" Value="#1F6DBF8C" />
+                                <Setter Property="BorderBrush" Value="#666DBF8C" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ToastKind}" Value="warn">
+                                <Setter Property="Background" Value="#1FE0B056" />
+                                <Setter Property="BorderBrush" Value="#66E0B056" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ToastKind}" Value="err">
+                                <Setter Property="Background" Value="#1FD05A5A" />
+                                <Setter Property="BorderBrush" Value="#66D05A5A" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ToastKind}" Value="info">
+                                <Setter Property="Background" Value="#1FD4A76A" />
+                                <Setter Property="BorderBrush" Value="#66D4A76A" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <TextBlock
+                    FontFamily="{StaticResource FontUI}"
+                    FontSize="11.5"
+                    Foreground="{StaticResource BrushText1}"
+                    Text="{Binding ToastMessage}" />
+            </Border>
 
             <!--  Stage bar  -->
             <Grid Grid.Row="0" Margin="22,16">

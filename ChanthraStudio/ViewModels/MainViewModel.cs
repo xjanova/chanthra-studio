@@ -39,7 +39,7 @@ public sealed class MainViewModel : ObservableObject
 
     public ObservableCollection<TabItem> OpenTabs { get; } = new();
 
-    public GenerateViewModel Generate { get; } = new();
+    public GenerateViewModel Generate { get; }
     public StatusBarViewModel Status { get; } = new();
 
     public IRelayCommand<string> SwitchViewCommand { get; }
@@ -49,6 +49,11 @@ public sealed class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
+        // App.Current is null at design-time — use a parameterless GenerateVM there
+        // so the XAML designer doesn't bootstrap SQLite + the provider registry.
+        var studio = (System.Windows.Application.Current as App)?.Studio;
+        Generate = studio is not null ? new GenerateViewModel(studio) : new GenerateViewModel();
+
         OpenTabs.Add(new TabItem { Id = "empress", Title = "The Empress", IsLive = true });
         OpenTabs.Add(new TabItem { Id = "moondog", Title = "Moondog", IsLive = false });
         OpenTabs.Add(new TabItem { Id = "veil-fall", Title = "Veil Fall", IsLive = false });
