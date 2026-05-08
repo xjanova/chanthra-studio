@@ -115,11 +115,45 @@
                         </StackPanel>
                     </Grid>
 
+                    <!--  Brief + Write button  -->
+                    <Grid Grid.Row="1" Margin="0,16,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource TextMonoUpper}" Text="BRIEF · ONE LINE THE LLM EXPANDS" />
+                            <TextBlock Grid.Column="1" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="{Binding ActiveLlmLabel, StringFormat=VIA {0}}" />
+                        </Grid>
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Padding="12,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontThai}" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding ScriptBrief, UpdateSourceTrigger=PropertyChanged}" />
+                            </Border>
+                            <Button Grid.Column="1" Margin="8,0,0,0" Padding="14,8" Command="{Binding WriteScriptCommand}" Content="✦  Write"
+                                    IsEnabled="{Binding IsWriting, Converter={StaticResource InvBoolToVis}, FallbackValue=True}"
+                                    Style="{StaticResource ButtonPillGold}" />
+                        </Grid>
+                    </Grid>
+
                     <!--  Script  -->
-                    <TextBlock Grid.Row="1" Margin="0,16,0,6" Style="{StaticResource TextMonoUpper}" Text="SCRIPT" />
-                    <Border Grid.Row="2" MinHeight="240" Padding="14,12" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
-                        <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontThai}" FontSize="14" Foreground="{StaticResource BrushText1}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Text="{Binding ScriptText, UpdateSourceTrigger=PropertyChanged}" />
-                    </Border>
+                    <Grid Grid.Row="2" Margin="0,16,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Margin="0,0,0,6" Style="{StaticResource TextMonoUpper}" Text="SCRIPT" />
+                        <Border Grid.Row="1" MinHeight="200" Padding="14,12" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
+                            <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontThai}" FontSize="14" Foreground="{StaticResource BrushText1}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Text="{Binding ScriptText, UpdateSourceTrigger=PropertyChanged}" />
+                        </Border>
+                    </Grid>
 
                     <!--  Speed slider  -->
                     <Grid Grid.Row="3" Margin="0,14,0,0">

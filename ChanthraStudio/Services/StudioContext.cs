@@ -19,6 +19,7 @@ public sealed class StudioContext
     public FFmpegService FFmpeg { get; }
     public SlideshowRenderer SlideshowRenderer { get; }
     public VoiceService VoiceService { get; }
+    public LlmService Llm { get; }
 
     public StudioContext()
     {
@@ -35,5 +36,6 @@ public sealed class StudioContext
         FFmpeg = new FFmpegService(this);
         SlideshowRenderer = new SlideshowRenderer(this);
         VoiceService = new VoiceService(this);
+        Llm = new LlmService(this);
     }
 }

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using ChanthraStudio.Services.Providers.Llm;
 using ChanthraStudio.Services.Providers.Posting;
 using ChanthraStudio.Services.Providers.Voice;
 
@@ -28,7 +29,7 @@ public sealed class ProviderRegistry
             new GeminiLlmProvider(),
             new OpenAiLlmProvider(),
             new AnthropicLlmProvider(),
-            new OpenRouterLlmProvider(),
+            new OpenRouterLlmProvider(),  // still stub
         };
 
         Video = new IVideoProvider[]

@@ -59,6 +59,26 @@ public sealed class VoiceViewModel : ObservableObject
     private bool _isGenerating;
     public bool IsGenerating { get => _isGenerating; set => SetProperty(ref _isGenerating, value); }
 
+    private bool _isWriting;
+    public bool IsWriting { get => _isWriting; set => SetProperty(ref _isWriting, value); }
+
+    private string _scriptBrief = "ดวงประจำวันสำหรับลัคนาเมษ — เรื่องโชคลาภ + ความรัก";
+    /// <summary>One-line topic the LLM expands into a full script.</summary>
+    public string ScriptBrief
+    {
+        get => _scriptBrief;
+        set => SetProperty(ref _scriptBrief, value);
+    }
+
+    public string ActiveLlmLabel
+    {
+        get
+        {
+            var p = _ctx.Providers.Llm.FirstOrDefault(x => x.Id == _ctx.Settings.ActiveLlm);
+            return p?.DisplayName ?? _ctx.Settings.ActiveLlm;
+        }
+    }
+
     private string? _toastMessage;
     public string? ToastMessage { get => _toastMessage; set => SetProperty(ref _toastMessage, value); }
 
@@ -68,6 +88,7 @@ public sealed class VoiceViewModel : ObservableObject
     public bool HasTakes => Takes.Count > 0;
 
     public IAsyncRelayCommand GenerateCommand { get; }
+    public IAsyncRelayCommand WriteScriptCommand { get; }
     public IRelayCommand RefreshTakesCommand { get; }
     public IRelayCommand<VoiceTake> PlayTakeCommand { get; }
     public IRelayCommand<VoiceTake> RevealTakeCommand { get; }
@@ -87,6 +108,7 @@ public sealed class VoiceViewModel : ObservableObject
         ReloadVoices();
 
         GenerateCommand = new AsyncRelayCommand(GenerateAsync);
+        WriteScriptCommand = new AsyncRelayCommand(WriteScriptAsync);
         RefreshTakesCommand = new RelayCommand(RefreshTakes);
         PlayTakeCommand = new RelayCommand<VoiceTake>(PlayTake);
         RevealTakeCommand = new RelayCommand<VoiceTake>(RevealTake);
@@ -141,6 +163,37 @@ public sealed class VoiceViewModel : ObservableObject
         finally
         {
             IsGenerating = false;
+        }
+    }
+
+    private async Task WriteScriptAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ScriptBrief))
+        {
+            ShowToast("Type a brief first (topic, audience, vibe).", "warn");
+            return;
+        }
+
+        IsWriting = true;
+        ShowToast($"Writing via {ActiveLlmLabel}…", "info");
+        try
+        {
+            var text = await _ctx.Llm.WriteFortuneScriptAsync(ScriptBrief);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                ShowToast("LLM returned empty — check your key + model.", "err");
+                return;
+            }
+            ScriptText = text.Trim();
+            ShowToast($"Script ready · {ActiveLlmLabel}", "ok");
+        }
+        catch (Exception ex)
+        {
+            ShowToast(ex.Message, "err");
+        }
+        finally
+        {
+            IsWriting = false;
         }
     }
 

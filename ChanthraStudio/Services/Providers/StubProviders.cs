@@ -70,27 +70,9 @@ internal abstract class StubPostingProvider : IPostingProvider
 }
 
 // ---------------- LLM concrete shells ----------------
-
-internal sealed class GeminiLlmProvider : StubLlmProvider
-{
-    public override string Id => "gemini";
-    public override string DisplayName => "Google Gemini";
-    public override string ApiKeyHint => "AIzaSy… · aistudio.google.com";
-}
-
-internal sealed class OpenAiLlmProvider : StubLlmProvider
-{
-    public override string Id => "openai";
-    public override string DisplayName => "OpenAI";
-    public override string ApiKeyHint => "sk-… · platform.openai.com/api-keys";
-}
-
-internal sealed class AnthropicLlmProvider : StubLlmProvider
-{
-    public override string Id => "anthropic";
-    public override string DisplayName => "Anthropic Claude";
-    public override string ApiKeyHint => "sk-ant-… · console.anthropic.com";
-}
+// OpenAI / Anthropic / Gemini moved to Services/Providers/Llm/* with real
+// HTTP implementations. OpenRouter still stub (proxies OpenAI's wire format
+// — wiring it up is mostly base-URL flip; left for a follow-up).
 
 internal sealed class OpenRouterLlmProvider : StubLlmProvider
 {
