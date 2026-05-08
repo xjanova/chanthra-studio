@@ -109,6 +109,7 @@ public sealed class GenerateViewModel : ObservableObject
     public ObservableCollection<Shot> Storyboard { get; } = new();
 
     public IAsyncRelayCommand SummonSceneCommand { get; }
+    public IAsyncRelayCommand EnhancePromptCommand { get; }
 
     public GenerateViewModel() : this(null) { }
 
@@ -116,6 +117,7 @@ public sealed class GenerateViewModel : ObservableObject
     {
         _ctx = ctx;
         SummonSceneCommand = new AsyncRelayCommand(SummonSceneAsync);
+        EnhancePromptCommand = new AsyncRelayCommand(EnhancePromptAsync);
         RefreshWorkflowsCommand = new RelayCommand(LoadWorkflows);
 
         if (_ctx is null)
@@ -184,6 +186,32 @@ public sealed class GenerateViewModel : ObservableObject
             OnPropertyChanged(nameof(ActiveWorkflow));
             OnPropertyChanged(nameof(EngineLabel));
             OnPropertyChanged(nameof(EngineSpec));
+        }
+    }
+
+    private async Task EnhancePromptAsync()
+    {
+        if (_ctx is null) return;
+        if (string.IsNullOrWhiteSpace(Prompt))
+        {
+            ShowToast("Type a few words first — the wand expands a draft.", "warn");
+            return;
+        }
+        ShowToast("Enhancing prompt…", "info");
+        try
+        {
+            var enhanced = await _ctx.Llm.EnhanceImagePromptAsync(Prompt);
+            if (string.IsNullOrWhiteSpace(enhanced))
+            {
+                ShowToast("LLM returned empty — check your key + active provider.", "err");
+                return;
+            }
+            Prompt = enhanced.Trim();
+            ShowToast("Prompt enhanced ✓", "ok");
+        }
+        catch (Exception ex)
+        {
+            ShowToast(ex.Message, "err");
         }
     }
 

@@ -69,17 +69,9 @@ internal abstract class StubPostingProvider : IPostingProvider
         => throw new NotImplementedException($"{DisplayName} post arrives in phase 7.");
 }
 
-// ---------------- LLM concrete shells ----------------
-// OpenAI / Anthropic / Gemini moved to Services/Providers/Llm/* with real
-// HTTP implementations. OpenRouter still stub (proxies OpenAI's wire format
-// — wiring it up is mostly base-URL flip; left for a follow-up).
-
-internal sealed class OpenRouterLlmProvider : StubLlmProvider
-{
-    public override string Id => "openrouter";
-    public override string DisplayName => "OpenRouter";
-    public override string ApiKeyHint => "sk-or-… · openrouter.ai/keys";
-}
+// All four LLM providers now have real implementations under
+// Services/Providers/Llm/*. The StubLlmProvider base + concrete shells in
+// this file are retained only as scaffolding for future providers.
 
 // ---------------- Video concrete shells ----------------
 

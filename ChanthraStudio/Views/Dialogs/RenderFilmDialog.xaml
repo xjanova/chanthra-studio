@@ -7,7 +7,7 @@
     xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
     Title="Render film"
     Width="560"
-    Height="640"
+    Height="720"
     AllowsTransparency="True"
     Background="Transparent"
     FontFamily="{StaticResource FontUI}"
@@ -148,6 +148,35 @@
                             <Button Grid.Column="2" Margin="6,0,0,0" Padding="10,8" Click="ClearAudio_Click" Style="{StaticResource ButtonPill}">
                                 <Path Width="11" Height="11" Data="{StaticResource IcoClose}" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
                             </Button>
+                        </Grid>
+
+                        <!--  Recent voice takes (auto-fills audio path)  -->
+                        <Grid
+                            Margin="0,8,0,0"
+                            Visibility="{Binding HasRecentTakes, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Text="OR PICK A VOICE TAKE:" />
+                            <Border Grid.Column="1" Margin="8,0,0,0" Padding="12,6" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                <ComboBox x:Name="RecentTakesBox"
+                                          ItemsSource="{Binding RecentTakes, RelativeSource={RelativeSource AncestorType=Window}}"
+                                          SelectionChanged="RecentTakes_SelectionChanged">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel>
+                                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="11.5" Foreground="{StaticResource BrushText1}" Text="{Binding FileName}" />
+                                                <StackPanel Margin="0,2,0,0" Orientation="Horizontal">
+                                                    <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="9" Text="{Binding ProviderDisplayName}" />
+                                                    <TextBlock Margin="6,0" Style="{StaticResource TextMonoUpper}" FontSize="9" Foreground="{StaticResource BrushText4}" Text="·" />
+                                                    <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="9" Text="{Binding VoiceDisplayName}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </Border>
                         </Grid>
                         <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>

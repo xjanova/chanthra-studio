@@ -171,8 +171,9 @@
                                             <Button
                                                 Width="24"
                                                 Height="24"
+                                                Command="{Binding EnhancePromptCommand}"
                                                 Style="{StaticResource ButtonIcon}"
-                                                ToolTip="Enhance">
+                                                ToolTip="✦ Enhance prompt via active LLM">
                                                 <Path
                                                     Width="13"
                                                     Height="13"
