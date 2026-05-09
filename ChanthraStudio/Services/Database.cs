@@ -150,6 +150,40 @@ public sealed class Database
             SetSchemaVersion(c, tx, 2);
         }
 
+        if (current < 4)
+        {
+            // Usage events (phase 6.8). Single append-only table — every
+            // billable provider call lands one row. cost_usd is the local
+            // calculation against ProviderCatalog at time-of-call;
+            // cost_thb is the same value through whatever fx_rate was
+            // configured at the time, so historical rows stay accurate
+            // even after the user updates the FX rate later.
+            //
+            // unit_kind tells us how to interpret the count fields:
+            //   "tokens"  → input_units = prompt tokens, output_units = completion tokens
+            //   "chars"   → input_units = chars, output_units = 0
+            //   "images"  → input_units = images, output_units = 0
+            //   "seconds" → input_units = duration seconds, output_units = 0
+            Exec(c, tx, """
+                CREATE TABLE usage_events (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    occurred_at   INTEGER NOT NULL,
+                    provider_id   TEXT    NOT NULL,
+                    model_slug    TEXT    NOT NULL,
+                    unit_kind     TEXT    NOT NULL,
+                    input_units   INTEGER NOT NULL DEFAULT 0,
+                    output_units  INTEGER NOT NULL DEFAULT 0,
+                    cost_usd      REAL    NOT NULL DEFAULT 0,
+                    fx_rate       REAL    NOT NULL DEFAULT 36,
+                    cost_thb      REAL    NOT NULL DEFAULT 0,
+                    note          TEXT
+                );
+                CREATE INDEX idx_usage_occurred ON usage_events(occurred_at DESC);
+                CREATE INDEX idx_usage_provider ON usage_events(provider_id, occurred_at DESC);
+                """);
+            SetSchemaVersion(c, tx, 4);
+        }
+
         if (current < 3)
         {
             // Auto-schedule tables (phase 6.6).

@@ -39,7 +39,7 @@ internal sealed class OpenAiLlmProvider : ILlmProvider
         catch (Exception ex) { return new ProviderHealth(false, "probe failed", ex.Message); }
     }
 
-    public async Task<string> CompleteAsync(LlmRequest req, CancellationToken ct = default)
+    public async Task<LlmResult> CompleteAsync(LlmRequest req, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(req.ApiKey))
             throw new InvalidOperationException("OpenAI API key missing — set it in Settings.");
@@ -73,7 +73,11 @@ internal sealed class OpenAiLlmProvider : ILlmProvider
 
         var root = JsonNode.Parse(body);
         var content = root?["choices"]?[0]?["message"]?["content"]?.GetValue<string>();
-        return content ?? "";
+        // OpenAI returns usage at root.usage.{prompt_tokens,completion_tokens,total_tokens}
+        var inT = root?["usage"]?["prompt_tokens"]?.GetValue<int>() ?? 0;
+        var outT = root?["usage"]?["completion_tokens"]?.GetValue<int>() ?? 0;
+        var model = root?["model"]?.GetValue<string>() ?? req.Model;
+        return new LlmResult(content ?? "", inT, outT, model);
     }
 
     private static string? ExtractError(string body)

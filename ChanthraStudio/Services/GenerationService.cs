@@ -269,6 +269,21 @@ public sealed class GenerationService
 
                 WriteClipRow(shot.Id, dest, ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ? "videos" : "images");
                 WriteJobUpdate(jobId, "done", null);
+
+                // Bill the cloud call. Video models price per second of
+                // duration; image models price per image. The catalog
+                // entry's UsdPerSecond OR UsdPerImage drives the choice
+                // — both fall back to 0 for free / unknown slugs, so
+                // we can record either way without overcounting.
+                try
+                {
+                    if (ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase))
+                        _ctx.Tracker.RecordSeconds("replicate", req.Model, shot.DurationSec, "video");
+                    else
+                        _ctx.Tracker.RecordImages("replicate", req.Model, 1, "image");
+                }
+                catch { }
+
                 Raise(jobId, shot.Id, ShotStatus.Done, 100, null, dest);
             }
             catch (OperationCanceledException)

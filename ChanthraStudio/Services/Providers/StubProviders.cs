@@ -25,7 +25,7 @@ internal abstract class StubLlmProvider : ILlmProvider
             ? new ProviderHealth(false, "no key", "Paste an API key in Settings.")
             : new ProviderHealth(true, "key present", "Live probe lands in phase 3."));
 
-    public Task<string> CompleteAsync(LlmRequest req, CancellationToken ct = default)
+    public Task<LlmResult> CompleteAsync(LlmRequest req, CancellationToken ct = default)
         => throw new NotImplementedException($"{DisplayName} chat completion arrives in phase 3.");
 }
 

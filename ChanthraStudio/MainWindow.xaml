@@ -87,6 +87,13 @@
                         </Setter.Value>
                     </Setter>
                 </DataTrigger>
+                <DataTrigger Binding="{Binding ActiveView}" Value="Usage">
+                    <Setter Property="Content">
+                        <Setter.Value>
+                            <views:UsageView />
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding ActiveView}" Value="Settings">
                     <Setter Property="Content">
                         <Setter.Value>

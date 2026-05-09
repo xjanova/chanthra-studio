@@ -56,7 +56,7 @@ internal sealed class AnthropicLlmProvider : ILlmProvider
         catch (Exception ex) { return new ProviderHealth(false, "probe failed", ex.Message); }
     }
 
-    public async Task<string> CompleteAsync(LlmRequest req, CancellationToken ct = default)
+    public async Task<LlmResult> CompleteAsync(LlmRequest req, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(req.ApiKey))
             throw new InvalidOperationException("Anthropic API key missing — set it in Settings.");
@@ -91,15 +91,23 @@ internal sealed class AnthropicLlmProvider : ILlmProvider
 
         // content is an array of blocks; we want the first text block.
         var root = JsonNode.Parse(body);
+        var text = "";
         if (root?["content"] is JsonArray blocks)
         {
             foreach (var b in blocks)
             {
                 if (b?["type"]?.GetValue<string>() == "text")
-                    return b["text"]?.GetValue<string>() ?? "";
+                {
+                    text = b["text"]?.GetValue<string>() ?? "";
+                    break;
+                }
             }
         }
-        return "";
+        // Anthropic returns usage at root.usage.{input_tokens,output_tokens}
+        var inT = root?["usage"]?["input_tokens"]?.GetValue<int>() ?? 0;
+        var outT = root?["usage"]?["output_tokens"]?.GetValue<int>() ?? 0;
+        var model = root?["model"]?.GetValue<string>() ?? req.Model;
+        return new LlmResult(text, inT, outT, model);
     }
 
     private static string? ExtractError(string body)

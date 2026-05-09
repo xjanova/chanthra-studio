@@ -44,7 +44,7 @@ internal sealed class OpenRouterLlmProvider : ILlmProvider
         catch (Exception ex) { return new ProviderHealth(false, "probe failed", ex.Message); }
     }
 
-    public async Task<string> CompleteAsync(LlmRequest req, CancellationToken ct = default)
+    public async Task<LlmResult> CompleteAsync(LlmRequest req, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(req.ApiKey))
             throw new InvalidOperationException("OpenRouter API key missing — set it in Settings.");
@@ -80,7 +80,12 @@ internal sealed class OpenRouterLlmProvider : ILlmProvider
                 $"OpenRouter completion failed ({(int)resp.StatusCode}): {ExtractError(body) ?? body}");
 
         var root = JsonNode.Parse(body);
-        return root?["choices"]?[0]?["message"]?["content"]?.GetValue<string>() ?? "";
+        var content = root?["choices"]?[0]?["message"]?["content"]?.GetValue<string>() ?? "";
+        // OpenRouter exposes the upstream provider's usage in OpenAI shape.
+        var inT = root?["usage"]?["prompt_tokens"]?.GetValue<int>() ?? 0;
+        var outT = root?["usage"]?["completion_tokens"]?.GetValue<int>() ?? 0;
+        var model = root?["model"]?.GetValue<string>() ?? req.Model;
+        return new LlmResult(content, inT, outT, model);
     }
 
     private static string? ExtractError(string body)

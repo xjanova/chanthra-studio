@@ -36,16 +36,31 @@ public sealed class LlmService
             throw new InvalidOperationException(
                 $"No API key for {provider.DisplayName} — set it in Settings.");
 
+        // Honour the user's picked model from the Settings catalog UI; fall
+        // back to the provider's hard-coded default if they haven't picked.
+        var activeModel = _ctx.Settings.GetSetting($"activeModel:{providerId}");
         var req = new LlmRequest
         {
             ApiKey = apiKey,
-            Model = "",                // provider picks its sensible default
+            Model = activeModel,
             System = system,
             Prompt = user,
             Temperature = temperature,
             MaxTokens = maxTokens,
         };
-        return await provider.CompleteAsync(req, ct);
+        var result = await provider.CompleteAsync(req, ct);
+
+        // Record usage. Best-effort — never break the call on a tracker error.
+        try
+        {
+            _ctx.Tracker.RecordTokens(
+                providerId,
+                string.IsNullOrEmpty(result.Model) ? activeModel : result.Model!,
+                result.InputTokens, result.OutputTokens, "llm");
+        }
+        catch { }
+
+        return result.Text;
     }
 
     // -------- Domain templates -------------------------------------------

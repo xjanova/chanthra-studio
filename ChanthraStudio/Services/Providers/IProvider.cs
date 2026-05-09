@@ -22,8 +22,16 @@ public sealed record ProviderHealth(bool Ok, string Status, string? Detail = nul
 
 public interface ILlmProvider : IProvider
 {
-    Task<string> CompleteAsync(LlmRequest req, CancellationToken ct = default);
+    Task<LlmResult> CompleteAsync(LlmRequest req, CancellationToken ct = default);
 }
+
+/// <summary>
+/// LLM completion + the token-usage figures every modern provider returns
+/// in its response body. We surface them here (rather than adding another
+/// callback) so the UsageTracker can record real billed counts instead
+/// of estimating from string length.
+/// </summary>
+public sealed record LlmResult(string Text, int InputTokens = 0, int OutputTokens = 0, string? Model = null);
 
 public sealed class LlmRequest
 {

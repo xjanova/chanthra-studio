@@ -9,7 +9,7 @@
     <LangVersion>latest</LangVersion>
     <RootNamespace>ChanthraStudio</RootNamespace>
     <AssemblyName>ChanthraStudio</AssemblyName>
-    <Version>0.9.0</Version>
+    <Version>0.10.0</Version>
     <Company>Chanthra Studio</Company>
     <Product>Chanthra Studio</Product>
     <Description>AI video atelier — generate · edit · score · stitch</Description>

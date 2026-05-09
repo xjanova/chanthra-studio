@@ -23,6 +23,8 @@ public sealed class StudioContext
     public GpuTelemetryService GpuTelemetry { get; }
     public SchedulesRepository Schedules { get; }
     public ScheduleService ScheduleService { get; }
+    public UsageRepository Usage { get; }
+    public UsageTracker Tracker { get; }
 
     public StudioContext()
     {
@@ -45,5 +47,7 @@ public sealed class StudioContext
         // ScheduleService subscribes to Generation.ProgressChanged in its
         // ctor, so it has to be constructed AFTER GenerationService above.
         ScheduleService = new ScheduleService(this);
+        Usage = new UsageRepository(Db);
+        Tracker = new UsageTracker(this);
     }
 }

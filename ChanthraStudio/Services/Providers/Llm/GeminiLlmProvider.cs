@@ -38,7 +38,7 @@ internal sealed class GeminiLlmProvider : ILlmProvider
         catch (Exception ex) { return new ProviderHealth(false, "probe failed", ex.Message); }
     }
 
-    public async Task<string> CompleteAsync(LlmRequest req, CancellationToken ct = default)
+    public async Task<LlmResult> CompleteAsync(LlmRequest req, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(req.ApiKey))
             throw new InvalidOperationException("Gemini API key missing — set it in Settings.");
@@ -91,7 +91,10 @@ internal sealed class GeminiLlmProvider : ILlmProvider
 
         var root = JsonNode.Parse(body);
         var text = root?["candidates"]?[0]?["content"]?["parts"]?[0]?["text"]?.GetValue<string>();
-        return text ?? "";
+        // Gemini returns usageMetadata.{promptTokenCount, candidatesTokenCount, totalTokenCount}
+        var inT = root?["usageMetadata"]?["promptTokenCount"]?.GetValue<int>() ?? 0;
+        var outT = root?["usageMetadata"]?["candidatesTokenCount"]?.GetValue<int>() ?? 0;
+        return new LlmResult(text ?? "", inT, outT, model);
     }
 
     private static string? ExtractError(string body)

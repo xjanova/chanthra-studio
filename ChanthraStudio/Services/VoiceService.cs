@@ -57,6 +57,18 @@ public sealed class VoiceService
         };
         var path = await provider.SynthesiseAsync(req, destPath, ct);
 
+        // Record character-based usage. Provider-specific model slug
+        // comes from activeModel:<providerId>; if not set, fall back to
+        // a sensible default per provider so cost still gets tracked.
+        try
+        {
+            var modelSlug = _ctx.Settings.GetSetting($"activeModel:{providerId}");
+            if (string.IsNullOrEmpty(modelSlug))
+                modelSlug = providerId == "elevenlabs" ? "eleven_multilingual_v2" : "tts-1";
+            _ctx.Tracker.RecordChars(providerId, modelSlug, text.Length, "tts");
+        }
+        catch { }
+
         return new VoiceTake
         {
             FilePath = path,
@@ -140,6 +152,16 @@ public sealed class VoiceService
             DurationSec = durationSec,
         };
         var path = await provider.GenerateAsync(req, destPath, ct);
+
+        // Music is billed per second of OUTPUT — that's the duration
+        // we requested. Replicate music models all live in the
+        // "replicate" catalog by slug, not under "replicate-music",
+        // so we look up against "replicate" for the pricing match.
+        try
+        {
+            _ctx.Tracker.RecordSeconds("replicate", modelSlug, durationSec, "music");
+        }
+        catch { }
 
         return new VoiceTake
         {

@@ -30,14 +30,29 @@ public static class ProviderCatalog
     /// One picker entry. <see cref="Tag"/> is one of "best", "fast",
     /// "cheap", "free", "legacy" — drives the chip color in the Settings
     /// UI. <see cref="PricingHint"/> is shown as a small mono caption
-    /// under the model name.
+    /// under the model name. The numeric price fields below are what
+    /// <c>UsageTracker</c> uses to convert raw token/char/image counts
+    /// into a USD figure (then THB via the FX rate).
+    ///
+    /// Choose the right pricing dimension for the model kind:
+    ///   <see cref="InputUsdPer1M"/> + <see cref="OutputUsdPer1M"/> for LLM tokens
+    ///   <see cref="UsdPerChar"/> for TTS character counts
+    ///   <see cref="UsdPerImage"/> for Replicate text-to-image
+    ///   <see cref="UsdPerSecond"/> for video / music duration billing
+    /// All are nullable doubles — leave unset for free models so the
+    /// tracker records the call but logs $0.
     /// </summary>
     public sealed record ModelOption(
         string Slug,
         string DisplayName,
         string? Tag = null,
         string? PricingHint = null,
-        string? Description = null);
+        string? Description = null,
+        double? InputUsdPer1M = null,
+        double? OutputUsdPer1M = null,
+        double? UsdPerChar = null,
+        double? UsdPerImage = null,
+        double? UsdPerSecond = null);
 
     public static ProviderInfo? FindById(string id) =>
         All.FirstOrDefault(p => p.Id == id);
@@ -61,17 +76,24 @@ public static class ProviderCatalog
             Models: new[]
             {
                 new ModelOption("gpt-5.5", "GPT-5.5", "best", "$5 / $30 per 1M tok",
-                    "Flagship · เก่งสุด สำหรับงาน reasoning + coding ซับซ้อน"),
+                    "Flagship · เก่งสุด สำหรับงาน reasoning + coding ซับซ้อน",
+                    InputUsdPer1M: 5, OutputUsdPer1M: 30),
                 new ModelOption("gpt-5.5-pro", "GPT-5.5 Pro", "best", null,
-                    "ชั้นพรีเมียม ตอบแม่นกว่า · ราคาต่อรอง"),
+                    "ชั้นพรีเมียม ตอบแม่นกว่า · ราคาต่อรอง",
+                    InputUsdPer1M: 15, OutputUsdPer1M: 75),
                 new ModelOption("gpt-5.4", "GPT-5.4", null, "$2.50 / $15",
-                    "Frontier · งานทั่วไประดับมือโปร"),
+                    "Frontier · งานทั่วไประดับมือโปร",
+                    InputUsdPer1M: 2.50, OutputUsdPer1M: 15),
                 new ModelOption("gpt-5.4-mini", "GPT-5.4 mini", "fast", null,
-                    "เร็วกว่า ถูกกว่า สำหรับ chat ทั่วไป"),
+                    "เร็วกว่า ถูกกว่า สำหรับ chat ทั่วไป",
+                    InputUsdPer1M: 0.40, OutputUsdPer1M: 1.60),
                 new ModelOption("gpt-5.4-nano", "GPT-5.4 nano", "cheap", "$0.20 / $1.25",
-                    "ราคาประหยัดสุด · งาน batch · classify"),
-                new ModelOption("gpt-5", "GPT-5", "legacy", null, "รุ่นก่อน · ยังใช้ได้"),
-                new ModelOption("gpt-5-mini", "GPT-5 mini", "legacy"),
+                    "ราคาประหยัดสุด · งาน batch · classify",
+                    InputUsdPer1M: 0.20, OutputUsdPer1M: 1.25),
+                new ModelOption("gpt-5", "GPT-5", "legacy", null, "รุ่นก่อน · ยังใช้ได้",
+                    InputUsdPer1M: 5, OutputUsdPer1M: 15),
+                new ModelOption("gpt-5-mini", "GPT-5 mini", "legacy", null, null,
+                    InputUsdPer1M: 0.30, OutputUsdPer1M: 1.20),
             },
             FreeTierNote: "ไม่มี free tier · ต้องเติมเครดิตขั้นต่ำ $5"),
 
@@ -90,17 +112,24 @@ public static class ProviderCatalog
             Models: new[]
             {
                 new ModelOption("claude-opus-4-7", "Claude Opus 4.7", "best", "$15 / $75 per 1M tok",
-                    "Flagship · best at agentic coding + image up to 2576px"),
+                    "Flagship · best at agentic coding + image up to 2576px",
+                    InputUsdPer1M: 15, OutputUsdPer1M: 75),
                 new ModelOption("claude-sonnet-4-6", "Claude Sonnet 4.6", "best", "$3 / $15",
-                    "94% computer-use accuracy · เกือบเทียบ Opus 4 รุ่นก่อน"),
-                new ModelOption("claude-opus-4-6", "Claude Opus 4.6", null, "$15 / $75"),
-                new ModelOption("claude-sonnet-4-5", "Claude Sonnet 4.5", null, "$3 / $15"),
+                    "94% computer-use accuracy · เกือบเทียบ Opus 4 รุ่นก่อน",
+                    InputUsdPer1M: 3, OutputUsdPer1M: 15),
+                new ModelOption("claude-opus-4-6", "Claude Opus 4.6", null, "$15 / $75", null,
+                    InputUsdPer1M: 15, OutputUsdPer1M: 75),
+                new ModelOption("claude-sonnet-4-5", "Claude Sonnet 4.5", null, "$3 / $15", null,
+                    InputUsdPer1M: 3, OutputUsdPer1M: 15),
                 new ModelOption("claude-haiku-4-5", "Claude Haiku 4.5", "cheap", "$1 / $5",
-                    "เร็วและถูก สำหรับ batch/classify"),
+                    "เร็วและถูก สำหรับ batch/classify",
+                    InputUsdPer1M: 1, OutputUsdPer1M: 5),
                 new ModelOption("claude-opus-4-0", "Claude Opus 4.0", "legacy", null,
-                    "deprecate มิ.ย. 2026 — เปลี่ยนไป 4.6/4.7"),
+                    "deprecate มิ.ย. 2026 — เปลี่ยนไป 4.6/4.7",
+                    InputUsdPer1M: 15, OutputUsdPer1M: 75),
                 new ModelOption("claude-sonnet-4-0", "Claude Sonnet 4.0", "legacy", null,
-                    "deprecate มิ.ย. 2026"),
+                    "deprecate มิ.ย. 2026",
+                    InputUsdPer1M: 3, OutputUsdPer1M: 15),
             },
             FreeTierNote: "$5 เครดิตทดลอง · พอ chat ราว 200-500 ข้อ"),
 
@@ -119,17 +148,24 @@ public static class ProviderCatalog
             Models: new[]
             {
                 new ModelOption("gemini-3.1-pro", "Gemini 3.1 Pro", "best", "$1.25-15 / 1M tok",
-                    "Reasoning-first · 1M context · adaptive thinking"),
+                    "Reasoning-first · 1M context · adaptive thinking",
+                    InputUsdPer1M: 1.25, OutputUsdPer1M: 15),
                 new ModelOption("gemini-3-flash", "Gemini 3 Flash", "fast",
-                    null, "Balanced speed + capability"),
+                    null, "Balanced speed + capability",
+                    InputUsdPer1M: 0.30, OutputUsdPer1M: 2.50),
                 new ModelOption("gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite", "cheap",
-                    "$0.10-3 / 1M", "ราคาประหยัดสุด"),
+                    "$0.10-3 / 1M", "ราคาประหยัดสุด",
+                    InputUsdPer1M: 0.10, OutputUsdPer1M: 3),
                 new ModelOption("gemini-2.5-pro", "Gemini 2.5 Pro", null, "$1.25-15",
-                    "1M context · adaptive thinking"),
-                new ModelOption("gemini-2.5-flash", "Gemini 2.5 Flash", "fast"),
-                new ModelOption("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite", "cheap"),
+                    "1M context · adaptive thinking",
+                    InputUsdPer1M: 1.25, OutputUsdPer1M: 15),
+                new ModelOption("gemini-2.5-flash", "Gemini 2.5 Flash", "fast", null, null,
+                    InputUsdPer1M: 0.30, OutputUsdPer1M: 2.50),
+                new ModelOption("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite", "cheap", null, null,
+                    InputUsdPer1M: 0.10, OutputUsdPer1M: 0.40),
                 new ModelOption("gemini-2.0-flash-001", "Gemini 2.0 Flash", "legacy",
-                    null, "shutdown 1 มิ.ย. 2026"),
+                    null, "shutdown 1 มิ.ย. 2026",
+                    InputUsdPer1M: 0.10, OutputUsdPer1M: 0.40),
             },
             FreeTierNote: "Free tier · 15 RPM, 1M tokens/day, 1500 requests/day"),
 
@@ -179,11 +215,14 @@ public static class ProviderCatalog
             Models: new[]
             {
                 new ModelOption("tts-1", "TTS-1", "fast", "$15 / 1M chars",
-                    "ความเร็วสูง สำหรับ realtime"),
+                    "ความเร็วสูง สำหรับ realtime",
+                    UsdPerChar: 15.0 / 1_000_000.0),
                 new ModelOption("tts-1-hd", "TTS-1 HD", "best", "$30 / 1M chars",
-                    "คุณภาพสูง · เหมาะกับงานเผยแพร่"),
+                    "คุณภาพสูง · เหมาะกับงานเผยแพร่",
+                    UsdPerChar: 30.0 / 1_000_000.0),
                 new ModelOption("gpt-4o-mini-tts", "gpt-4o-mini-tts", null, null,
-                    "ใหม่ · ปรับ tone ได้ผ่าน prompt"),
+                    "ใหม่ · ปรับ tone ได้ผ่าน prompt",
+                    UsdPerChar: 12.0 / 1_000_000.0),
             }),
 
         new ProviderInfo(
@@ -201,13 +240,17 @@ public static class ProviderCatalog
             Models: new[]
             {
                 new ModelOption("eleven_v3", "Eleven v3", "best", null,
-                    "ใหม่สุด · expressive · 70+ ภาษา · alpha"),
+                    "ใหม่สุด · expressive · 70+ ภาษา · alpha",
+                    UsdPerChar: 0.30 / 1_000.0),  // ~$0.30 per 1K chars on Creator+
                 new ModelOption("eleven_multilingual_v2", "Multilingual v2", "best", null,
-                    "29 ภาษา · เสียงนุ่ม · เหมาะกับงานคุณภาพสูง"),
+                    "29 ภาษา · เสียงนุ่ม · เหมาะกับงานคุณภาพสูง",
+                    UsdPerChar: 0.30 / 1_000.0),
                 new ModelOption("eleven_flash_v2_5", "Flash v2.5", "fast", null,
-                    "75ms latency · 32 ภาษา · realtime"),
+                    "75ms latency · 32 ภาษา · realtime",
+                    UsdPerChar: 0.15 / 1_000.0),
                 new ModelOption("eleven_turbo_v2_5", "Turbo v2.5", "fast", null,
-                    "เร็ว · ราคาประหยัด"),
+                    "เร็ว · ราคาประหยัด",
+                    UsdPerChar: 0.15 / 1_000.0),
             },
             FreeTierNote: "Free tier · 10K chars/เดือน · v3 + multilingual ใช้ได้"),
 
@@ -229,33 +272,46 @@ public static class ProviderCatalog
             {
                 // Image
                 new ModelOption("black-forest-labs/flux-2-max", "Flux 2 Max", "best",
-                    "$0.08-0.12 / image", "Highest fidelity · product photo · character consistency"),
+                    "$0.08-0.12 / image", "Highest fidelity · product photo · character consistency",
+                    UsdPerImage: 0.10),
                 new ModelOption("black-forest-labs/flux-2-pro", "Flux 2 Pro", "best",
-                    "$0.04-0.06", "ใกล้เคียง Max ราคาถูกกว่า · structured JSON prompts"),
+                    "$0.04-0.06", "ใกล้เคียง Max ราคาถูกกว่า · structured JSON prompts",
+                    UsdPerImage: 0.05),
                 new ModelOption("black-forest-labs/flux-schnell", "Flux Schnell", "fast",
-                    "$0.003-0.005", "เร็วสุด · iterate ราคาถูกที่สุดในตระกูล Flux"),
+                    "$0.003-0.005", "เร็วสุด · iterate ราคาถูกที่สุดในตระกูล Flux",
+                    UsdPerImage: 0.004),
                 new ModelOption("black-forest-labs/flux-2-flex", "Flux 2 Flex", null, null,
-                    "Typography specialist · render text สวย"),
+                    "Typography specialist · render text สวย",
+                    UsdPerImage: 0.05),
                 new ModelOption("stability-ai/sdxl", "SDXL", null, "$0.01-0.02",
-                    "คลาสสิก · open-source · controllable"),
+                    "คลาสสิก · open-source · controllable",
+                    UsdPerImage: 0.015),
                 new ModelOption("bytedance/seedream-4.5", "Seedream 4.5", "best",
-                    null, "ByteDance · cinematic · spatial understanding"),
-                // Video
+                    null, "ByteDance · cinematic · spatial understanding",
+                    UsdPerImage: 0.04),
+                // Video — billed per second of output
                 new ModelOption("tencent/hunyuan-video", "Hunyuan Video", "best",
-                    "$0.30+ / clip", "text-to-video 720p · 73 frames"),
+                    "$0.30+ / clip", "text-to-video 720p · 73 frames",
+                    UsdPerSecond: 0.10),
                 new ModelOption("minimax/video-01", "MiniMax Video-01", "best",
-                    null, "text-to-video · 6s clips"),
+                    null, "text-to-video · 6s clips",
+                    UsdPerSecond: 0.085),
                 new ModelOption("kwaivgi/kling-v1.6-pro", "Kling v1.6 Pro", "best",
-                    null, "high-quality cinematic video"),
+                    null, "high-quality cinematic video",
+                    UsdPerSecond: 0.28),
                 new ModelOption("lightricks/ltx-video", "LTX Video", "fast",
-                    null, "fast realtime video"),
-                // Music
+                    null, "fast realtime video",
+                    UsdPerSecond: 0.04),
+                // Music — billed per second
                 new ModelOption("meta/musicgen", "MusicGen", null, "$0.05+ / 30s",
-                    "30s music generation"),
+                    "30s music generation",
+                    UsdPerSecond: 0.0017),
                 new ModelOption("riffusion/riffusion", "Riffusion", "fast", null,
-                    "spectrogram-style music"),
+                    "spectrogram-style music",
+                    UsdPerSecond: 0.0013),
                 new ModelOption("lucataco/ace-step", "ACE-Step", null, null,
-                    "song generation with vocals"),
+                    "song generation with vocals",
+                    UsdPerSecond: 0.005),
             },
             FreeTierNote: "ต้องเติมเครดิตขั้นต่ำ $1 · จากนั้นจ่ายตามใช้"),
     };
