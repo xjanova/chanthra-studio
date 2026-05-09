@@ -22,6 +22,11 @@ public partial class App : Application
         // dormant — safe to start unconditionally.
         Studio.GpuTelemetry.Start();
 
+        // Start the auto-schedule scanner. First tick is 5s out so the
+        // license + workflow + db bootstrap finishes before we try to
+        // fan out concurrent generations.
+        Studio.ScheduleService.Start();
+
         // Fire and forget — the UI is responsive while the license validates
         // and the update check pings GitHub. The status bar reflects the
         // result via LicenseGuard.LicenseChanged.
@@ -75,6 +80,7 @@ public partial class App : Application
             // Best-effort save on exit — don't block the shutdown if disk is full.
         }
         try { Studio.GpuTelemetry.Dispose(); } catch { /* dispose is best effort */ }
+        try { Studio.ScheduleService.Dispose(); } catch { /* dispose is best effort */ }
         base.OnExit(e);
     }
 }

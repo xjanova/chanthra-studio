@@ -1,0 +1,335 @@
+<UserControl
+    x:Class="ChanthraStudio.Views.ScheduleView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:m="clr-namespace:ChanthraStudio.Models"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="clr-namespace:ChanthraStudio.ViewModels"
+    Background="{StaticResource BrushBgBase}"
+    d:DataContext="{d:DesignInstance vm:ScheduleViewModel}"
+    d:DesignHeight="900"
+    d:DesignWidth="1500"
+    mc:Ignorable="d">
+
+    <UserControl.DataContext>
+        <vm:ScheduleViewModel />
+    </UserControl.DataContext>
+
+    <UserControl.Resources>
+        <Style BasedOn="{StaticResource ThinScrollBar}" TargetType="ScrollBar" />
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  Toast  -->
+        <Border
+            Grid.Row="0"
+            Grid.RowSpan="2"
+            Margin="0,18,0,0"
+            Padding="14,8"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Panel.ZIndex="50"
+            Background="#1FD4A76A"
+            BorderBrush="#66D4A76A"
+            BorderThickness="1"
+            CornerRadius="99"
+            Effect="{StaticResource ShadowGoldGlowSoft}"
+            Visibility="{Binding Toast, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}">
+            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="11.5" Foreground="{StaticResource BrushText1}" Text="{Binding Toast}" />
+        </Border>
+
+        <!--  Header  -->
+        <Border
+            Grid.Row="0"
+            Padding="32,18"
+            Background="{StaticResource BrushSurface02}"
+            BorderBrush="{StaticResource BrushLineHairline}"
+            BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Style="{StaticResource TextPanelHeader}" FontSize="22">
+                        <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
+                        <Run Text="Auto-schedule" />
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12"
+                               Text="แอปจะรันคลิปอัตโนมัติตามเวลาที่ตั้ง · ติ๊ก auto-post ก็โพสต์ขึ้น Facebook / webhook ทันทีหลังเรนเดอร์เสร็จ · placeholder รองรับ {date} {time} {dow} {hour} {minute} {iso}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
+                    <Button Margin="0,0,8,0" Padding="14,6" Command="{Binding RefreshCommand}" Content="↻ Refresh" Style="{StaticResource ButtonPill}" />
+                    <Button Padding="16,6" Command="{Binding AddCommand}" Content="✦  Add schedule" Style="{StaticResource ButtonPillGold}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!--  Body: schedules list (left) · editor (right)  -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="480" />
+            </Grid.ColumnDefinitions>
+
+            <!--  List  -->
+            <ScrollViewer Grid.Column="0" Padding="32,18,16,18" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Schedules}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type m:Schedule}">
+                            <Border Margin="0,0,0,12" Padding="18,14" Style="{StaticResource SurfaceCard}" Cursor="Hand"
+                                    MouseLeftButtonUp="ScheduleCard_Click">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <Grid Grid.Row="0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock FontFamily="{StaticResource FontDisplay}" FontSize="16" FontStyle="Italic" FontWeight="Medium" Foreground="{StaticResource BrushText1}" Text="{Binding Name}" />
+                                            <TextBlock Margin="0,2,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText3}">
+                                                <Run Text="{Binding KindLabel, Mode=OneWay}" />
+                                                <Run Text="·" Foreground="{StaticResource BrushText4}" />
+                                                <Run Text="{Binding Spec, Mode=OneWay}" Foreground="{StaticResource BrushGoldHi}" />
+                                            </TextBlock>
+                                        </StackPanel>
+
+                                        <Border Grid.Column="1" Margin="0,0,10,0" Padding="8,3" VerticalAlignment="Center" CornerRadius="99">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#1F6DBF8C" />
+                                                    <Setter Property="BorderBrush" Value="#666DBF8C" />
+                                                    <Setter Property="BorderThickness" Value="1" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                                            <Setter Property="Background" Value="#1F7D7388" />
+                                                            <Setter Property="BorderBrush" Value="#667D7388" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="9.5" Foreground="{StaticResource BrushText1}">
+                                                <Run Text="{Binding IsEnabled, Converter={StaticResource StringEquals}, ConverterParameter=True, FallbackValue=OFF}" />
+                                            </TextBlock>
+                                        </Border>
+
+                                        <ToggleButton Grid.Column="2" IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                                      Click="EnabledToggle_Click"
+                                                      VerticalAlignment="Center"
+                                                      Style="{StaticResource ToggleSwitch}" />
+                                    </Grid>
+
+                                    <TextBlock Grid.Row="1" Margin="0,8,0,0" Style="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" MaxHeight="36" TextTrimming="CharacterEllipsis" Text="{Binding PromptTemplate}" />
+
+                                    <Grid Grid.Row="2" Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                            <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="NEXT" />
+                                            <TextBlock Margin="6,0,14,0" Style="{StaticResource TextMonoGold}" Text="{Binding NextFireCountdown}" />
+                                            <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="LAST" />
+                                            <TextBlock Margin="6,0,0,0" Style="{StaticResource TextMono}" Foreground="{StaticResource BrushText3}" Text="{Binding LastFireLabel}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <Button Margin="0,0,6,0" Padding="10,4"
+                                                    Command="{Binding DataContext.RunNowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Content="run now" Style="{StaticResource ButtonPill}" />
+                                            <Button Padding="10,4"
+                                                    Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Content="delete" Style="{StaticResource ButtonPill}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <!--  Editor for selected schedule  -->
+            <Border Grid.Column="1" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1,0,0,0" Background="{StaticResource BrushSurface02}">
+                <ScrollViewer Padding="22,18,22,22" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource TextPanelHeader}" FontSize="14">
+                            <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
+                            <Run Text="Editor" />
+                        </TextBlock>
+
+                        <Grid Margin="0,12,0,0" Visibility="{Binding Selected, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!--  Name  -->
+                            <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Text="NAME" />
+                                <Border Margin="0,4,0,0" Padding="10,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                    <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontUI}" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding Selected.Name, UpdateSourceTrigger=PropertyChanged}" />
+                                </Border>
+                            </StackPanel>
+
+                            <!--  Prompt template  -->
+                            <StackPanel Grid.Row="1" Margin="0,0,0,12">
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Text="PROMPT TEMPLATE · use {date} {time} {dow}" />
+                                <Border Margin="0,4,0,0" Padding="10,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                    <TextBox MinHeight="72" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontThai}" FontSize="12" Foreground="{StaticResource BrushText1}" AcceptsReturn="True" TextWrapping="Wrap" Text="{Binding Selected.PromptTemplate, UpdateSourceTrigger=PropertyChanged}" />
+                                </Border>
+                            </StackPanel>
+
+                            <!--  Negative  -->
+                            <StackPanel Grid.Row="2" Margin="0,0,0,12">
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Text="NEGATIVE PROMPT" />
+                                <Border Margin="0,4,0,0" Padding="10,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                    <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText2}" AcceptsReturn="True" TextWrapping="Wrap" Text="{Binding Selected.NegativePrompt, UpdateSourceTrigger=PropertyChanged}" />
+                                </Border>
+                            </StackPanel>
+
+                            <!--  Kind + Spec  -->
+                            <Grid Grid.Row="3" Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                    <TextBlock Style="{StaticResource TextMonoUpper}" Text="KIND" />
+                                    <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                                        <RadioButton GroupName="kind" Margin="0,0,4,0" Content="DAILY" Style="{StaticResource ChipRadio}"
+                                                     IsChecked="{Binding Selected.Kind, Converter={StaticResource EnumEquals}, ConverterParameter=DailySlots, Mode=OneWay}"
+                                                     Click="KindDaily_Click" />
+                                        <RadioButton GroupName="kind" Content="INTERVAL" Style="{StaticResource ChipRadio}"
+                                                     IsChecked="{Binding Selected.Kind, Converter={StaticResource EnumEquals}, ConverterParameter=Interval, Mode=OneWay}"
+                                                     Click="KindInterval_Click" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Style="{StaticResource TextMonoUpper}" Text="SPEC · 08:00,18:00 OR 60 (minutes)" />
+                                    <Border Margin="0,4,0,0" Padding="10,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                        <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushGoldHi}" Text="{Binding Selected.Spec, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Border>
+                                </StackPanel>
+                            </Grid>
+
+                            <!--  Route + Workflow  -->
+                            <Grid Grid.Row="4" Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                    <TextBlock Style="{StaticResource TextMonoUpper}" Text="ROUTE" />
+                                    <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                                        <RadioButton GroupName="route" Margin="0,0,4,0" Content="ComfyUI" Style="{StaticResource ChipRadio}"
+                                                     IsChecked="{Binding Selected.Route, Converter={StaticResource StringEquals}, ConverterParameter=comfyui, Mode=OneWay}"
+                                                     Click="RouteComfy_Click" />
+                                        <RadioButton GroupName="route" Content="Replicate" Style="{StaticResource ChipRadio}"
+                                                     IsChecked="{Binding Selected.Route, Converter={StaticResource StringEquals}, ConverterParameter=replicate, Mode=OneWay}"
+                                                     Click="RouteReplicate_Click" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Style="{StaticResource TextMonoUpper}" Text="WORKFLOW · NAME OR REPLICATE SLUG" />
+                                    <Border Margin="0,4,0,0" Padding="10,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                        <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding Selected.Workflow, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Border>
+                                </StackPanel>
+                            </Grid>
+
+                            <!--  Aspect + Camera  -->
+                            <Grid Grid.Row="5" Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                    <TextBlock Style="{StaticResource TextMonoUpper}" Text="ASPECT" />
+                                    <ComboBox Margin="0,4,0,0" SelectedValue="{Binding Selected.Aspect, Mode=TwoWay}">
+                                        <ComboBoxItem Content="Vertical" Tag="{x:Static m:AspectRatio.Vertical}" />
+                                        <ComboBoxItem Content="Square" Tag="{x:Static m:AspectRatio.Square}" />
+                                        <ComboBoxItem Content="Wide" Tag="{x:Static m:AspectRatio.Wide}" />
+                                        <ComboBoxItem Content="Cinema" Tag="{x:Static m:AspectRatio.Cinema}" />
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                    <TextBlock Style="{StaticResource TextMonoUpper}" Text="CAMERA" />
+                                    <ComboBox Margin="0,4,0,0" SelectedValue="{Binding Selected.Camera, Mode=TwoWay}">
+                                        <ComboBoxItem Content="Locked" Tag="{x:Static m:CamMode.Locked}" />
+                                        <ComboBoxItem Content="Pan" Tag="{x:Static m:CamMode.Pan}" />
+                                        <ComboBoxItem Content="Tilt" Tag="{x:Static m:CamMode.Tilt}" />
+                                        <ComboBoxItem Content="Push" Tag="{x:Static m:CamMode.Push}" />
+                                        <ComboBoxItem Content="Orbit" Tag="{x:Static m:CamMode.Orbit}" />
+                                        <ComboBoxItem Content="Dolly" Tag="{x:Static m:CamMode.Dolly}" />
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
+
+                            <!--  Auto-post  -->
+                            <Border Grid.Row="6" Margin="0,0,0,12" Padding="10,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Grid.Column="0" VerticalAlignment="Center" IsChecked="{Binding Selected.AutoPost, Mode=TwoWay}" Foreground="{StaticResource BrushText1}" Content="Auto-post when done" />
+                                    <ComboBox Grid.Column="1" Margin="12,0,0,0" ItemsSource="{Binding PostingTargets}" SelectedItem="{Binding Selected.PostTarget, Mode=TwoWay}" />
+                                </Grid>
+                            </Border>
+
+                            <!--  Save + Run-now buttons  -->
+                            <Grid Grid.Row="7" Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" HorizontalAlignment="Left" Padding="14,8"
+                                        Command="{Binding RunNowCommand}" CommandParameter="{Binding Selected}"
+                                        Content="run now" Style="{StaticResource ButtonPill}" />
+                                <Button Grid.Column="1" Padding="20,8"
+                                        Command="{Binding SaveCommand}" CommandParameter="{Binding Selected}"
+                                        Content="✦  Save" Style="{StaticResource ButtonPillGold}" />
+                            </Grid>
+
+                            <TextBlock Grid.Row="8" Margin="0,12,0,0" FontFamily="{StaticResource FontMono}" FontSize="10" Foreground="{StaticResource BrushText3}" TextWrapping="Wrap">
+                                <Run Text="next fire " />
+                                <Run Foreground="{StaticResource BrushGoldHi}" Text="{Binding Selected.NextFireLabel, Mode=OneWay}" />
+                                <Run Text="  ·  " />
+                                <Run Text="{Binding Selected.NextFireCountdown, Mode=OneWay}" />
+                            </TextBlock>
+                        </Grid>
+
+                        <TextBlock Margin="0,40,0,0"
+                                   FontFamily="{StaticResource FontMono}" FontSize="10.5"
+                                   Foreground="{StaticResource BrushText3}"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding Selected, Converter={StaticResource NotNullOrEmpty}, ConverterParameter=invert, FallbackValue=Visible}"
+                                   Text="No schedule selected. Click a card to edit, or press “Add schedule” to create one." />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

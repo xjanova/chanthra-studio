@@ -149,6 +149,58 @@ public sealed class Database
         {
             SetSchemaVersion(c, tx, 2);
         }
+
+        if (current < 3)
+        {
+            // Auto-schedule tables (phase 6.6).
+            //
+            // schedules — one row per recurring auto-generation job. The
+            // ScheduleService scans this table once a minute, fires any
+            // entries whose next_fire_at <= now, then composes a Shot from
+            // the template and dispatches through the existing Generation
+            // pipeline.
+            //
+            // schedule_runs — append-only history of every fire so the user
+            // can see a "last 30 days" timeline per schedule (planned, but
+            // even just for debugging "did it run?" it's invaluable).
+            Exec(c, tx, """
+                CREATE TABLE schedules (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name            TEXT    NOT NULL,
+                    prompt_template TEXT    NOT NULL,
+                    negative_prompt TEXT,
+                    workflow        TEXT,
+                    route           TEXT    NOT NULL DEFAULT 'comfyui',
+                    style_id        TEXT,
+                    aspect          TEXT    NOT NULL DEFAULT 'Wide',
+                    camera          TEXT    NOT NULL DEFAULT 'Push',
+                    duration_sec    REAL    NOT NULL DEFAULT 8,
+                    motion          REAL    NOT NULL DEFAULT 0.7,
+                    -- 'daily_slots' (spec="08:00,12:00,18:00") or
+                    -- 'interval'    (spec="60" minutes)
+                    kind            TEXT    NOT NULL DEFAULT 'daily_slots',
+                    spec            TEXT    NOT NULL,
+                    auto_post       INTEGER NOT NULL DEFAULT 0,
+                    post_target     TEXT,
+                    last_fire_at    INTEGER,
+                    next_fire_at    INTEGER,
+                    is_enabled      INTEGER NOT NULL DEFAULT 1,
+                    created_at      INTEGER NOT NULL,
+                    updated_at      INTEGER NOT NULL
+                );
+                CREATE TABLE schedule_runs (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    schedule_id   INTEGER NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
+                    fired_at      INTEGER NOT NULL,
+                    job_id        TEXT,
+                    status        TEXT    NOT NULL,
+                    error_message TEXT
+                );
+                CREATE INDEX idx_schedules_enabled ON schedules(is_enabled, next_fire_at);
+                CREATE INDEX idx_schedule_runs_sched ON schedule_runs(schedule_id, fired_at DESC);
+                """);
+            SetSchemaVersion(c, tx, 3);
+        }
     }
 
     private static int GetSchemaVersion(IDbConnection c, IDbTransaction tx)

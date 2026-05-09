@@ -80,6 +80,13 @@
                         </Setter.Value>
                     </Setter>
                 </DataTrigger>
+                <DataTrigger Binding="{Binding ActiveView}" Value="Schedule">
+                    <Setter Property="Content">
+                        <Setter.Value>
+                            <views:ScheduleView />
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding ActiveView}" Value="Settings">
                     <Setter Property="Content">
                         <Setter.Value>

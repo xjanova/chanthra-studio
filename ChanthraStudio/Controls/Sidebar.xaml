@@ -114,6 +114,20 @@
                     Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
                     StrokeThickness="1.4" />
             </ToggleButton>
+            <ToggleButton
+                Command="{Binding SwitchViewCommand}"
+                CommandParameter="Schedule"
+                IsChecked="{Binding ActiveView, Converter={StaticResource EnumEquals}, ConverterParameter=Schedule, Mode=OneWay}"
+                Style="{StaticResource SidebarItem}"
+                ToolTip="Auto-schedule">
+                <Path
+                    Width="19"
+                    Height="19"
+                    Data="{StaticResource IcoClock}"
+                    Stretch="Uniform"
+                    Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                    StrokeThickness="1.4" />
+            </ToggleButton>
         </StackPanel>
 
         <StackPanel
