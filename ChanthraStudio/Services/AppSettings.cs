@@ -44,9 +44,23 @@ public sealed class AppSettings
 
     public AppSettings(Database db) { _db = db; }
 
-    /// <summary>Reads a decrypted API key. Empty string if unset.</summary>
-    public string this[string providerId]
-        => EncryptedKeys.TryGetValue(providerId, out var ct) ? DpapiCrypto.Unprotect(ct) : "";
+    /// <summary>
+    /// Indexer overload: returns the decrypted API key for a known provider id,
+    /// OR a plaintext value from the extras store for any other key. The
+    /// distinction is implicit — a "providerId" row that happens to also
+    /// exist in extras would prefer the encrypted key (via TryGetValue
+    /// short-circuit). Callers wanting only the extras store should use
+    /// <see cref="GetSetting"/>.
+    /// </summary>
+    public string this[string key]
+    {
+        get
+        {
+            if (EncryptedKeys.TryGetValue(key, out var ct))
+                return DpapiCrypto.Unprotect(ct);
+            return _extras.TryGetValue(key, out var v) ? v : "";
+        }
+    }
 
     /// <summary>Stores an API key. Pass empty/null to remove it.</summary>
     public void SetApiKey(string providerId, string? plaintext)
@@ -59,6 +73,22 @@ public sealed class AppSettings
 
     public bool HasApiKey(string providerId)
         => EncryptedKeys.TryGetValue(providerId, out var ct) && !string.IsNullOrEmpty(ct);
+
+    /// <summary>
+    /// Read-write store for ad-hoc string settings that don't justify a
+    /// dedicated typed property — e.g. "activeModel:openai" → "gpt-5.5".
+    /// Plaintext (not DPAPI-protected) — for secrets use SetApiKey.
+    /// </summary>
+    private readonly Dictionary<string, string> _extras = new();
+
+    public string GetSetting(string key) =>
+        _extras.TryGetValue(key, out var v) ? v : "";
+
+    public void SetSetting(string key, string value)
+    {
+        if (string.IsNullOrEmpty(value)) _extras.Remove(key);
+        else _extras[key] = value;
+    }
 
     // -------- persistence -------------------------------------------------
 
@@ -110,6 +140,15 @@ public sealed class AppSettings
             Upsert(c, tx, "apikey:" + id, ciphertext, true, now);
         }
 
+        // Extras — plaintext settings keyed by an arbitrary string. Used
+        // for activeModel:openai, etc. Drop any extras-rows the user
+        // removed since last save by deleting any non-typed, non-apikey
+        // row that's not in the current dictionary.
+        foreach (var (k, v) in _extras)
+        {
+            Upsert(c, tx, k, v, false, now);
+        }
+
         // Drop any apikey:* rows the user removed since last save.
         if (EncryptedKeys.Count == 0)
         {
@@ -154,8 +193,11 @@ public sealed class AppSettings
             case "autosaveSeconds":    if (int.TryParse(r.Value, out var n)) s.AutosaveSeconds = n; break;
             case "theme":              s.Theme = r.Value; break;
             case "ffmpegPath":         s.FfmpegPath = r.Value; break;
-            // unknown keys are silently dropped — likely a downgrade or a
-            // future-version setting we don't recognise.
+            default:
+                // Unknown keys: keep them as extras so chips like
+                // "activeModel:openai" round-trip on save.
+                s._extras[r.Key] = r.Value;
+                break;
         }
     }
 

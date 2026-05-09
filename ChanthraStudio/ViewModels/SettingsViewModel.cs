@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -19,6 +20,40 @@ public sealed class ProviderRow : ObservableObject
     public string ApiKeyHint => _provider.ApiKeyHint;
     public bool RequiresApiKey => _provider.RequiresApiKey;
     public ProviderKind Kind => _provider.Kind;
+
+    /// <summary>
+    /// Catalog entry for this provider — includes the API-key signup URL,
+    /// onboarding steps, and curated model list shown in the Settings UI.
+    /// Null for providers we don't have a catalog entry for (e.g. ComfyUI
+    /// local — no key page applies).
+    /// </summary>
+    public Models.ProviderCatalog.ProviderInfo? Catalog { get; }
+
+    public bool HasCatalog => Catalog is not null;
+    public string KeyPageUrl => Catalog?.KeyPageUrl ?? "";
+    public IReadOnlyList<string> SetupSteps => Catalog?.SetupSteps ?? System.Array.Empty<string>();
+    public string FreeTierNote => Catalog?.FreeTierNote ?? "";
+    public IReadOnlyList<Models.ProviderCatalog.ModelOption> ModelOptions =>
+        Catalog?.Models ?? System.Array.Empty<Models.ProviderCatalog.ModelOption>();
+
+    /// <summary>
+    /// Active model slug for this provider, persisted under
+    /// <c>activeModel:&lt;providerId&gt;</c>. The Settings page exposes
+    /// model chips that toggle this.
+    /// </summary>
+    public string ActiveModel
+    {
+        get => _settings[$"activeModel:{Id}"];
+        set
+        {
+            _settings.SetSetting($"activeModel:{Id}", value);
+            try { _settings.Save(); } catch { }
+            OnPropertyChanged();
+        }
+    }
+
+    public IRelayCommand OpenKeyPageCommand { get; }
+    public IRelayCommand<string> PickModelCommand { get; }
 
     private string _apiKeyDraft;
     public string ApiKeyDraft
@@ -49,8 +84,25 @@ public sealed class ProviderRow : ObservableObject
         _provider = provider;
         _settings = settings;
         _apiKeyDraft = settings[provider.Id];
+        Catalog = Models.ProviderCatalog.FindById(provider.Id);
         TestCommand = new AsyncRelayCommand(TestAsync);
         SaveCommand = new RelayCommand(Save);
+        OpenKeyPageCommand = new RelayCommand(() =>
+        {
+            if (string.IsNullOrEmpty(KeyPageUrl)) return;
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(KeyPageUrl)
+                {
+                    UseShellExecute = true
+                });
+            }
+            catch { /* opening browser is best-effort */ }
+        });
+        PickModelCommand = new RelayCommand<string>(slug =>
+        {
+            if (!string.IsNullOrEmpty(slug)) ActiveModel = slug!;
+        });
         UpdateStatusFromStorage();
     }
 

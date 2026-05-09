@@ -116,8 +116,10 @@
                         Margin="0,4,0,0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Border
+                            Grid.Row="0"
                             Padding="12,8"
                             Background="{StaticResource BrushBgInset}"
                             BorderBrush="{StaticResource BrushLineHairline}"
@@ -137,6 +139,133 @@
                                 PasswordChar="•"
                                 Tag="{Binding}" />
                         </Border>
+
+                        <!--  Setup guide expander (only when catalog has steps for this provider)  -->
+                        <Expander
+                            Grid.Row="1"
+                            Margin="0,8,0,0"
+                            Background="Transparent"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="0,1,0,0"
+                            Foreground="{StaticResource BrushText3}"
+                            Visibility="{Binding HasCatalog, Converter={StaticResource BoolToVis}}">
+                            <Expander.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource TextMonoUpper}" Text="SETUP · WHERE TO GET THE KEY · MODELS" />
+                                </StackPanel>
+                            </Expander.Header>
+                            <StackPanel Margin="0,8,0,0">
+                                <!--  Get-key button  -->
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMono}" Foreground="{StaticResource BrushText3}" Text="{Binding KeyPageUrl}" TextTrimming="CharacterEllipsis" />
+                                    <Button Grid.Column="1" Padding="12,6" Command="{Binding OpenKeyPageCommand}" Content="Open key page →" Style="{StaticResource ButtonPillGold}" />
+                                </Grid>
+
+                                <!--  Numbered steps  -->
+                                <ItemsControl ItemsSource="{Binding SetupSteps}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Grid.Column="0" Width="20" Height="20" Margin="0,0,10,0" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="10">
+                                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="•" />
+                                                </Border>
+                                                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontFamily="{StaticResource FontThai}" FontSize="11.5" Foreground="{StaticResource BrushText2}" TextWrapping="Wrap" Text="{Binding}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!--  Free-tier note  -->
+                                <TextBlock Margin="0,8,0,0" FontFamily="{StaticResource FontMono}" FontSize="10" Foreground="{StaticResource BrushOk}" TextWrapping="Wrap" Text="{Binding FreeTierNote, StringFormat=· {0}}"
+                                           Visibility="{Binding FreeTierNote, Converter={StaticResource NotNullOrEmpty}}" />
+
+                                <!--  Recommended models grid  -->
+                                <TextBlock Margin="0,16,0,6" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="RECOMMENDED MODELS · click to set as active" />
+                                <ItemsControl ItemsSource="{Binding ModelOptions}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Margin="0,0,6,6" Padding="0" BorderThickness="0" Background="Transparent"
+                                                    Command="{Binding DataContext.PickModelCommand, RelativeSource={RelativeSource AncestorType=ItemsControl, AncestorLevel=2}}"
+                                                    CommandParameter="{Binding Slug}">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="bd" Padding="10,5" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="4">
+                                                            <ContentPresenter />
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushLineGold}" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                                <StackPanel>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText1}" Text="{Binding DisplayName}" />
+                                                        <Border Grid.Column="1" Margin="6,0,0,0" Padding="5,0" CornerRadius="3"
+                                                                Visibility="{Binding Tag, Converter={StaticResource NotNullOrEmpty}}">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Background" Value="{StaticResource BrushSurface03}" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Tag}" Value="best">
+                                                                            <Setter Property="Background" Value="#33D4A76A" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding Tag}" Value="fast">
+                                                                            <Setter Property="Background" Value="#336DBF8C" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding Tag}" Value="cheap">
+                                                                            <Setter Property="Background" Value="#33B8A5D0" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding Tag}" Value="free">
+                                                                            <Setter Property="Background" Value="#336DBF8C" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding Tag}" Value="legacy">
+                                                                            <Setter Property="Background" Value="#33D05A5A" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="8.5" Foreground="{StaticResource BrushText1}" Text="{Binding Tag}" />
+                                                        </Border>
+                                                    </Grid>
+                                                    <TextBlock Margin="0,2,0,0" FontFamily="{StaticResource FontMono}" FontSize="9" Foreground="{StaticResource BrushText3}" Text="{Binding Slug}" />
+                                                    <TextBlock Margin="0,1,0,0" FontFamily="{StaticResource FontMono}" FontSize="9" Foreground="{StaticResource BrushGoldHi}" Text="{Binding PricingHint}"
+                                                               Visibility="{Binding PricingHint, Converter={StaticResource NotNullOrEmpty}}" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!--  Active model display  -->
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="ACTIVE MODEL" />
+                                    <TextBlock Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="{Binding ActiveModel}" />
+                                </Grid>
+                            </StackPanel>
+                        </Expander>
                     </Grid>
                 </Grid>
             </Border>
