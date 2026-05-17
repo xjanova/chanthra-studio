@@ -47,18 +47,24 @@ public sealed class GenerationService
     /// <summary>Submit a shot for generation. Returns a job id (the ComfyUI
     /// prompt_id when routed locally, or the Replicate prediction id when
     /// routed to the cloud). Routing is driven by <c>Settings.ActiveVideo</c>:
-    /// "comfyui" → local GPU pipeline, "replicate" → SubmitToReplicate.</summary>
-    public Task<string> SubmitAsync(Shot shot, CancellationToken ct = default)
+    /// "comfyui" → local GPU pipeline, "replicate" → SubmitToReplicate.
+    ///
+    /// <paramref name="routeOverride"/> and <paramref name="workflowOverride"/>
+    /// let the auto-scheduler honour each schedule's own route + workflow
+    /// without mutating the global Settings.ActiveVideo / ActiveWorkflow.
+    /// </summary>
+    public Task<string> SubmitAsync(Shot shot, CancellationToken ct = default,
+        string? routeOverride = null, string? workflowOverride = null)
     {
-        var route = (_ctx.Settings.ActiveVideo ?? "comfyui").ToLowerInvariant();
+        var route = (routeOverride ?? _ctx.Settings.ActiveVideo ?? "comfyui").ToLowerInvariant();
         return route switch
         {
-            "replicate" => SubmitToReplicateAsync(shot, ct),
-            _ => SubmitToComfyUiAsync(shot, ct),
+            "replicate" => SubmitToReplicateAsync(shot, workflowOverride, ct),
+            _ => SubmitToComfyUiAsync(shot, workflowOverride, ct),
         };
     }
 
-    private async Task<string> SubmitToComfyUiAsync(Shot shot, CancellationToken ct)
+    private async Task<string> SubmitToComfyUiAsync(Shot shot, string? workflowOverride, CancellationToken ct)
     {
         var url = _ctx.Settings.ComfyUiUrl;
         if (string.IsNullOrWhiteSpace(url))
@@ -81,19 +87,45 @@ public sealed class GenerationService
             // Load the user's active workflow from the repository — falls
             // back to the bundled default if the saved name has been removed
             // from disk since last save.
-            var descriptor = _ctx.Workflows.FindByName(_ctx.Settings.ActiveWorkflow)
+            var workflowName = !string.IsNullOrEmpty(workflowOverride) ? workflowOverride : _ctx.Settings.ActiveWorkflow;
+            var descriptor = _ctx.Workflows.FindByName(workflowName)
                           ?? _ctx.Workflows.Default();
             var workflow = descriptor is not null
                 ? Workflow.LoadFromPath(descriptor.Path)
                 : Workflow.LoadDefault();
 
+            // Aspect-aware resolution. HD 4K bumps the latent base ~+50% so
+            // a single-pass render benefits from the toggle without us having
+            // to inject an Upscale node into arbitrary user workflows.
+            var (baseW, baseH) = shot.Aspect switch
+            {
+                AspectRatio.Wide     => (1024, 576),
+                AspectRatio.Vertical => (576, 1024),
+                AspectRatio.Cinema   => (1280, 544),
+                _                    => (768, 768),
+            };
+            if (shot.Hd4k)
+            {
+                baseW = (int)(baseW * 1.5);
+                baseH = (int)(baseH * 1.5);
+            }
+
+            // Fold camera/motion/style/HD into the prompt so the controls
+            // the user can see in the composer actually shape the output.
+            // Without this, those sliders/toggles were UI lies.
+            var augmentedPrompt = PromptAugmenter.Augment(shot);
+
             workflow
-                .SetPositivePrompt(shot.Prompt)
+                .SetPositivePrompt(augmentedPrompt)
                 .SetNegativePrompt(shot.NegativePrompt)
                 .SetSeed(shot.Seed.A)
-                .SetSize(shot.Aspect == AspectRatio.Wide ? 1024 : 768,
-                         shot.Aspect == AspectRatio.Wide ? 576 : 768)
+                .SetSize(baseW, baseH)
                 .SetFilenamePrefix($"chanthra/shot{shot.Number}");
+
+            // HD 4K also bumps quality: more steps + slightly higher CFG so
+            // the extra pixels carry detail instead of just upscaling noise.
+            if (shot.Hd4k)
+                workflow.SetSteps(36).SetCfg(7.5);
 
             // If the workflow uses LoadImage AND the shot has a reference image
             // attached, upload it to ComfyUI's input/ folder and patch the
@@ -202,7 +234,7 @@ public sealed class GenerationService
     /// raise the same Done event that ComfyUI submissions raise. This way
     /// the GenerateView storyboard cards work identically for both routes.
     /// </summary>
-    private async Task<string> SubmitToReplicateAsync(Shot shot, CancellationToken ct)
+    private async Task<string> SubmitToReplicateAsync(Shot shot, string? workflowOverride, CancellationToken ct)
     {
         var apiKey = _ctx.Settings["replicate"];
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -217,20 +249,30 @@ public sealed class GenerationService
             AspectRatio.Cinema => "21:9",
             _ => "16:9",
         };
+        var slugSource = !string.IsNullOrEmpty(workflowOverride) ? workflowOverride : _ctx.Settings.ActiveWorkflow;
         var req = new Providers.VideoRequest
         {
             ApiKey = apiKey,
-            // Settings.ActiveWorkflow doubles as the Replicate model slug
-            // when ActiveVideo == "replicate". Falls back to the provider's
-            // default (flux-schnell) for users who haven't picked one yet.
-            Model = LooksLikeReplicateSlug(_ctx.Settings.ActiveWorkflow)
-                    ? _ctx.Settings.ActiveWorkflow
+            // Settings.ActiveWorkflow (or the schedule's per-row override)
+            // doubles as the Replicate model slug when routed cloud-side.
+            // Falls back to the provider's default (flux-schnell) for users
+            // who haven't picked one yet.
+            Model = LooksLikeReplicateSlug(slugSource)
+                    ? slugSource
                     : Providers.Video.ReplicateVideoProvider.DefaultModel,
-            Prompt = shot.Prompt,
+            // Camera / motion / style / HD descriptors get folded into the
+            // prompt here too, so Replicate models honour the composer just
+            // like ComfyUI does.
+            Prompt = PromptAugmenter.Augment(shot),
             NegativePrompt = shot.NegativePrompt,
             ReferenceImagePath = shot.ReferenceImagePath,
             Aspect = aspect,
             Seed = shot.Seed.A,
+            DurationSec = shot.DurationSec,
+            Motion = shot.Motion,
+            Hd4k = shot.Hd4k,
+            Audio = shot.Audio,
+            CamMode = shot.Cam.ToString().ToLowerInvariant(),
         };
 
         // Replicate ids are unique enough to use as our internal jobId.

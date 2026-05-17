@@ -95,6 +95,32 @@ public sealed class ReplicateVideoProvider : IVideoProvider
             input["image"] = "data:" + GuessMime(req.ReferenceImagePath) + ";base64," +
                               Convert.ToBase64String(await File.ReadAllBytesAsync(req.ReferenceImagePath, ct));
 
+        // Per-model duration / audio inputs. The Replicate model schemas
+        // diverge — some take `duration` in seconds, some `video_length` in
+        // frames, some don't support either. PromptAugmenter.ResolveDurationParam
+        // centralises the slug-aware mapping so we don't fire 422s for models
+        // that reject the field.
+        var (durKey, durValue) = ChanthraStudio.Services.PromptAugmenter
+            .ResolveDurationParam(model, req.DurationSec);
+        if (durKey is not null && durValue is not null)
+            input[durKey] = JsonValue.Create(durValue);
+
+        // Audio enable — only kling-v1 and minimax/video-01 currently expose
+        // it. Others either always generate silent or always generate with
+        // audio when supported.
+        var slugLower = model.ToLowerInvariant();
+        if (slugLower.Contains("kling") || slugLower.Contains("minimax"))
+            input["audio"] = req.Audio;
+
+        // HD upscale → ask for higher-quality output where the model exposes
+        // a quality knob. Kling has `mode: standard | pro`, minimax has
+        // `prompt_optimizer: true`. Both happily ignore unknown keys.
+        if (req.Hd4k)
+        {
+            if (slugLower.Contains("kling")) input["mode"] = "pro";
+            if (slugLower.Contains("minimax")) input["prompt_optimizer"] = true;
+        }
+
         var payload = new JsonObject { ["input"] = input };
 
         using var msg = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/models/{owner}/{name}/predictions")

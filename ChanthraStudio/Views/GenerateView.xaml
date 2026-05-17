@@ -754,8 +754,10 @@
                         ClipToBounds="True"
                         Effect="{StaticResource ShadowCanvas}">
                         <Grid>
-                            <!--  poster frame  -->
-                            <Image Source="/Assets/Brand/empress-wide.png" Stretch="UniformToFill" />
+                            <!--  Stage preview = active shot's thumbnail; falls back to brand poster when nothing has rendered yet  -->
+                            <Image Source="{Binding StageImagePath, Converter={StaticResource ClipPathToImage}, FallbackValue=/Assets/Brand/empress-wide.png}" Stretch="UniformToFill" />
+                            <!--  Static brand poster underneath, in case the converter returns null  -->
+                            <Image Panel.ZIndex="-1" Source="/Assets/Brand/empress-wide.png" Stretch="UniformToFill" />
 
                             <!--  L-corner guides  -->
                             <Border
@@ -982,7 +984,7 @@
                     </Grid>
 
                     <StackPanel Margin="22,0,22,12">
-                        <!--  Video track  -->
+                        <!--  Video track — real Storyboard, one strip per shot. Clicking a strip promotes that shot to the centre Stage.  -->
                         <Grid Margin="0,0,0,4" Height="36">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="90" />
@@ -990,26 +992,43 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Text="VIDEO" />
                             <Border Grid.Column="1" Background="#05FFFFFF" CornerRadius="4">
-                                <UniformGrid Columns="4">
-                                    <Border Margin="2" CornerRadius="4">
-                                        <Border.Background>
-                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                <GradientStop Offset="0" Color="{StaticResource ColorCrimson}" />
-                                                <GradientStop Offset="1" Color="{StaticResource ColorCrimsonDeep}" />
-                                            </LinearGradientBrush>
-                                        </Border.Background>
-                                        <TextBlock Margin="8,0" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource BrushText1}" Style="{StaticResource TextMono}" Text="Throne reveal" />
-                                    </Border>
-                                    <Border Margin="2" Background="{StaticResource BrushClipPlum}" CornerRadius="4">
-                                        <TextBlock Margin="8,0" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource BrushText1}" Style="{StaticResource TextMono}" Text="Veil drop" />
-                                    </Border>
-                                    <Border Margin="2" Background="{StaticResource BrushClipAmber}" CornerRadius="4">
-                                        <TextBlock Margin="8,0" VerticalAlignment="Center" FontSize="10" Foreground="#FF1A0D05" Style="{StaticResource TextMono}" Text="Lotus ascent" />
-                                    </Border>
-                                    <Border Margin="2" Background="{StaticResource BrushClipPlum}" CornerRadius="4">
-                                        <TextBlock Margin="8,0" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource BrushText1}" Style="{StaticResource TextMono}" Text="Halo close" />
-                                    </Border>
-                                </UniformGrid>
+                                <ItemsControl ItemsSource="{Binding Storyboard}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Rows="1" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Margin="2" Padding="0" BorderThickness="0" Background="Transparent" Cursor="Hand"
+                                                    Command="{Binding DataContext.SelectShotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="bd" Background="{StaticResource BrushClipPlum}" CornerRadius="4" BorderThickness="1" BorderBrush="Transparent">
+                                                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Generating">
+                                                                <Setter TargetName="bd" Property="Background" Value="{StaticResource BrushClipAmber}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Error">
+                                                                <Setter TargetName="bd" Property="Background" Value="{StaticResource BrushCrimson}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Done">
+                                                                <Setter TargetName="bd" Property="Background" Value="{StaticResource BrushClipPlum}" />
+                                                            </DataTrigger>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushGoldHi}" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                                <TextBlock Margin="8,0" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource BrushText1}" Style="{StaticResource TextMono}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </Border>
                         </Grid>
 
@@ -1077,7 +1096,7 @@
                         <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
                             <TextBlock VerticalAlignment="Center" Style="{StaticResource TextBody}" FontSize="12" Text="Storyboard " />
                             <Border Padding="6,2" Background="#1FD4A76A" CornerRadius="99">
-                                <TextBlock FontSize="9" Foreground="{StaticResource BrushGoldHi}" Style="{StaticResource TextMonoUpper}" Text="12" />
+                                <TextBlock FontSize="9" Foreground="{StaticResource BrushGoldHi}" Style="{StaticResource TextMonoUpper}" Text="{Binding Storyboard.Count}" />
                             </Border>
                         </StackPanel>
                     </Border>
@@ -1085,7 +1104,7 @@
                         <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
                             <TextBlock VerticalAlignment="Center" Foreground="{StaticResource BrushText3}" Style="{StaticResource TextBody}" FontSize="12" Text="Queue " />
                             <Border Padding="6,2" Background="{StaticResource BrushSurface03}" CornerRadius="99">
-                                <TextBlock FontSize="9" Style="{StaticResource TextMonoUpper}" Text="3" />
+                                <TextBlock FontSize="9" Style="{StaticResource TextMonoUpper}" Text="{Binding QueueCount}" />
                             </Border>
                         </StackPanel>
                     </Border>
@@ -1100,10 +1119,25 @@
                             <DataTemplate>
                                 <Border
                                     Margin="0,0,0,12"
-                                    BorderBrush="{StaticResource BrushLineHairline}"
                                     BorderThickness="1"
                                     CornerRadius="10"
                                     Cursor="Hand">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="BorderBrush" Value="{StaticResource BrushLineHairline}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Status}" Value="Generating">
+                                                    <Setter Property="BorderBrush" Value="{StaticResource BrushGoldHi}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Border.InputBindings>
+                                        <MouseBinding
+                                            MouseAction="LeftClick"
+                                            Command="{Binding DataContext.SelectShotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}" />
+                                    </Border.InputBindings>
                                     <StackPanel>
                                         <Grid Height="172">
                                             <Border CornerRadius="10,10,0,0" ClipToBounds="True">

@@ -79,29 +79,61 @@ public sealed class GenerateViewModel : ObservableObject
         }
     }
 
-    private bool _isGenerating = true;
+    private bool _isGenerating;
     public bool IsGenerating { get => _isGenerating; set => SetProperty(ref _isGenerating, value); }
 
-    private string _generatingDuration = "Generating · 14s";
+    private string _generatingDuration = "";
     public string GeneratingDuration { get => _generatingDuration; set => SetProperty(ref _generatingDuration, value); }
 
-    private string _credits = "−14 ☾";
+    /// <summary>Right side of the Summon CTA — was "−14 ☾" forever. Now blank
+    /// until/unless the credit ledger feeds something in. Removed the fake
+    /// counter rather than animate a meaningless number.</summary>
+    private string _credits = "";
     public string Credits { get => _credits; set => SetProperty(ref _credits, value); }
 
-    private string _breadcrumb = "Projects › The Empress › Sequence 02 · Lotus Ascent";
+    private string _breadcrumb = "Projects › The Empress";
     public string Breadcrumb { get => _breadcrumb; set => SetProperty(ref _breadcrumb, value); }
 
-    private string _shotMetaShot = "SHOT 03·02";
-    public string ShotMetaShot { get => _shotMetaShot; set => SetProperty(ref _shotMetaShot, value); }
+    /// <summary>
+    /// The shot whose preview occupies the centre Stage. Defaults to the
+    /// last shot the user generated (or clicked in the storyboard rail). All
+    /// the SHOT/FRAME/LENS/SEED meta pills derive from this.
+    /// </summary>
+    private Shot? _activeShot;
+    public Shot? ActiveShot
+    {
+        get => _activeShot;
+        set
+        {
+            if (SetProperty(ref _activeShot, value))
+            {
+                OnPropertyChanged(nameof(StageImagePath));
+                OnPropertyChanged(nameof(HasActiveShot));
+                OnPropertyChanged(nameof(ShotMetaShot));
+                OnPropertyChanged(nameof(ShotMetaFrame));
+                OnPropertyChanged(nameof(ShotMetaLens));
+                OnPropertyChanged(nameof(ShotMetaSeed));
+            }
+        }
+    }
 
-    private string _shotMetaFrame = "00:08:14:23";
-    public string ShotMetaFrame { get => _shotMetaFrame; set => SetProperty(ref _shotMetaFrame, value); }
+    public bool HasActiveShot => _activeShot is not null;
 
-    private string _shotMetaLens = "ANAMORPHIC 50MM · T1.8";
-    public string ShotMetaLens { get => _shotMetaLens; set => SetProperty(ref _shotMetaLens, value); }
+    /// <summary>Path the centre Stage <c>Image</c> displays — falls back to
+    /// the brand poster when no shot has rendered yet.</summary>
+    public string StageImagePath =>
+        _activeShot?.VideoUrl ?? _activeShot?.ThumbUrl ?? "/Assets/Brand/empress-wide.png";
 
-    private string _shotMetaSeed = "SEED 2814·9217";
-    public string ShotMetaSeed { get => _shotMetaSeed; set => SetProperty(ref _shotMetaSeed, value); }
+    public string ShotMetaShot => _activeShot is null ? "SHOT —" : $"SHOT {_activeShot.Number}";
+    public string ShotMetaFrame => _activeShot is null
+        ? "00:00:00:00"
+        : $"00:00:{(int)System.Math.Floor(_activeShot.DurationSec):D2}:00";
+    public string ShotMetaLens => _activeShot is null
+        ? "—"
+        : $"{_activeShot.Aspect.ToString().ToUpperInvariant()} · {_activeShot.Cam.ToString().ToUpperInvariant()}";
+    public string ShotMetaSeed => _activeShot is null
+        ? "SEED —"
+        : $"SEED {_activeShot.Seed.A}·{_activeShot.Seed.B}";
 
     private string? _toastMessage;
     public string? ToastMessage { get => _toastMessage; set => SetProperty(ref _toastMessage, value); }
@@ -139,6 +171,7 @@ public sealed class GenerateViewModel : ObservableObject
     public IRelayCommand<string> SetCameraCommand { get; }
     public IRelayCommand<string> SetStyleCommand { get; }
     public IRelayCommand RegenerateSeedCommand { get; }
+    public IRelayCommand<Shot> SelectShotCommand { get; }
 
     private int _seedA = 2814;
     public int SeedA
@@ -163,6 +196,9 @@ public sealed class GenerateViewModel : ObservableObject
     };
 
     public ObservableCollection<Shot> Storyboard { get; } = new();
+
+    /// <summary>Count of shots not yet finished — drives the "Queue 3" badge.</summary>
+    public int QueueCount => Storyboard.Count(s => s.Status == ShotStatus.Queue || s.Status == ShotStatus.Generating);
 
     public IAsyncRelayCommand SummonSceneCommand { get; }
     public IAsyncRelayCommand EnhancePromptCommand { get; }
@@ -192,12 +228,28 @@ public sealed class GenerateViewModel : ObservableObject
         });
         RemoveShotCommand = new RelayCommand<Shot>(s =>
         {
-            if (s is not null) Storyboard.Remove(s);
+            if (s is not null)
+            {
+                Storyboard.Remove(s);
+                if (ReferenceEquals(_activeShot, s)) ActiveShot = Storyboard.LastOrDefault();
+            }
         });
+        SelectShotCommand = new RelayCommand<Shot>(s => { if (s is not null) ActiveShot = s; });
 
         // Sync the initial style preset's IsActive flag so the picker
         // already shows a highlight at first paint.
         foreach (var sp in StylePresets) sp.IsActive = sp.Id == _activeStyleId;
+
+        // QueueCount derives from Storyboard contents + each Shot.Status,
+        // so re-publish it on both kinds of change.
+        Storyboard.CollectionChanged += (_, e) =>
+        {
+            if (e.NewItems is not null)
+                foreach (Shot s in e.NewItems) s.PropertyChanged += OnStoryboardShotPropertyChanged;
+            if (e.OldItems is not null)
+                foreach (Shot s in e.OldItems) s.PropertyChanged -= OnStoryboardShotPropertyChanged;
+            OnPropertyChanged(nameof(QueueCount));
+        };
 
         SetAspectCommand = new RelayCommand<string>(s =>
         {
@@ -267,6 +319,9 @@ public sealed class GenerateViewModel : ObservableObject
             ThumbUrl = "/Assets/Brand/empress-tall-2.png",
             Tags = { "WIDE", "CLOSE" },
         });
+        // Default Stage preview = the currently-rendering shot in the seed.
+        ActiveShot = Storyboard.FirstOrDefault(s => s.Status == ShotStatus.Generating)
+                  ?? Storyboard.LastOrDefault();
     }
 
     private void LoadWorkflows()
@@ -348,11 +403,14 @@ public sealed class GenerateViewModel : ObservableObject
             NegativePrompt = NegativePrompt,
         };
         Storyboard.Add(shot);
+        ActiveShot = shot;
 
         try
         {
             IsGenerating = true;
-            ShowToast("Submitting to ComfyUI…", "info");
+            _generationStartedAt = DateTimeOffset.UtcNow;
+            StartGeneratingTimer();
+            ShowToast("Submitting…", "info");
             var promptId = await _ctx.Generation.SubmitAsync(shot);
             shot.Status = ShotStatus.Generating;
             ShowToast($"Queued · {promptId[..8]}", "ok");
@@ -363,7 +421,48 @@ public sealed class GenerateViewModel : ObservableObject
             shot.Status = ShotStatus.Error;
             ShowToast(ex.Message, "err");
             IsGenerating = false;
+            StopGeneratingTimer();
         }
+    }
+
+    private DateTimeOffset? _generationStartedAt;
+    private System.Windows.Threading.DispatcherTimer? _genTickTimer;
+
+    /// <summary>Drives the "Generating · 14s" pill in the Stage bar by counting
+    /// seconds since the most recent SubmitAsync started. Tick is 1Hz and
+    /// auto-stops when nothing is generating anymore.</summary>
+    private void StartGeneratingTimer()
+    {
+        if (_genTickTimer is not null) return;
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null) return;
+        _genTickTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background, dispatcher)
+        {
+            Interval = TimeSpan.FromSeconds(1),
+        };
+        _genTickTimer.Tick += (_, _) =>
+        {
+            if (!IsGenerating || _generationStartedAt is null)
+            {
+                StopGeneratingTimer();
+                return;
+            }
+            var elapsed = DateTimeOffset.UtcNow - _generationStartedAt.Value;
+            GeneratingDuration = $"Generating · {(int)elapsed.TotalSeconds}s";
+        };
+        _genTickTimer.Start();
+    }
+
+    private void StopGeneratingTimer()
+    {
+        _genTickTimer?.Stop();
+        _genTickTimer = null;
+        GeneratingDuration = "";
+    }
+
+    private void OnStoryboardShotPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Shot.Status)) OnPropertyChanged(nameof(QueueCount));
     }
 
     private void OnGenerationProgress(object? sender, GenerationProgressEventArgs e)
@@ -376,6 +475,11 @@ public sealed class GenerateViewModel : ObservableObject
         {
             shot.VideoUrl = e.MediaPath;
             shot.ThumbUrl = e.MediaPath;
+            // Refresh the Stage if this is the currently-active shot — the
+            // VideoUrl change alone doesn't republish StageImagePath because
+            // it's a derived property on the VM, not on the Shot.
+            if (ReferenceEquals(_activeShot, shot))
+                OnPropertyChanged(nameof(StageImagePath));
         }
 
         if (e.Status == ShotStatus.Done)
@@ -383,11 +487,17 @@ public sealed class GenerateViewModel : ObservableObject
             var fileName = e.MediaPath is null ? "" : " · " + System.IO.Path.GetFileName(e.MediaPath);
             ShowToast($"Shot {shot.Number} ready{fileName}", "ok");
             IsGenerating = Storyboard.Any(s => s.Status == ShotStatus.Generating);
+            if (!IsGenerating) StopGeneratingTimer();
+            // Promote the just-finished shot to the active preview if nothing
+            // is selected, or if the active was the same shot.
+            if (_activeShot is null || ReferenceEquals(_activeShot, shot))
+                ActiveShot = shot;
         }
         else if (e.Status == ShotStatus.Error)
         {
             ShowToast(e.Error ?? "generation failed", "err");
             IsGenerating = Storyboard.Any(s => s.Status == ShotStatus.Generating);
+            if (!IsGenerating) StopGeneratingTimer();
         }
     }
 

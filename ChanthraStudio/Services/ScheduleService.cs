@@ -84,7 +84,13 @@ public sealed class ScheduleService : IDisposable
 
                 // Save the promptId↔scheduleId mapping so OnGenerationProgress
                 // can pick up auto-post and update run status.
-                var promptId = await _ctx.Generation.SubmitAsync(shot);
+                // Each schedule carries its own Route + Workflow — honour
+                // them per-fire instead of the global Settings.ActiveVideo
+                // so two schedules can target different providers at once.
+                var promptId = await _ctx.Generation.SubmitAsync(
+                    shot,
+                    routeOverride: s.Route,
+                    workflowOverride: s.Workflow);
                 _jobToSchedule[promptId] = s.Id;
 
                 // Patch the run row with the real prompt id (best-effort).
