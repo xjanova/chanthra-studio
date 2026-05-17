@@ -767,9 +767,12 @@ public sealed class GenerationService
                 """,
                 new { id = promptId, shotId, status, now = DateTimeOffset.UtcNow.ToUnixTimeSeconds() });
         }
-        catch
+        catch (Exception ex)
         {
-            // DB write failures are non-fatal for the in-memory job.
+            // DB write failures are non-fatal for the in-memory job — but
+            // log them so a user reporting "Library is empty" can be told
+            // to check %APPDATA%/ChanthraStudio/logs.
+            ActivityLog.Error("generation", $"WriteJobRow {promptId[..System.Math.Min(8, promptId.Length)]}", ex);
         }
     }
 
@@ -787,7 +790,10 @@ public sealed class GenerationService
                 """,
                 new { id = promptId, status, err = error, now = DateTimeOffset.UtcNow.ToUnixTimeSeconds() });
         }
-        catch { }
+        catch (Exception ex)
+        {
+            ActivityLog.Error("generation", $"WriteJobUpdate {promptId[..System.Math.Min(8, promptId.Length)]} → {status}", ex);
+        }
     }
 
     private void WriteClipRow(string shotId, string filePath, string kind)
@@ -807,7 +813,10 @@ public sealed class GenerationService
                     now = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 });
         }
-        catch { }
+        catch (Exception ex)
+        {
+            ActivityLog.Error("generation", $"WriteClipRow {System.IO.Path.GetFileName(filePath)}", ex);
+        }
     }
 
     private static string SafeFilename(string raw)

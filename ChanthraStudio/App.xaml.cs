@@ -17,19 +17,22 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        ActivityLog.Info("app", $"start · v{UpdateService.CurrentVersion()} · data={AppPaths.Root}");
+
         // One-time diagnostic — verify the SQLite FK pragma is on so writes
         // through generation_jobs / clips / shots stay consistent. If this
         // ever prints false, schema integrity has degraded and the user
         // should clear %APPDATA%/ChanthraStudio/chanthra.db.
-        System.Diagnostics.Debug.WriteLine(
-            $"[chanthra] sqlite foreign_keys = {(Studio.Db.ForeignKeysEnforced ? "ON" : "OFF")}");
+        var fk = Studio.Db.ForeignKeysEnforced;
+        ActivityLog.Info("db", $"foreign_keys = {(fk ? "ON" : "OFF")}");
+        if (!fk) ActivityLog.Warn("db", "FK enforcement is OFF — writes may pass without parent rows");
 
         // Recover shots that were left in Generating state by a previous
         // session crash or hard-kill. Flip them to Error so the storyboard
         // rebuild shows them with a red dot instead of an animated gold one.
         var swept = Studio.Shots.SweepStuckGenerations();
         if (swept > 0)
-            System.Diagnostics.Debug.WriteLine($"[chanthra] swept {swept} stuck Generating shots → Error");
+            ActivityLog.Info("shots", $"swept {swept} stuck Generating shots → Error");
 
         // Kick off the nvidia-smi poller so the StatusBar shows real numbers
         // within ~2 seconds of launch. Service detects no-NVIDIA and goes

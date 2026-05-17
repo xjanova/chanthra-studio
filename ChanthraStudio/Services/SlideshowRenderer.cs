@@ -58,19 +58,26 @@ public sealed class SlideshowRenderer
         public double CrossfadeSec { get; init; } = 0;
 
         /// <summary>
-        /// Optional picture-in-picture overlay clip layered on top of the
-        /// main track. Null = no overlay. When set, ffmpeg adds it as an
-        /// extra input with <c>-loop 1 -t {duration}</c> and an
-        /// <c>overlay</c> filter at the chosen corner gated by an
-        /// <c>enable='between(t,start,start+dur)'</c> expression.
+        /// Every picture-in-picture overlay to layer onto the main track.
+        /// Each entry becomes an extra ffmpeg input with <c>-loop 1 -t {dur}</c>,
+        /// then chains an <c>overlay</c> filter gated by
+        /// <c>enable='between(t,start,start+dur)'</c>. Empty = no overlay.
         /// </summary>
-        public Clip? OverlayClip { get; init; }
-        public double OverlayStartSec { get; init; }
-        public double OverlayDurationSec { get; init; } = 4.0;
+        public IReadOnlyList<OverlayDescriptor> OverlayTimeline { get; init; } = Array.Empty<OverlayDescriptor>();
+    }
+
+    /// <summary>One picture-in-picture overlay layered on the master video.
+    /// File path (rather than the full Clip) keeps SlideshowRenderer free of
+    /// any dependency on the NLE view-model classes.</summary>
+    public sealed class OverlayDescriptor
+    {
+        public string FilePath { get; init; } = "";
+        public double StartSec { get; init; }
+        public double DurationSec { get; init; } = 4.0;
         /// <summary>0.1–0.6, fraction of main frame width.</summary>
-        public double OverlayScale { get; init; } = 0.3;
+        public double Scale { get; init; } = 0.3;
         /// <summary>"TL" | "TR" | "BL" | "BR" | "C".</summary>
-        public string OverlayPosition { get; init; } = "TR";
+        public string Position { get; init; } = "TR";
     }
 
     public async Task<RenderResult> RenderAsync(Spec spec, IProgress<string>? progress = null, CancellationToken ct = default)
@@ -149,7 +156,11 @@ public sealed class SlideshowRenderer
     private static List<string> BuildArgList(Spec spec, string outputPath)
     {
         var hasAudio = !string.IsNullOrWhiteSpace(spec.AudioPath) && File.Exists(spec.AudioPath);
-        var hasOverlay = spec.OverlayClip is not null && File.Exists(spec.OverlayClip.FilePath);
+        // Filter the overlay descriptors down to those whose file still exists
+        // on disk — a clip deleted from Library while sitting on the overlay
+        // track shouldn't tank the whole render.
+        var overlays = spec.OverlayTimeline.Where(o => !string.IsNullOrEmpty(o.FilePath) && File.Exists(o.FilePath)).ToList();
+        var hasOverlay = overlays.Count > 0;
         var args = new List<string> { "-y" };
 
         var perClipOverride = spec.ClipDurations is { Count: > 0 } durs && durs.Count == spec.Clips.Count
@@ -162,18 +173,17 @@ public sealed class SlideshowRenderer
             args.Add("-t");         args.Add(dur.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
             args.Add("-i");         args.Add(spec.Clips[i].FilePath);
         }
-        // Overlay slot in the input list comes BEFORE the audio so audio
+        // Overlay slots in the input list come BEFORE the audio so audio
         // (when present) is always the last input — keeps filter labels
         // consistent regardless of overlay presence.
-        var overlayIndex = -1;
-        if (hasOverlay)
+        var firstOverlayIndex = spec.Clips.Count;
+        foreach (var o in overlays)
         {
-            overlayIndex = spec.Clips.Count;
             args.Add("-loop");      args.Add("1");
-            args.Add("-t");         args.Add(spec.OverlayDurationSec.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
-            args.Add("-i");         args.Add(spec.OverlayClip!.FilePath);
+            args.Add("-t");         args.Add(o.DurationSec.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
+            args.Add("-i");         args.Add(o.FilePath);
         }
-        var audioIndex = spec.Clips.Count + (hasOverlay ? 1 : 0);
+        var audioIndex = spec.Clips.Count + overlays.Count;
         if (hasAudio)
         {
             args.Add("-i");
@@ -229,27 +239,40 @@ public sealed class SlideshowRenderer
             filter.Append($"concat=n={spec.Clips.Count}:v=1:a=0[out]");
         }
 
-        // Picture-in-picture overlay (T13). Builds on the [out] label
-        // produced by the concat / xfade chain above; remaps to a NEW [out]
-        // label so the downstream -map still resolves.
+        // Multi-overlay picture-in-picture (T22). Each entry scales + format-
+        // converts its source into a labelled stream, then chains an overlay
+        // filter against the running compositor. Final label remaps so the
+        // downstream -map picks up [outpip].
         if (hasOverlay)
         {
             var inv = System.Globalization.CultureInfo.InvariantCulture;
-            var overlayW = (int)(spec.Width * Math.Clamp(spec.OverlayScale, 0.1, 0.6));
-            // overlay height comes from scale's source aspect — let ffmpeg keep it via -1
-            var (xExpr, yExpr) = spec.OverlayPosition switch
+            // Stage 1: prep each overlay input as [ovN].
+            for (int oi = 0; oi < overlays.Count; oi++)
             {
-                "TL" => ("20",          "20"),
-                "BL" => ("20",          "H-h-20"),
-                "BR" => ("W-w-20",      "H-h-20"),
-                "C"  => ("(W-w)/2",     "(H-h)/2"),
-                _    => ("W-w-20",      "20"),    // TR / default
-            };
-            var startStr = spec.OverlayStartSec.ToString("F2", inv);
-            var endStr = (spec.OverlayStartSec + spec.OverlayDurationSec).ToString("F2", inv);
-
-            filter.Append($";[{overlayIndex}:v]scale={overlayW}:-1,setsar=1,format=yuva420p[ov];");
-            filter.Append($"[out][ov]overlay={xExpr}:{yExpr}:enable='between(t,{startStr},{endStr})'[outpip]");
+                var o = overlays[oi];
+                var inputIdx = firstOverlayIndex + oi;
+                var w = (int)(spec.Width * Math.Clamp(o.Scale, 0.1, 0.6));
+                filter.Append($";[{inputIdx}:v]scale={w}:-1,setsar=1,format=yuva420p[ov{oi}]");
+            }
+            // Stage 2: chain overlay filters. Each output [pipN] feeds the next.
+            string lastLabel = "out";
+            for (int oi = 0; oi < overlays.Count; oi++)
+            {
+                var o = overlays[oi];
+                var (xExpr, yExpr) = o.Position switch
+                {
+                    "TL" => ("20",          "20"),
+                    "BL" => ("20",          "H-h-20"),
+                    "BR" => ("W-w-20",      "H-h-20"),
+                    "C"  => ("(W-w)/2",     "(H-h)/2"),
+                    _    => ("W-w-20",      "20"),    // TR / default
+                };
+                var startStr = o.StartSec.ToString("F2", inv);
+                var endStr = (o.StartSec + o.DurationSec).ToString("F2", inv);
+                var outLabel = oi == overlays.Count - 1 ? "outpip" : $"pip{oi}";
+                filter.Append($";[{lastLabel}][ov{oi}]overlay={xExpr}:{yExpr}:enable='between(t,{startStr},{endStr})'[{outLabel}]");
+                lastLabel = outLabel;
+            }
         }
         if (hasAudio)
         {

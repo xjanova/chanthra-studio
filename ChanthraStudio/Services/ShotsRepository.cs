@@ -73,10 +73,11 @@ public sealed class ShotsRepository
                     now,
                 });
         }
-        catch
+        catch (Exception ex)
         {
             // Metadata write is non-critical — never block the actual
             // generation. The clip file on disk is the source of truth.
+            ActivityLog.Error("shots", $"Insert {shot.Id}", ex);
         }
     }
 
@@ -108,7 +109,10 @@ public sealed class ShotsRepository
                     now = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 });
         }
-        catch { }
+        catch (Exception ex)
+        {
+            ActivityLog.Error("shots", $"UpdateStatus {shotId} → {status}", ex);
+        }
     }
 
     /// <summary>Return the most-recent <paramref name="limit"/> shots, newest

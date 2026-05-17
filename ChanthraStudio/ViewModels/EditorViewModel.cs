@@ -15,6 +15,37 @@ namespace ChanthraStudio.ViewModels;
 /// RenderFilm dialog is that each slot can hold the screen for a
 /// different number of seconds.
 /// </summary>
+/// <summary>
+/// One slot on the overlay (B-roll) track. Unlike TimelineSlot — which
+/// is sequential — overlay slots live at an absolute timeline position,
+/// so each carries its own StartSec into the master timeline. Multiple
+/// overlays can coexist (think: date stamp + tarot card + signature image
+/// at three different moments in a 30-second clip).
+/// </summary>
+public sealed class OverlaySlot : ObservableObject
+{
+    public Clip Clip { get; init; } = null!;
+
+    private double _startSec;
+    public double StartSec { get => _startSec; set => SetProperty(ref _startSec, Math.Max(0, value)); }
+
+    private double _durationSec = 4.0;
+    public double DurationSec { get => _durationSec; set => SetProperty(ref _durationSec, Math.Max(0.5, value)); }
+
+    private double _scale = 0.3;
+    public double Scale { get => _scale; set => SetProperty(ref _scale, Math.Clamp(value, 0.1, 0.6)); }
+
+    private string _position = "TR";
+    public string Position { get => _position; set => SetProperty(ref _position, value); }
+
+    private bool _isSelected;
+    public bool IsSelected { get => _isSelected; set => SetProperty(ref _isSelected, value); }
+
+    public string FileName => Clip.FileName;
+    public string FilePath => Clip.FilePath;
+    public string EndLabel => $"{StartSec:F1}s → {(StartSec + DurationSec):F1}s · {Position} · {Scale:P0}";
+}
+
 public sealed class TimelineSlot : ObservableObject
 {
     public Clip Clip { get; init; } = null!;
@@ -27,6 +58,12 @@ public sealed class TimelineSlot : ObservableObject
     /// keeps this in sync with its own <c>Selected</c> pointer so the
     /// timeline card can highlight via DataTrigger.</summary>
     public bool IsSelected { get => _isSelected; set => SetProperty(ref _isSelected, value); }
+
+    private bool _isDropTarget;
+    /// <summary>True while another slot is being dragged AND the cursor is
+    /// over this slot — the timeline shows a gold vertical bar on the left
+    /// edge so the user can preview where the drop will land.</summary>
+    public bool IsDropTarget { get => _isDropTarget; set => SetProperty(ref _isDropTarget, value); }
 
     public string FileName => Clip.FileName;
     public string FilePath => Clip.FilePath;
@@ -95,47 +132,101 @@ public sealed class EditorViewModel : ObservableObject
     /// Passed through to SlideshowRenderer.Spec.CrossfadeSec.</summary>
     public double CrossfadeSec { get => _crossfadeSec; set => SetProperty(ref _crossfadeSec, value); }
 
-    // ---------- Overlay / picture-in-picture (T13) ----------
-    private Clip? _overlayClip;
-    /// <summary>Optional picture-in-picture clip layered on top of the main
-    /// timeline. Null = no overlay. Picked from the Library rail like the
-    /// main-track slots.</summary>
-    public Clip? OverlayClip
+    // ---------- Playhead / scrubber (T23) ----------
+    private double _playheadSec;
+    /// <summary>Current playhead position in seconds from timeline start.
+    /// Drives the scrubber bar and the razor-at-playhead command.</summary>
+    public double PlayheadSec
     {
-        get => _overlayClip;
+        get => _playheadSec;
         set
         {
-            if (SetProperty(ref _overlayClip, value))
+            var clamped = Math.Clamp(value, 0, Math.Max(0, TotalDuration));
+            if (!SetProperty(ref _playheadSec, clamped)) return;
+            OnPropertyChanged(nameof(SlotAtPlayhead));
+            OnPropertyChanged(nameof(PlayheadLabel));
+            // Promote the slot under the playhead to Selected so the inspector
+            // tracks the scrubber.
+            var s = SlotAtPlayhead;
+            if (s is not null && !ReferenceEquals(Selected, s)) Selected = s;
+        }
+    }
+
+    public string PlayheadLabel
+    {
+        get
+        {
+            var s = (int)System.Math.Floor(_playheadSec);
+            var frac = (int)System.Math.Round((_playheadSec - s) * 100);
+            return $"{s / 60:D1}:{s % 60:D2}.{frac:D2}";
+        }
+    }
+
+    /// <summary>Which timeline slot currently contains the playhead (i.e.
+    /// the cumulative duration window the playhead falls into). Null if
+    /// the timeline is empty.</summary>
+    public TimelineSlot? SlotAtPlayhead
+    {
+        get
+        {
+            double cursor = 0;
+            foreach (var s in Timeline)
             {
+                if (_playheadSec < cursor + s.DurationSec) return s;
+                cursor += s.DurationSec;
+            }
+            return Timeline.LastOrDefault();
+        }
+    }
+
+    /// <summary>Offset within the SlotAtPlayhead where the playhead currently
+    /// sits, in seconds. Used by razor-at-playhead to know where in the
+    /// slot to cut.</summary>
+    public double PlayheadOffsetWithinSlot
+    {
+        get
+        {
+            double cursor = 0;
+            foreach (var s in Timeline)
+            {
+                if (_playheadSec < cursor + s.DurationSec) return _playheadSec - cursor;
+                cursor += s.DurationSec;
+            }
+            return 0;
+        }
+    }
+
+    // ---------- Overlay track (T13 → multi-slot in 7.9 T22) ----------
+    /// <summary>Every overlay (B-roll) clip layered onto the master timeline.
+    /// Multi-slot replacement for the single OverlayClip from 7.7. Each
+    /// slot has its own start time, so overlays can fire at different
+    /// moments instead of forcing all of them to share one window.</summary>
+    public ObservableCollection<OverlaySlot> OverlayTimeline { get; } = new();
+
+    private OverlaySlot? _selectedOverlay;
+    public OverlaySlot? SelectedOverlay
+    {
+        get => _selectedOverlay;
+        set
+        {
+            var prev = _selectedOverlay;
+            if (SetProperty(ref _selectedOverlay, value))
+            {
+                if (prev is not null) prev.IsSelected = false;
+                if (_selectedOverlay is not null) _selectedOverlay.IsSelected = true;
                 OnPropertyChanged(nameof(HasOverlay));
-                OnPropertyChanged(nameof(OverlayLabel));
+                OnPropertyChanged(nameof(HasSelectedOverlay));
             }
         }
     }
 
-    public bool HasOverlay => _overlayClip is not null;
-    public string OverlayLabel => _overlayClip is null ? "(no overlay)" : _overlayClip.FileName;
+    public bool HasOverlay => OverlayTimeline.Count > 0;
+    public bool HasSelectedOverlay => _selectedOverlay is not null;
 
-    private double _overlayStartSec;
-    /// <summary>Seconds into the main timeline at which the overlay appears.
-    /// Must be &lt; total timeline duration.</summary>
-    public double OverlayStartSec { get => _overlayStartSec; set => SetProperty(ref _overlayStartSec, Math.Max(0, value)); }
-
-    private double _overlayDurationSec = 4.0;
-    public double OverlayDurationSec { get => _overlayDurationSec; set => SetProperty(ref _overlayDurationSec, Math.Max(0.5, value)); }
-
-    private double _overlayScale = 0.3;
-    /// <summary>Overlay size as a fraction of the main video frame width
-    /// (0.1–0.6). 0.3 = the overlay is 30% of the main frame.</summary>
-    public double OverlayScale { get => _overlayScale; set => SetProperty(ref _overlayScale, Math.Clamp(value, 0.1, 0.6)); }
-
-    private string _overlayPosition = "TR";
-    /// <summary>"TL" | "TR" | "BL" | "BR" | "C" — overlay corner / centre.</summary>
-    public string OverlayPosition { get => _overlayPosition; set => SetProperty(ref _overlayPosition, value); }
-
-    public IRelayCommand<Clip> SetOverlayCommand { get; private set; } = null!;
-    public IRelayCommand ClearOverlayCommand { get; private set; } = null!;
-    public IRelayCommand<string> SetOverlayPositionCommand { get; private set; } = null!;
+    public IRelayCommand<Clip> AddOverlayFromLibraryCommand { get; private set; } = null!;
+    public IRelayCommand<OverlaySlot> RemoveOverlayCommand { get; private set; } = null!;
+    public IRelayCommand<OverlaySlot> SelectOverlayCommand { get; private set; } = null!;
+    public IRelayCommand<string> SetSelectedOverlayPositionCommand { get; private set; } = null!;
 
     private double _totalDuration;
     /// <summary>Sum of all slot durations — drives the "0:32 total" stamp.</summary>
@@ -167,6 +258,9 @@ public sealed class EditorViewModel : ObservableObject
     public IRelayCommand<TimelineSlot> SelectSlotCommand { get; }
     public IRelayCommand<TimelineSlot> SplitSlotCommand { get; }
     public IRelayCommand<TimelineSlot> DuplicateSlotCommand { get; }
+    public IRelayCommand RazorAtPlayheadCommand { get; }
+    public IRelayCommand UndoCommand { get; private set; } = null!;
+    public IRelayCommand RedoCommand { get; private set; } = null!;
     public IRelayCommand ClearTimelineCommand { get; }
     public IRelayCommand BrowseAudioCommand { get; }
     public IRelayCommand ClearAudioCommand { get; }
@@ -187,14 +281,27 @@ public sealed class EditorViewModel : ObservableObject
         SelectSlotCommand = new RelayCommand<TimelineSlot>(s => Selected = s);
         SplitSlotCommand = new RelayCommand<TimelineSlot>(SplitSlot);
         DuplicateSlotCommand = new RelayCommand<TimelineSlot>(DuplicateSlot);
-        SetOverlayCommand = new RelayCommand<Clip>(c => OverlayClip = c);
-        ClearOverlayCommand = new RelayCommand(() => OverlayClip = null);
-        SetOverlayPositionCommand = new RelayCommand<string>(p => { if (!string.IsNullOrEmpty(p)) OverlayPosition = p; });
+        RazorAtPlayheadCommand = new RelayCommand(RazorAtPlayhead);
+        UndoCommand = new RelayCommand(Undo, () => _undoStack.Count > 0);
+        RedoCommand = new RelayCommand(Redo, () => _redoStack.Count > 0);
+
+        AddOverlayFromLibraryCommand = new RelayCommand<Clip>(AddOverlayFromLibrary);
+        RemoveOverlayCommand = new RelayCommand<OverlaySlot>(RemoveOverlay);
+        SelectOverlayCommand = new RelayCommand<OverlaySlot>(s => SelectedOverlay = s);
+        SetSelectedOverlayPositionCommand = new RelayCommand<string>(p =>
+        {
+            if (!string.IsNullOrEmpty(p) && _selectedOverlay is not null) _selectedOverlay.Position = p!;
+        });
+        OverlayTimeline.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasOverlay));
         ClearTimelineCommand = new RelayCommand(() =>
         {
+            if (Timeline.Count == 0 && OverlayTimeline.Count == 0) return;
+            PushUndo();
             foreach (var t in Timeline) t.PropertyChanged -= OnSlotChanged;
             Timeline.Clear();
+            OverlayTimeline.Clear();
             Selected = null;
+            SelectedOverlay = null;
             RecomputeTotal();
         });
         BrowseAudioCommand = new RelayCommand(BrowseAudio);
@@ -225,6 +332,7 @@ public sealed class EditorViewModel : ObservableObject
     private void AddClip(Clip? clip)
     {
         if (clip is null) return;
+        PushUndo();
         var slot = new TimelineSlot { Clip = clip, DurationSec = 3.0 };
         slot.PropertyChanged += OnSlotChanged;
         Timeline.Add(slot);
@@ -234,6 +342,7 @@ public sealed class EditorViewModel : ObservableObject
     private void RemoveSlot(TimelineSlot? slot)
     {
         if (slot is null) return;
+        PushUndo();
         slot.PropertyChanged -= OnSlotChanged;
         Timeline.Remove(slot);
         if (ReferenceEquals(Selected, slot)) Selected = Timeline.LastOrDefault();
@@ -246,7 +355,21 @@ public sealed class EditorViewModel : ObservableObject
         var idx = Timeline.IndexOf(slot);
         var newIdx = idx + delta;
         if (newIdx < 0 || newIdx >= Timeline.Count) return;
+        PushUndo();
         Timeline.Move(idx, newIdx);
+    }
+
+    /// <summary>Drag-drop reorder entry point used by the View. Wrapping the
+    /// Move call so the undo stack catches drag operations too — calling
+    /// Timeline.Move from the View directly would skip the snapshot.</summary>
+    public void MoveSlotByDrag(TimelineSlot src, TimelineSlot dst)
+    {
+        var srcIdx = Timeline.IndexOf(src);
+        var dstIdx = Timeline.IndexOf(dst);
+        if (srcIdx < 0 || dstIdx < 0 || srcIdx == dstIdx) return;
+        PushUndo();
+        Timeline.Move(srcIdx, dstIdx);
+        Selected = src;
     }
 
     /// <summary>Razor split — halve the slot's duration and clone it in place
@@ -259,6 +382,7 @@ public sealed class EditorViewModel : ObservableObject
         if (slot.DurationSec < 1.0) { ShowToast("Slot too short to split — bump duration first.", "warn"); return; }
         var idx = Timeline.IndexOf(slot);
         if (idx < 0) return;
+        PushUndo();
         var half = slot.DurationSec / 2.0;
         slot.DurationSec = half;
         var clone = new TimelineSlot { Clip = slot.Clip, DurationSec = half };
@@ -269,6 +393,73 @@ public sealed class EditorViewModel : ObservableObject
         ShowToast($"Split — two {half:F1}s halves", "ok");
     }
 
+    /// <summary>Add a new overlay slot at the current TotalDuration/2 (a
+    /// sensible middle-of-timeline default the user can immediately drag).
+    /// Inserts at the end of OverlayTimeline and selects it for inspector
+    /// editing.</summary>
+    private void AddOverlayFromLibrary(Clip? clip)
+    {
+        if (clip is null) return;
+        PushUndo();
+        var defaultStart = TotalDuration > 1 ? TotalDuration / 2 : 0;
+        var slot = new OverlaySlot
+        {
+            Clip = clip,
+            StartSec = defaultStart,
+            DurationSec = 4.0,
+            Scale = 0.3,
+            Position = "TR",
+        };
+        OverlayTimeline.Add(slot);
+        SelectedOverlay = slot;
+        ShowToast($"Overlay added · {clip.FileName} at {defaultStart:F1}s", "ok");
+    }
+
+    private void RemoveOverlay(OverlaySlot? slot)
+    {
+        if (slot is null) return;
+        PushUndo();
+        OverlayTimeline.Remove(slot);
+        if (ReferenceEquals(SelectedOverlay, slot)) SelectedOverlay = OverlayTimeline.LastOrDefault();
+    }
+
+    /// <summary>Razor split at the current playhead position. Cuts whichever
+    /// slot the playhead is inside at the local offset within that slot,
+    /// preserving the cumulative timeline length. Unlike the per-slot ✂
+    /// button (which always halves), this respects the user's scrubbed
+    /// position.</summary>
+    private void RazorAtPlayhead()
+    {
+        var slot = SlotAtPlayhead;
+        if (slot is null) { ShowToast("Nothing on timeline to split.", "warn"); return; }
+        var localOffset = PlayheadOffsetWithinSlot;
+        if (localOffset < 0.1 || localOffset > slot.DurationSec - 0.1)
+        {
+            ShowToast("Playhead too close to slot edge — move it inside the slot.", "warn");
+            return;
+        }
+        SplitSlotAt(slot, localOffset);
+    }
+
+    /// <summary>Split a slot at a specific local offset (seconds within the
+    /// slot). Used by both razor-at-playhead and (legacy) the always-halve
+    /// SplitSlot button.</summary>
+    private void SplitSlotAt(TimelineSlot slot, double localOffsetSec)
+    {
+        var idx = Timeline.IndexOf(slot);
+        if (idx < 0) return;
+        PushUndo();
+        var firstDur = localOffsetSec;
+        var secondDur = slot.DurationSec - localOffsetSec;
+        slot.DurationSec = firstDur;
+        var clone = new TimelineSlot { Clip = slot.Clip, DurationSec = secondDur };
+        clone.PropertyChanged += OnSlotChanged;
+        Timeline.Insert(idx + 1, clone);
+        Selected = clone;
+        RecomputeTotal();
+        ShowToast($"Razor · {firstDur:F1}s | {secondDur:F1}s", "ok");
+    }
+
     /// <summary>Duplicate the slot keeping its duration intact. Useful for
     /// holding the same image across a transition or matching two halves of
     /// a beat in the soundtrack.</summary>
@@ -277,6 +468,7 @@ public sealed class EditorViewModel : ObservableObject
         if (slot is null) return;
         var idx = Timeline.IndexOf(slot);
         if (idx < 0) return;
+        PushUndo();
         var clone = new TimelineSlot { Clip = slot.Clip, DurationSec = slot.DurationSec };
         clone.PropertyChanged += OnSlotChanged;
         Timeline.Insert(idx + 1, clone);
@@ -294,6 +486,16 @@ public sealed class EditorViewModel : ObservableObject
     {
         TotalDuration = Timeline.Sum(s => s.DurationSec);
         OnPropertyChanged(nameof(TotalDurationLabel));
+        // Playhead derived properties depend on the timeline shape too.
+        OnPropertyChanged(nameof(SlotAtPlayhead));
+        OnPropertyChanged(nameof(PlayheadOffsetWithinSlot));
+        // Clamp playhead in case the timeline shrank below it.
+        if (_playheadSec > TotalDuration)
+        {
+            _playheadSec = TotalDuration;
+            OnPropertyChanged(nameof(PlayheadSec));
+            OnPropertyChanged(nameof(PlayheadLabel));
+        }
     }
 
     private void BrowseAudio()
@@ -326,11 +528,14 @@ public sealed class EditorViewModel : ObservableObject
                 OutputName = OutputName,
                 AudioPath = string.IsNullOrEmpty(AudioPath) ? null : AudioPath,
                 AudioVolume = AudioVolume,
-                OverlayClip = OverlayClip,
-                OverlayStartSec = OverlayStartSec,
-                OverlayDurationSec = OverlayDurationSec,
-                OverlayScale = OverlayScale,
-                OverlayPosition = OverlayPosition,
+                OverlayTimeline = OverlayTimeline.Select(o => new SlideshowRenderer.OverlayDescriptor
+                {
+                    FilePath = o.FilePath,
+                    StartSec = o.StartSec,
+                    DurationSec = o.DurationSec,
+                    Scale = o.Scale,
+                    Position = o.Position,
+                }).ToList(),
             };
             var result = await _ctx.SlideshowRenderer.RenderAsync(spec);
             if (!result.Ok)
@@ -367,6 +572,94 @@ public sealed class EditorViewModel : ObservableObject
         }
         Selected = Timeline.FirstOrDefault();
         RecomputeTotal();
+    }
+
+    // ---------- Undo / redo (T24) ----------
+    private sealed record TimelineSnapshot(
+        IReadOnlyList<(Clip Clip, double Dur)> Main,
+        IReadOnlyList<(Clip Clip, double Start, double Dur, double Scale, string Pos)> Overlay);
+
+    private readonly System.Collections.Generic.Stack<TimelineSnapshot> _undoStack = new();
+    private readonly System.Collections.Generic.Stack<TimelineSnapshot> _redoStack = new();
+    private const int UndoLimit = 50;
+
+    /// <summary>Capture current timeline state and push onto the undo stack.
+    /// Call this BEFORE any topology mutation (add/remove/move/split/clear).
+    /// Clears the redo stack — once you fork from a history point, the
+    /// future you'd been holding is no longer reachable.</summary>
+    private void PushUndo()
+    {
+        var snap = new TimelineSnapshot(
+            Timeline.Select(s => (s.Clip, s.DurationSec)).ToList(),
+            OverlayTimeline.Select(o => (o.Clip, o.StartSec, o.DurationSec, o.Scale, o.Position)).ToList());
+        _undoStack.Push(snap);
+        if (_undoStack.Count > UndoLimit)
+        {
+            // Drop the oldest entry by rebuilding the stack — not pretty, but
+            // 50-entry stacks are tiny and this only fires after long edit
+            // sessions.
+            var keep = _undoStack.ToArray().Take(UndoLimit).Reverse().ToList();
+            _undoStack.Clear();
+            foreach (var s in keep) _undoStack.Push(s);
+        }
+        _redoStack.Clear();
+        RefreshUndoRedo();
+    }
+
+    private void Undo()
+    {
+        if (_undoStack.Count == 0) return;
+        var current = CaptureSnapshot();
+        _redoStack.Push(current);
+        var restore = _undoStack.Pop();
+        ApplySnapshot(restore);
+        RefreshUndoRedo();
+        ShowToast("Undo", "info");
+    }
+
+    private void Redo()
+    {
+        if (_redoStack.Count == 0) return;
+        var current = CaptureSnapshot();
+        _undoStack.Push(current);
+        var restore = _redoStack.Pop();
+        ApplySnapshot(restore);
+        RefreshUndoRedo();
+        ShowToast("Redo", "info");
+    }
+
+    private TimelineSnapshot CaptureSnapshot()
+        => new(Timeline.Select(s => (s.Clip, s.DurationSec)).ToList(),
+               OverlayTimeline.Select(o => (o.Clip, o.StartSec, o.DurationSec, o.Scale, o.Position)).ToList());
+
+    private void ApplySnapshot(TimelineSnapshot snap)
+    {
+        // Detach handlers from old slots before discarding.
+        foreach (var s in Timeline) s.PropertyChanged -= OnSlotChanged;
+        Timeline.Clear();
+        foreach (var (clip, dur) in snap.Main)
+        {
+            var slot = new TimelineSlot { Clip = clip, DurationSec = dur };
+            slot.PropertyChanged += OnSlotChanged;
+            Timeline.Add(slot);
+        }
+        OverlayTimeline.Clear();
+        foreach (var (clip, start, dur, scale, pos) in snap.Overlay)
+        {
+            OverlayTimeline.Add(new OverlaySlot
+            {
+                Clip = clip, StartSec = start, DurationSec = dur, Scale = scale, Position = pos,
+            });
+        }
+        Selected = Timeline.LastOrDefault();
+        SelectedOverlay = OverlayTimeline.LastOrDefault();
+        RecomputeTotal();
+    }
+
+    private void RefreshUndoRedo()
+    {
+        UndoCommand.NotifyCanExecuteChanged();
+        RedoCommand.NotifyCanExecuteChanged();
     }
 
     private async void ShowToast(string msg, string kind)

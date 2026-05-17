@@ -76,31 +76,30 @@ public partial class EditorView : UserControl
     {
         if (!e.Data.GetDataPresent("ChanthraStudio.TimelineSlot")) { e.Effects = DragDropEffects.None; return; }
         e.Effects = DragDropEffects.Move;
-        if (sender is Border bd) bd.BorderBrush = (Brush)FindResource("BrushGoldHi");
+        if (sender is FrameworkElement fe && fe.DataContext is TimelineSlot slot)
+            slot.IsDropTarget = true;
     }
 
     private void Slot_DragLeave(object sender, DragEventArgs e)
     {
-        if (sender is not Border bd) return;
-        // Restore the default border — the DataTrigger for IsSelected re-applies
-        // on the next render pass if this slot is still the selected one.
-        bd.ClearValue(Border.BorderBrushProperty);
+        if (sender is FrameworkElement fe && fe.DataContext is TimelineSlot slot)
+            slot.IsDropTarget = false;
     }
 
     private void Slot_Drop(object sender, DragEventArgs e)
     {
-        if (sender is Border bd) bd.ClearValue(Border.BorderBrushProperty);
+        if (sender is FrameworkElement fe1 && fe1.DataContext is TimelineSlot s1) s1.IsDropTarget = false;
         if (!e.Data.GetDataPresent("ChanthraStudio.TimelineSlot")) return;
         if (e.Data.GetData("ChanthraStudio.TimelineSlot") is not TimelineSlot src) return;
         if (sender is not FrameworkElement fe || fe.DataContext is not TimelineSlot dst) return;
         if (DataContext is not EditorViewModel vm) return;
         if (ReferenceEquals(src, dst)) return;
 
-        var srcIdx = vm.Timeline.IndexOf(src);
-        var dstIdx = vm.Timeline.IndexOf(dst);
-        if (srcIdx < 0 || dstIdx < 0) return;
-        vm.Timeline.Move(srcIdx, dstIdx);
-        vm.Selected = src;
+        // Clear any lingering drop-target flags — a fast drag can leave them
+        // stuck because DragLeave wasn't reliably called.
+        foreach (var s in vm.Timeline) s.IsDropTarget = false;
+        // Goes through VM so the undo stack catches the reorder.
+        vm.MoveSlotByDrag(src, dst);
         e.Handled = true;
     }
 
@@ -153,7 +152,7 @@ public partial class EditorView : UserControl
         if (!e.Data.GetDataPresent("ChanthraStudio.LibraryClip")) return;
         if (e.Data.GetData("ChanthraStudio.LibraryClip") is not Clip clip) return;
         if (DataContext is not EditorViewModel vm) return;
-        vm.OverlayClip = clip;
+        vm.AddOverlayFromLibraryCommand.Execute(clip);
         e.Handled = true;
     }
 }

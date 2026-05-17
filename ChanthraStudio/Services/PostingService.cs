@@ -84,10 +84,13 @@ public sealed class PostingService
                     success = result.Ok ? 1 : 0,
                     blob = result.Error ?? result.PostId ?? "",
                 });
+            ActivityLog.Info("posting",
+                result.Ok ? $"posted clip {clipId} → {providerId} · id={result.PostId}"
+                          : $"post FAILED clip {clipId} → {providerId} · {result.Error}");
         }
-        catch
+        catch (Exception ex)
         {
-            // DB write best-effort — UI already shows the toast.
+            ActivityLog.Error("posting", $"WriteHistory clip={clipId} provider={providerId}", ex);
         }
     }
 }
