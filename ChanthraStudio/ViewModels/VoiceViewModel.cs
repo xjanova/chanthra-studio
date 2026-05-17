@@ -66,6 +66,7 @@ public sealed class VoiceViewModel : ObservableObject
         {
             if (!SetProperty(ref _selectedProvider, value)) return;
             ReloadVoices();
+            OnPropertyChanged(nameof(ShowCustomVoiceField));
         }
     }
 
@@ -75,6 +76,46 @@ public sealed class VoiceViewModel : ObservableObject
         get => _selectedVoice;
         set => SetProperty(ref _selectedVoice, value);
     }
+
+    /// <summary>
+    /// User-pasted cloned voice id (ElevenLabs only). When non-empty, the
+    /// generate command uses it instead of <see cref="SelectedVoice"/>, so
+    /// owners of cloned/professional voices can hit them without the
+    /// default library. Persists via Settings as "elevenlabs_custom_voice"
+    /// so it survives relaunch.
+    /// </summary>
+    private string _customVoiceId = "";
+    public string CustomVoiceId
+    {
+        get => _customVoiceId;
+        set
+        {
+            if (!SetProperty(ref _customVoiceId, value ?? "")) return;
+            _ctx.Settings.SetSetting("elevenlabs_custom_voice", _customVoiceId);
+            try { _ctx.Settings.Save(); } catch { /* best-effort */ }
+            OnPropertyChanged(nameof(HasCustomVoice));
+            OnPropertyChanged(nameof(EffectiveVoiceLabel));
+        }
+    }
+
+    public bool HasCustomVoice => !string.IsNullOrWhiteSpace(_customVoiceId);
+
+    /// <summary>"Sarah" or "custom · 21m00…" — what the user sees as the
+    /// effective voice line in the synth meta.</summary>
+    public string EffectiveVoiceLabel
+    {
+        get
+        {
+            if (HasCustomVoice)
+            {
+                var trimmed = _customVoiceId.Length > 8 ? _customVoiceId[..8] + "…" : _customVoiceId;
+                return $"custom · {trimmed}";
+            }
+            return _selectedVoice?.DisplayName ?? "—";
+        }
+    }
+
+    public bool ShowCustomVoiceField => _selectedProvider?.Id == "elevenlabs";
 
     private MusicProviderOption? _selectedMusicProvider;
     public MusicProviderOption? SelectedMusicProvider
@@ -170,6 +211,8 @@ public sealed class VoiceViewModel : ObservableObject
         _selectedProvider = Providers.FirstOrDefault(o => ctx.Settings.HasApiKey(o.Id))
                           ?? Providers.FirstOrDefault();
         _selectedMusicProvider = MusicProviders.FirstOrDefault();
+        // Restore the persisted custom voice id (set by user in a previous session).
+        _customVoiceId = ctx.Settings.GetSetting("elevenlabs_custom_voice") ?? "";
         ReloadVoices();
 
         GenerateCommand = new AsyncRelayCommand(GenerateAsync);
@@ -207,14 +250,22 @@ public sealed class VoiceViewModel : ObservableObject
 
     private async Task GenerateAsync()
     {
-        if (SelectedProvider is null || SelectedVoice is null)
+        if (SelectedProvider is null)
         {
-            ShowToast("Pick a provider + voice first.", "warn");
+            ShowToast("Pick a provider first.", "warn");
             return;
         }
         if (string.IsNullOrWhiteSpace(ScriptText))
         {
             ShowToast("Type something to voice.", "warn");
+            return;
+        }
+        // ElevenLabs accepts a cloned/professional voice id pasted into the
+        // custom box — overrides the default-library dropdown when present.
+        var voiceId = HasCustomVoice ? _customVoiceId.Trim() : SelectedVoice?.Id;
+        if (string.IsNullOrWhiteSpace(voiceId))
+        {
+            ShowToast("Pick a voice from the dropdown or paste a custom voice_id.", "warn");
             return;
         }
 
@@ -223,7 +274,7 @@ public sealed class VoiceViewModel : ObservableObject
         try
         {
             var take = await _ctx.VoiceService.GenerateAsync(
-                SelectedProvider.Id, SelectedVoice.Id, ScriptText, Speed, Stability);
+                SelectedProvider.Id, voiceId, ScriptText, Speed, Stability);
             Takes.Insert(0, take);
             OnPropertyChanged(nameof(HasTakes));
             ShowToast($"Voice ready · {take.FileName}", "ok");

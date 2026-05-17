@@ -61,8 +61,120 @@ public sealed class GenerationService
         {
             "replicate" => SubmitToReplicateAsync(shot, workflowOverride, ct),
             "runway"    => SubmitToRunwayAsync(shot, ct),
+            "pika"      => SubmitToCloudAsync(shot, "pika", workflowOverride, ct),
+            "fal"       => SubmitToCloudAsync(shot, "fal", workflowOverride, ct),
             _           => SubmitToComfyUiAsync(shot, workflowOverride, ct),
         };
+    }
+
+    /// <summary>
+    /// Generic cloud-route orchestrator for providers that follow the same
+    /// SubmitAndWaitAsync(VideoRequest, IProgress, ct) pattern as Runway,
+    /// Pika, fal.ai. The only per-provider knob is the provider id used to
+    /// look up the key + the SubmitAndWait implementation; everything else
+    /// — DB rows, billing, progress raising, downloading — is identical.
+    /// </summary>
+    private async Task<string> SubmitToCloudAsync(Shot shot, string providerId, string? workflowOverride, CancellationToken ct)
+    {
+        var apiKey = _ctx.Settings[providerId];
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException(
+                $"{providerId} API key missing — paste it in Settings → Video Providers.");
+
+        // SubmitAndWaitAsync lives on the concrete provider class, not the
+        // IVideoProvider interface. Dispatch by id.
+        Func<Providers.VideoRequest, IProgress<double>, CancellationToken, Task<string>> waiter = providerId switch
+        {
+            "pika" => (r, p, c) => new Providers.Video.PikaVideoProvider().SubmitAndWaitAsync(r, p, c),
+            "fal"  => (r, p, c) => new Providers.Video.FalVideoProvider().SubmitAndWaitAsync(r, p, c),
+            _      => throw new InvalidOperationException($"No cloud route handler for {providerId}"),
+        };
+
+        var aspect = shot.Aspect switch
+        {
+            AspectRatio.Vertical => "9:16",
+            AspectRatio.Square => "1:1",
+            AspectRatio.Cinema => "21:9",
+            _ => "16:9",
+        };
+        var slugSource = !string.IsNullOrEmpty(workflowOverride) ? workflowOverride : _ctx.Settings.ActiveWorkflow;
+        var modelSlug = providerId switch
+        {
+            "fal" => slugSource is { Length: > 0 } s && s.Contains('/') ? s : Providers.Video.FalVideoProvider.DefaultModel,
+            _ => slugSource ?? "",  // Pika doesn't take a model slug — engine choice is account-tier
+        };
+
+        var req = new Providers.VideoRequest
+        {
+            ApiKey = apiKey,
+            Model = modelSlug,
+            Prompt = PromptAugmenter.Augment(shot),
+            NegativePrompt = shot.NegativePrompt,
+            ReferenceImagePath = shot.ReferenceImagePath,
+            Aspect = aspect,
+            Seed = shot.Seed.A,
+            DurationSec = shot.DurationSec,
+        };
+
+        var jobId = Guid.NewGuid().ToString("N").Substring(0, 16);
+        _ctx.Shots.Insert(shot);
+        WriteJobRow(shot.Id, jobId, "queued");
+
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _running[jobId] = cts;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                Raise(jobId, shot.Id, ShotStatus.Generating, 1, null);
+                var progress = new Progress<double>(p => Raise(jobId, shot.Id, ShotStatus.Generating, p, null));
+                var outputUrl = await waiter(req, progress, cts.Token);
+
+                var ext = Path.GetExtension(new Uri(outputUrl).AbsolutePath);
+                if (string.IsNullOrEmpty(ext)) ext = ".mp4";
+                var safeName = SafeFilename($"{shot.Id}_{providerId}{ext}");
+                var dest = Path.Combine(AppPaths.MediaFolder, safeName);
+                using (var dl = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) })
+                {
+                    using var resp = await dl.GetAsync(outputUrl, cts.Token);
+                    resp.EnsureSuccessStatusCode();
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? ".");
+                    await using var fs = File.Create(dest);
+                    await resp.Content.CopyToAsync(fs, cts.Token);
+                }
+
+                WriteClipRow(shot.Id, dest, ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ? "videos" : "images");
+                WriteJobUpdate(jobId, "done", null);
+
+                try
+                {
+                    if (ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase))
+                        _ctx.Tracker.RecordSeconds(providerId, modelSlug, shot.DurationSec, "video");
+                    else
+                        _ctx.Tracker.RecordImages(providerId, modelSlug, 1, "image");
+                }
+                catch { }
+
+                Raise(jobId, shot.Id, ShotStatus.Done, 100, null, dest);
+            }
+            catch (OperationCanceledException)
+            {
+                WriteJobUpdate(jobId, "cancelled", null);
+                Raise(jobId, shot.Id, ShotStatus.Error, 0, "cancelled");
+            }
+            catch (Exception ex)
+            {
+                WriteJobUpdate(jobId, "error", ex.Message);
+                Raise(jobId, shot.Id, ShotStatus.Error, 0, ex.Message);
+            }
+            finally
+            {
+                _running.TryRemove(jobId, out _);
+            }
+        });
+
+        return jobId;
     }
 
     /// <summary>

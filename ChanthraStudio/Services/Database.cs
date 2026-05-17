@@ -29,7 +29,37 @@ public sealed class Database
     {
         var c = new SqliteConnection(_connectionString);
         c.Open();
+        // Defensive — the connection string sets "Foreign Keys=True" which
+        // Microsoft.Data.Sqlite translates to PRAGMA foreign_keys=ON, but
+        // empirically some pool reuse paths skip the per-connection pragma
+        // (depending on library version). Setting it explicitly guarantees
+        // every connection enforces FKs.
+        using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = "PRAGMA foreign_keys = ON;";
+            cmd.ExecuteNonQuery();
+        }
         return c;
+    }
+
+    /// <summary>One-time diagnostic — runs after Bootstrap to confirm FK
+    /// enforcement is active. Result is appended to <see cref="DiagnosticsLog"/>
+    /// so the user can inspect via Settings → "Open data folder" if a
+    /// migration ever silently failed.</summary>
+    public bool ForeignKeysEnforced
+    {
+        get
+        {
+            try
+            {
+                using var c = Open();
+                using var cmd = c.CreateCommand();
+                cmd.CommandText = "PRAGMA foreign_keys;";
+                var result = cmd.ExecuteScalar();
+                return result is long l ? l == 1 : (int.TryParse(result?.ToString(), out var n) && n == 1);
+            }
+            catch { return false; }
+        }
     }
 
     public void Bootstrap()

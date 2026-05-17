@@ -97,23 +97,11 @@ internal sealed class ComfyUiVideoProvider : StubVideoProvider
 // Replicate is now a real implementation in Services/Providers/Video/ —
 // the registry instantiates it directly.
 
-// Runway moved to Services/Providers/Video/RunwayVideoProvider.cs with a
-// real HTTP client in phase 7.6. The shell that used to live here was
-// only useful as scaffolding — deleted to avoid the dead-class confusion.
-
-internal sealed class PikaVideoProvider : StubVideoProvider
-{
-    public override string Id => "pika";
-    public override string DisplayName => "Pika Labs";
-    public override string ApiKeyHint => "pk_… · pika.art (not yet wired — use Replicate or ComfyUI)";
-}
-
-internal sealed class FalVideoProvider : StubVideoProvider
-{
-    public override string Id => "fal";
-    public override string DisplayName => "fal.ai";
-    public override string ApiKeyHint => "fal-… · fal.ai/dashboard/keys (not yet wired — use Replicate or ComfyUI)";
-}
+// Runway / Pika / fal.ai all moved to Services/Providers/Video/*.cs with real
+// HTTP clients (Runway in 7.4, Pika + fal.ai in 7.6). The shells that used to
+// live here were only useful as scaffolding — deleted to avoid dead-class
+// confusion. The StubVideoProvider base remains for hypothetical future
+// providers that haven't been wired yet.
 
 // Posting providers moved to Services/Providers/Posting/ — they have real
 // HTTP implementations rather than stubs.

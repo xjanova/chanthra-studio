@@ -17,6 +17,13 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // One-time diagnostic — verify the SQLite FK pragma is on so writes
+        // through generation_jobs / clips / shots stay consistent. If this
+        // ever prints false, schema integrity has degraded and the user
+        // should clear %APPDATA%/ChanthraStudio/chanthra.db.
+        System.Diagnostics.Debug.WriteLine(
+            $"[chanthra] sqlite foreign_keys = {(Studio.Db.ForeignKeysEnforced ? "ON" : "OFF")}");
+
         // Kick off the nvidia-smi poller so the StatusBar shows real numbers
         // within ~2 seconds of launch. Service detects no-NVIDIA and goes
         // dormant — safe to start unconditionally.

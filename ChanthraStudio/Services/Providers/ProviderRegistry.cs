@@ -40,8 +40,8 @@ public sealed class ProviderRegistry
             new ComfyUiVideoProvider(),
             new ReplicateVideoProvider(),
             new Video.RunwayVideoProvider(),
-            new PikaVideoProvider(),
-            new FalVideoProvider(),
+            new Video.PikaVideoProvider(),
+            new Video.FalVideoProvider(),
         };
 
         Posting = new IPostingProvider[]

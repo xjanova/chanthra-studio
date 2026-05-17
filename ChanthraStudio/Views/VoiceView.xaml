@@ -121,34 +121,51 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <!--  Provider + voice pickers  -->
-                    <Grid Grid.Row="0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                            <TextBlock Style="{StaticResource TextMonoUpper}" Text="PROVIDER" />
-                            <Border Margin="0,6,0,0" Padding="12,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
-                                <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider, Mode=TwoWay}" DisplayMemberPath="DisplayName" />
+                    <!--  Provider + voice pickers · ElevenLabs cloned-voice paste lives below them  -->
+                    <StackPanel Grid.Row="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Text="PROVIDER" />
+                                <Border Margin="0,6,0,0" Padding="12,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                    <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider, Mode=TwoWay}" DisplayMemberPath="DisplayName" />
+                                </Border>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Text="VOICE" />
+                                <Border Margin="0,6,0,0" Padding="12,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                    <ComboBox ItemsSource="{Binding Voices}" SelectedItem="{Binding SelectedVoice, Mode=TwoWay}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel>
+                                                    <TextBlock FontFamily="{StaticResource FontUI}" FontSize="12.5" Foreground="{StaticResource BrushText1}" Text="{Binding DisplayName}" />
+                                                    <TextBlock Margin="0,2,0,0" Style="{StaticResource TextMonoUpper}" Text="{Binding Description}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+
+                        <!--  ElevenLabs-only: paste a cloned/professional voice_id to override the default library  -->
+                        <StackPanel Margin="0,12,0,0" Visibility="{Binding ShowCustomVoiceField, Converter={StaticResource BoolToVis}}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource TextMonoUpper}" Text="OR PASTE A CLONED VOICE_ID" />
+                                <TextBlock Grid.Column="1" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="{Binding EffectiveVoiceLabel, StringFormat=ACTIVE: {0}}" />
+                            </Grid>
+                            <Border Margin="0,6,0,0" Padding="10,7" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText1}" Text="{Binding CustomVoiceId, UpdateSourceTrigger=PropertyChanged}" />
                             </Border>
                         </StackPanel>
-                        <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                            <TextBlock Style="{StaticResource TextMonoUpper}" Text="VOICE" />
-                            <Border Margin="0,6,0,0" Padding="12,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
-                                <ComboBox ItemsSource="{Binding Voices}" SelectedItem="{Binding SelectedVoice, Mode=TwoWay}">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel>
-                                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="12.5" Foreground="{StaticResource BrushText1}" Text="{Binding DisplayName}" />
-                                                <TextBlock Margin="0,2,0,0" Style="{StaticResource TextMonoUpper}" Text="{Binding Description}" />
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                            </Border>
-                        </StackPanel>
-                    </Grid>
+                    </StackPanel>
 
                     <!--  Brief + Write button  -->
                     <Grid Grid.Row="1" Margin="0,16,0,0">
