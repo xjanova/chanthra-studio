@@ -33,6 +33,13 @@ public sealed class SlideshowRenderer
         public int Height { get; init; } = 1080;
         public string OutputName { get; init; } = "";
 
+        /// <summary>Quality tier — drives ffmpeg's <c>-crf</c> + <c>-preset</c>.
+        /// "draft" prioritises speed (crf 24, ultrafast — bigger file but
+        /// renders 3-5× faster on the same machine), "full" is the legacy
+        /// balanced default (crf 20, fast), "hi" maxes quality for archival
+        /// renders (crf 18, slow).</summary>
+        public string Quality { get; init; } = "full";
+
         /// <summary>Optional audio track. Empty / missing file → silent video.</summary>
         public string? AudioPath { get; init; }
 
@@ -101,15 +108,32 @@ public sealed class SlideshowRenderer
         var outputPath = Path.Combine(outDir, safeName + ".mp4");
 
         var args = BuildArgList(spec, outputPath);
-        progress?.Report("Rendering film…");
+
+        // Total expected frames so we can convert "frame=NNN" into "% done"
+        // and an ETA. Includes both the main timeline and any crossfade
+        // overshoot from chained xfades; close enough for a status pill.
+        var perClipOverride = spec.ClipDurations is { Count: > 0 } durs && durs.Count == spec.Clips.Count
+            ? durs : null;
+        double totalSec = 0;
+        for (int i = 0; i < spec.Clips.Count; i++)
+            totalSec += perClipOverride?[i] ?? spec.SecondsPerClip;
+        if (spec.CrossfadeSec > 0 && spec.Clips.Count > 1)
+            totalSec -= spec.CrossfadeSec * (spec.Clips.Count - 1);
+        var totalFrames = Math.Max(1, (int)Math.Round(totalSec * spec.Fps));
+        var startedAt = DateTime.UtcNow;
+        progress?.Report($"Rendering · 0%");
 
         var (_, stderr, exit) = await ff.RunAsync(ffmpegPath, args,
             onStderrLine: line =>
             {
-                // ffmpeg emits "frame=  47 fps=30 …" — surface only the frame count
-                // through the progress callback to avoid spamming the UI thread.
-                if (line.StartsWith("frame=", StringComparison.Ordinal))
-                    progress?.Report(line);
+                // ffmpeg emits "frame=  47 fps=30 …" — extract the frame count
+                // and turn it into a "Rendering · 41% · 12s left" pill. Falls
+                // back to the raw line if the parse fails so the user always
+                // sees SOME progress signal.
+                if (!line.StartsWith("frame=", StringComparison.Ordinal))
+                    return;
+                var pretty = FormatProgress(line, totalFrames, startedAt);
+                progress?.Report(pretty);
             },
             ct: ct);
 
@@ -294,11 +318,50 @@ public sealed class SlideshowRenderer
         }
         args.Add("-r");             args.Add(spec.Fps.ToString(System.Globalization.CultureInfo.InvariantCulture));
         args.Add("-c:v");           args.Add("libx264");
-        args.Add("-preset");        args.Add("fast");
-        args.Add("-crf");           args.Add("20");
+        // Quality tier → ffmpeg preset/crf. Draft trades file size + visual
+        // fidelity for render-wall-time; hi does the opposite.
+        var (preset, crf) = spec.Quality switch
+        {
+            "draft" => ("ultrafast", "24"),
+            "hi"    => ("slow",      "18"),
+            _       => ("fast",      "20"),
+        };
+        args.Add("-preset");        args.Add(preset);
+        args.Add("-crf");           args.Add(crf);
         args.Add("-pix_fmt");       args.Add("yuv420p");
         args.Add(outputPath);
         return args;
+    }
+
+    /// <summary>Parse ffmpeg's per-frame progress line into a "Rendering ·
+    /// 41% · ~12s left" pill. Returns the raw line if the parse can't find
+    /// the frame number so the user always sees something.</summary>
+    private static string FormatProgress(string ffmpegLine, int totalFrames, DateTime startedAt)
+    {
+        // Line looks like: "frame=  47 fps=30 q=28.0 size=N/A time=00:00:01.55 ..."
+        try
+        {
+            var fIdx = ffmpegLine.IndexOf("frame=", StringComparison.Ordinal);
+            if (fIdx < 0) return ffmpegLine;
+            var rest = ffmpegLine[(fIdx + 6)..].TrimStart();
+            var spaceIdx = rest.IndexOf(' ');
+            if (spaceIdx < 0) return ffmpegLine;
+            if (!int.TryParse(rest[..spaceIdx], out var frame)) return ffmpegLine;
+
+            var pct = Math.Min(100, frame * 100.0 / totalFrames);
+            var elapsed = DateTime.UtcNow - startedAt;
+            if (frame > 0 && pct > 0.5)
+            {
+                var totalEst = elapsed.TotalSeconds * (totalFrames / (double)frame);
+                var remain = Math.Max(0, totalEst - elapsed.TotalSeconds);
+                return $"Rendering · {pct:F0}% · ~{remain:F0}s left";
+            }
+            return $"Rendering · {pct:F0}%";
+        }
+        catch
+        {
+            return ffmpegLine;
+        }
     }
 
     private static string TailLines(string text, int n)

@@ -127,6 +127,21 @@ public sealed class EditorViewModel : ObservableObject
     private int _fps = 30;
     public int Fps { get => _fps; set => SetProperty(ref _fps, value); }
 
+    /// <summary>Output aspect — drives the renderer's Width/Height + the
+    /// crop/letterbox math. Cannonical labels: "16:9" "9:16" "1:1" "21:9".
+    /// "16:9" is the legacy default.</summary>
+    private string _renderAspect = "16:9";
+    public string RenderAspect { get => _renderAspect; set => SetProperty(ref _renderAspect, value); }
+
+    /// <summary>Quality preset. "draft" (1280x720, crf 24, ultrafast),
+    /// "full" (1920x1080, crf 20, fast), "hi" (3840x2160, crf 18, slow).
+    /// Maps to renderer Width/Height/Fps internally.</summary>
+    private string _renderQuality = "full";
+    public string RenderQuality { get => _renderQuality; set => SetProperty(ref _renderQuality, value); }
+
+    public IRelayCommand<string> SetRenderAspectCommand { get; private set; } = null!;
+    public IRelayCommand<string> SetRenderQualityCommand { get; private set; } = null!;
+
     private double _crossfadeSec;
     /// <summary>Crossfade duration between adjacent slots, 0 = hard cut.
     /// Passed through to SlideshowRenderer.Spec.CrossfadeSec.</summary>
@@ -261,6 +276,13 @@ public sealed class EditorViewModel : ObservableObject
     public IRelayCommand RazorAtPlayheadCommand { get; }
     public IRelayCommand UndoCommand { get; private set; } = null!;
     public IRelayCommand RedoCommand { get; private set; } = null!;
+    public IRelayCommand SaveProjectCommand { get; private set; } = null!;
+    public IRelayCommand LoadProjectCommand { get; private set; } = null!;
+    public IRelayCommand DeleteSelectedSlotCommand { get; private set; } = null!;
+    public IRelayCommand NavSelectedLeftCommand { get; private set; } = null!;
+    public IRelayCommand NavSelectedRightCommand { get; private set; } = null!;
+    public IRelayCommand NudgePlayheadBackCommand { get; private set; } = null!;
+    public IRelayCommand NudgePlayheadForwardCommand { get; private set; } = null!;
     public IRelayCommand ClearTimelineCommand { get; }
     public IRelayCommand BrowseAudioCommand { get; }
     public IRelayCommand ClearAudioCommand { get; }
@@ -284,6 +306,16 @@ public sealed class EditorViewModel : ObservableObject
         RazorAtPlayheadCommand = new RelayCommand(RazorAtPlayhead);
         UndoCommand = new RelayCommand(Undo, () => _undoStack.Count > 0);
         RedoCommand = new RelayCommand(Redo, () => _redoStack.Count > 0);
+        SaveProjectCommand = new RelayCommand(SaveProject);
+        LoadProjectCommand = new RelayCommand(LoadProject);
+        SetRenderAspectCommand = new RelayCommand<string>(s => { if (!string.IsNullOrEmpty(s)) RenderAspect = s; });
+        SetRenderQualityCommand = new RelayCommand<string>(s => { if (!string.IsNullOrEmpty(s)) RenderQuality = s; });
+
+        DeleteSelectedSlotCommand = new RelayCommand(() => { if (Selected is not null) RemoveSlot(Selected); });
+        NavSelectedLeftCommand = new RelayCommand(() => NavSelected(-1));
+        NavSelectedRightCommand = new RelayCommand(() => NavSelected(+1));
+        NudgePlayheadBackCommand = new RelayCommand(() => PlayheadSec = Math.Max(0, PlayheadSec - 0.5));
+        NudgePlayheadForwardCommand = new RelayCommand(() => PlayheadSec = Math.Min(TotalDuration, PlayheadSec + 0.5));
 
         AddOverlayFromLibraryCommand = new RelayCommand<Clip>(AddOverlayFromLibrary);
         RemoveOverlayCommand = new RelayCommand<OverlaySlot>(RemoveOverlay);
@@ -509,6 +541,23 @@ public sealed class EditorViewModel : ObservableObject
         if (dlg.ShowDialog() == true) AudioPath = dlg.FileName;
     }
 
+    /// <summary>Move Selected by delta slots, wrapping at edges. Powers
+    /// the arrow-key navigation hotkeys.</summary>
+    private void NavSelected(int delta)
+    {
+        if (Timeline.Count == 0) { Selected = null; return; }
+        var idx = Selected is null ? -1 : Timeline.IndexOf(Selected);
+        var next = idx + delta;
+        if (next < 0) next = 0;
+        if (next >= Timeline.Count) next = Timeline.Count - 1;
+        Selected = Timeline[next];
+    }
+
+    // Helpers for 9:16 rotation — keep total pixel count the same so a 1080p
+    // landscape preset gives 1080x1920 vertical (the natural sister format).
+    private static int RotateW(int w, int h) => h;
+    private static int RotateH(int w, int h) => w;
+
     private async Task RenderAsync()
     {
         if (_ctx is null) { ShowToast("Editor context unavailable.", "warn"); return; }
@@ -518,12 +567,33 @@ public sealed class EditorViewModel : ObservableObject
         ShowToast("Rendering film…", "info");
         try
         {
+            // Resolve aspect + quality preset to concrete WxH. Vertical /
+            // square / cinema bend the canvas; quality bumps both axes plus
+            // a downstream encoder hint via crf/preset (read in BuildArgList
+            // via Spec.Quality).
+            var (baseW, baseH) = RenderQuality switch
+            {
+                "draft" => (1280, 720),
+                "hi"    => (3840, 2160),
+                _       => (1920, 1080),
+            };
+            var (w, h) = RenderAspect switch
+            {
+                "9:16" => (RotateW(baseW, baseH), RotateH(baseW, baseH)),
+                "1:1"  => (baseH, baseH),
+                "21:9" => (baseW, (int)(baseW * 9.0 / 21.0)),
+                _      => (baseW, baseH),
+            };
+
             var spec = new SlideshowRenderer.Spec
             {
                 Clips = Timeline.Select(s => s.Clip).ToList(),
                 ClipDurations = Timeline.Select(s => s.DurationSec).ToList(),
                 SecondsPerClip = 3.0,
                 Fps = Fps,
+                Width = w,
+                Height = h,
+                Quality = RenderQuality,
                 CrossfadeSec = CrossfadeSec,
                 OutputName = OutputName,
                 AudioPath = string.IsNullOrEmpty(AudioPath) ? null : AudioPath,
@@ -537,7 +607,15 @@ public sealed class EditorViewModel : ObservableObject
                     Position = o.Position,
                 }).ToList(),
             };
-            var result = await _ctx.SlideshowRenderer.RenderAsync(spec);
+            var progress = new Progress<string>(line =>
+            {
+                // ffmpeg-progress lines drive the live render pill — same
+                // toast channel as the warn/ok messages so the user gets
+                // a single source of truth in the inspector.
+                ToastMessage = line;
+                ToastKind = "info";
+            });
+            var result = await _ctx.SlideshowRenderer.RenderAsync(spec, progress);
             if (!result.Ok)
             {
                 ShowToast(result.Error ?? "render failed", "err");
@@ -572,6 +650,150 @@ public sealed class EditorViewModel : ObservableObject
         }
         Selected = Timeline.FirstOrDefault();
         RecomputeTotal();
+    }
+
+    // ---------- Project save / load (T25) ----------
+    private string _projectName = "Untitled";
+    public string ProjectName { get => _projectName; set => SetProperty(ref _projectName, value); }
+
+    private void SaveProject()
+    {
+        if (Timeline.Count == 0 && OverlayTimeline.Count == 0)
+        {
+            ShowToast("Nothing to save — timeline is empty.", "warn");
+            return;
+        }
+        var defaultDir = System.IO.Path.Combine(AppPaths.Root, "projects");
+        try { System.IO.Directory.CreateDirectory(defaultDir); } catch { }
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Save NLE project",
+            Filter = "Chanthra Studio project (*.chstudio)|*.chstudio|All files|*.*",
+            FileName = SafeFile(string.IsNullOrEmpty(_projectName) ? "project" : _projectName) + ".chstudio",
+            InitialDirectory = defaultDir,
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var file = new NleProjectSerializer.ProjectFile
+            {
+                Name = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName),
+                OutputName = OutputName,
+                Fps = Fps,
+                CrossfadeSec = CrossfadeSec,
+                AudioPath = string.IsNullOrEmpty(AudioPath) ? null : AudioPath,
+                AudioVolume = AudioVolume,
+                Timeline = Timeline.Select(s => new NleProjectSerializer.SlotEntry
+                {
+                    ShotId = s.Clip.ShotId,
+                    FilePath = s.Clip.FilePath,
+                    DurationSec = s.DurationSec,
+                }).ToList(),
+                Overlay = OverlayTimeline.Select(o => new NleProjectSerializer.OverlayEntry
+                {
+                    ShotId = o.Clip.ShotId,
+                    FilePath = o.Clip.FilePath,
+                    StartSec = o.StartSec,
+                    DurationSec = o.DurationSec,
+                    Scale = o.Scale,
+                    Position = o.Position,
+                }).ToList(),
+            };
+            NleProjectSerializer.Save(dlg.FileName, file);
+            ProjectName = file.Name;
+            ShowToast($"Saved · {System.IO.Path.GetFileName(dlg.FileName)}", "ok");
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Error("nle", $"SaveProject {dlg.FileName}", ex);
+            ShowToast($"Save failed: {ex.Message}", "err");
+        }
+    }
+
+    private void LoadProject()
+    {
+        var defaultDir = System.IO.Path.Combine(AppPaths.Root, "projects");
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Open NLE project",
+            Filter = "Chanthra Studio project (*.chstudio)|*.chstudio|All files|*.*",
+            InitialDirectory = System.IO.Directory.Exists(defaultDir) ? defaultDir : AppPaths.Root,
+            CheckFileExists = true,
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var file = NleProjectSerializer.Load(dlg.FileName);
+
+            // Rebuild slots — look the Clip up from the in-memory library by
+            // FilePath (most stable identifier across sessions). Missing clips
+            // are skipped with a warning so a half-loaded project beats none.
+            int missing = 0;
+            PushUndo();
+            foreach (var s in Timeline) s.PropertyChanged -= OnSlotChanged;
+            Timeline.Clear();
+            OverlayTimeline.Clear();
+
+            foreach (var entry in file.Timeline)
+            {
+                var clip = ResolveClip(entry.FilePath, entry.ShotId);
+                if (clip is null) { missing++; continue; }
+                var slot = new TimelineSlot { Clip = clip, DurationSec = entry.DurationSec };
+                slot.PropertyChanged += OnSlotChanged;
+                Timeline.Add(slot);
+            }
+            foreach (var entry in file.Overlay)
+            {
+                var clip = ResolveClip(entry.FilePath, entry.ShotId);
+                if (clip is null) { missing++; continue; }
+                OverlayTimeline.Add(new OverlaySlot
+                {
+                    Clip = clip,
+                    StartSec = entry.StartSec,
+                    DurationSec = entry.DurationSec,
+                    Scale = entry.Scale,
+                    Position = entry.Position,
+                });
+            }
+
+            OutputName = file.OutputName;
+            Fps = file.Fps;
+            CrossfadeSec = file.CrossfadeSec;
+            AudioPath = file.AudioPath ?? "";
+            AudioVolume = file.AudioVolume;
+            ProjectName = file.Name;
+            Selected = Timeline.FirstOrDefault();
+            SelectedOverlay = OverlayTimeline.FirstOrDefault();
+            RecomputeTotal();
+
+            var note = missing == 0
+                ? $"Loaded · {Timeline.Count} slots · {OverlayTimeline.Count} overlays"
+                : $"Loaded · {Timeline.Count} slots ({missing} clip refs missing from Library — re-import)";
+            ShowToast(note, missing == 0 ? "ok" : "warn");
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Error("nle", $"LoadProject {dlg.FileName}", ex);
+            ShowToast($"Load failed: {ex.Message}", "err");
+        }
+    }
+
+    private Models.Clip? ResolveClip(string filePath, string shotId)
+    {
+        // Prefer exact file-path match — that's what the user actually pointed
+        // at when they built the project. Fall back to shotId so a renamed file
+        // can still hook up if the shot reference survived.
+        var byPath = LibraryClips.FirstOrDefault(c => string.Equals(c.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+        if (byPath is not null) return byPath;
+        return LibraryClips.FirstOrDefault(c => c.ShotId == shotId);
+    }
+
+    private static string SafeFile(string raw)
+    {
+        var invalid = System.IO.Path.GetInvalidFileNameChars();
+        var sb = new System.Text.StringBuilder(raw.Length);
+        foreach (var ch in raw) sb.Append(System.Array.IndexOf(invalid, ch) >= 0 ? '_' : ch);
+        return sb.ToString().Trim();
     }
 
     // ---------- Undo / redo (T24) ----------

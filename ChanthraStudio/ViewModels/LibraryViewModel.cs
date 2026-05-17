@@ -258,7 +258,13 @@ public sealed class LibraryViewModel : ObservableObject
             AudioPath = string.IsNullOrEmpty(dialog.AudioPath) ? null : dialog.AudioPath,
             AudioVolume = dialog.AudioVolume,
         };
-        var progress = new Progress<string>(line => { /* could surface frame counts later */ });
+        // Live render-pill — SlideshowRenderer emits "Rendering · 41% · ~12s left"
+        // lines from ffmpeg progress; surface them through the same toast.
+        var progress = new Progress<string>(line =>
+        {
+            ToastMessage = line;
+            ToastKind = "info";
+        });
         var result = await _ctx.SlideshowRenderer.RenderAsync(spec, progress);
         if (!result.Ok)
         {

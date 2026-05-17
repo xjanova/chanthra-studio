@@ -18,6 +18,16 @@
     <UserControl.InputBindings>
         <KeyBinding Key="Z" Modifiers="Control" Command="{Binding UndoCommand}" />
         <KeyBinding Key="Y" Modifiers="Control" Command="{Binding RedoCommand}" />
+        <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveProjectCommand}" />
+        <KeyBinding Key="O" Modifiers="Control" Command="{Binding LoadProjectCommand}" />
+        <!--  NLE-style hotkeys. Mirrors Premiere/Resolve where possible.  -->
+        <KeyBinding Key="Delete" Command="{Binding DeleteSelectedSlotCommand}" />
+        <KeyBinding Key="Back" Command="{Binding DeleteSelectedSlotCommand}" />
+        <KeyBinding Key="Left" Command="{Binding NavSelectedLeftCommand}" />
+        <KeyBinding Key="Right" Command="{Binding NavSelectedRightCommand}" />
+        <KeyBinding Key="J" Command="{Binding NudgePlayheadBackCommand}" />
+        <KeyBinding Key="L" Command="{Binding NudgePlayheadForwardCommand}" />
+        <KeyBinding Key="C" Command="{Binding RazorAtPlayheadCommand}" />
     </UserControl.InputBindings>
 
     <Grid>
@@ -90,6 +100,8 @@
                     </TextBlock>
                     <Button Margin="0,0,8,0" Padding="10,6" Command="{Binding UndoCommand}" Content="↶ Undo" Style="{StaticResource ButtonPill}" ToolTip="Undo (Ctrl+Z)" />
                     <Button Margin="0,0,14,0" Padding="10,6" Command="{Binding RedoCommand}" Content="↷ Redo" Style="{StaticResource ButtonPill}" ToolTip="Redo (Ctrl+Y)" />
+                    <Button Margin="0,0,6,0" Padding="10,6" Command="{Binding LoadProjectCommand}" Content="Open…" Style="{StaticResource ButtonPill}" ToolTip="Open NLE project (Ctrl+O)" />
+                    <Button Margin="0,0,14,0" Padding="10,6" Command="{Binding SaveProjectCommand}" Content="Save…" Style="{StaticResource ButtonPill}" ToolTip="Save NLE project as .chstudio (Ctrl+S)" />
                     <Button Margin="0,0,8,0" Padding="14,6" Command="{Binding RefreshCommand}" Content="↻ Refresh" Style="{StaticResource ButtonPill}" />
                     <Button Padding="18,6" Command="{Binding ClearTimelineCommand}" Content="Clear timeline" Style="{StaticResource ButtonPill}" />
                 </StackPanel>
@@ -413,6 +425,38 @@
                                     <RadioButton GroupName="fps" Content="60" Style="{StaticResource ChipRadio}"
                                                  IsChecked="{Binding Fps, Converter={StaticResource StringEquals}, ConverterParameter=60, Mode=OneWay}"
                                                  Click="Fps_Click" Tag="60" />
+                                </StackPanel>
+
+                                <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="ASPECT" />
+                                <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                                    <RadioButton GroupName="ras" Margin="0,0,4,0" Content="9:16" Style="{StaticResource ChipRadio}"
+                                                 Command="{Binding SetRenderAspectCommand}" CommandParameter="9:16"
+                                                 IsChecked="{Binding RenderAspect, Converter={StaticResource StringEquals}, ConverterParameter=9:16, Mode=OneWay}" />
+                                    <RadioButton GroupName="ras" Margin="0,0,4,0" Content="1:1" Style="{StaticResource ChipRadio}"
+                                                 Command="{Binding SetRenderAspectCommand}" CommandParameter="1:1"
+                                                 IsChecked="{Binding RenderAspect, Converter={StaticResource StringEquals}, ConverterParameter=1:1, Mode=OneWay}" />
+                                    <RadioButton GroupName="ras" Margin="0,0,4,0" Content="16:9" Style="{StaticResource ChipRadio}"
+                                                 Command="{Binding SetRenderAspectCommand}" CommandParameter="16:9"
+                                                 IsChecked="{Binding RenderAspect, Converter={StaticResource StringEquals}, ConverterParameter=16:9, Mode=OneWay}" />
+                                    <RadioButton GroupName="ras" Content="21:9" Style="{StaticResource ChipRadio}"
+                                                 Command="{Binding SetRenderAspectCommand}" CommandParameter="21:9"
+                                                 IsChecked="{Binding RenderAspect, Converter={StaticResource StringEquals}, ConverterParameter=21:9, Mode=OneWay}" />
+                                </StackPanel>
+
+                                <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="QUALITY" />
+                                <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                                    <RadioButton GroupName="rq" Margin="0,0,4,0" Content="Draft · 720p" Style="{StaticResource ChipRadio}"
+                                                 Command="{Binding SetRenderQualityCommand}" CommandParameter="draft"
+                                                 ToolTip="Fast: crf 24 · ultrafast preset · big files · use for review"
+                                                 IsChecked="{Binding RenderQuality, Converter={StaticResource StringEquals}, ConverterParameter=draft, Mode=OneWay}" />
+                                    <RadioButton GroupName="rq" Margin="0,0,4,0" Content="Full · 1080p" Style="{StaticResource ChipRadio}"
+                                                 Command="{Binding SetRenderQualityCommand}" CommandParameter="full"
+                                                 ToolTip="Balanced: crf 20 · fast preset · sensible default"
+                                                 IsChecked="{Binding RenderQuality, Converter={StaticResource StringEquals}, ConverterParameter=full, Mode=OneWay}" />
+                                    <RadioButton GroupName="rq" Content="Hi · 4K" Style="{StaticResource ChipRadio}"
+                                                 Command="{Binding SetRenderQualityCommand}" CommandParameter="hi"
+                                                 ToolTip="Archival: crf 18 · slow preset · longest render time"
+                                                 IsChecked="{Binding RenderQuality, Converter={StaticResource StringEquals}, ConverterParameter=hi, Mode=OneWay}" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
