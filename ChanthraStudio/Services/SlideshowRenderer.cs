@@ -145,6 +145,10 @@ public sealed class SlideshowRenderer
         }
 
         // Persist as a clip — shotId is the first source clip's shot for now.
+        // Honour per-slot durations + subtract crossfade overshoot so the
+        // Library row's duration_ms matches the actual MP4 runtime (the
+        // legacy "SecondsPerClip * Count" math was off by both knobs).
+        var actualSec = totalSec;  // computed above for the frame estimator
         var firstShotId = spec.Clips.First().ShotId;
         var clipId = Guid.NewGuid().ToString("N");
         try
@@ -158,14 +162,15 @@ public sealed class SlideshowRenderer
                 {
                     id = clipId,
                     shotId = firstShotId,
-                    dur = (int)(spec.SecondsPerClip * 1000 * spec.Clips.Count),
+                    dur = (int)(actualSec * 1000),
                     path = outputPath,
                     now = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 });
         }
-        catch
+        catch (Exception ex)
         {
             // DB write best-effort — file still exists on disk.
+            ActivityLog.Warn("renderer", "clip row insert failed: " + ex.Message);
         }
 
         return RenderResult.Success(outputPath, clipId);

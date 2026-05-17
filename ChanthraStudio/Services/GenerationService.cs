@@ -34,6 +34,11 @@ public sealed class GenerationService
     private readonly StudioContext _ctx;
     private readonly System.Windows.Threading.Dispatcher _ui;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _running = new();
+    /// <summary>promptId → shotId for in-flight jobs. Populated when each
+    /// route mints a job id, so CancelByShotAsync can target a specific
+    /// shot instead of killing the whole queue (which was the old bug —
+    /// the schedule fan-out in 6.6/7.8 made it user-reachable).</summary>
+    private readonly ConcurrentDictionary<string, string> _promptToShot = new();
 
     public event EventHandler<GenerationProgressEventArgs>? ProgressChanged;
 
@@ -122,6 +127,7 @@ public sealed class GenerationService
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _running[jobId] = cts;
+        _promptToShot[jobId] = shot.Id;
 
         _ = Task.Run(async () =>
         {
@@ -171,6 +177,7 @@ public sealed class GenerationService
             finally
             {
                 _running.TryRemove(jobId, out _);
+                _promptToShot.TryRemove(jobId, out _);
             }
         });
 
@@ -219,6 +226,7 @@ public sealed class GenerationService
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _running[jobId] = cts;
+        _promptToShot[jobId] = shot.Id;
 
         _ = Task.Run(async () =>
         {
@@ -266,6 +274,7 @@ public sealed class GenerationService
             finally
             {
                 _running.TryRemove(jobId, out _);
+                _promptToShot.TryRemove(jobId, out _);
             }
         });
 
@@ -373,6 +382,7 @@ public sealed class GenerationService
 
             var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             _running[promptId] = cts;
+            _promptToShot[promptId] = shot.Id;
 
             // Listener takes ownership of `client` from here.
             _ = Task.Run(async () =>
@@ -391,25 +401,35 @@ public sealed class GenerationService
     }
 
     /// <summary>
-    /// Cancel every running job whose shotId matches. Used by the
-    /// per-shot cancel button on storyboard cards — the UI doesn't track
-    /// promptIds directly, only the Shot it composed.
+    /// Cancel every running job whose <see cref="Shot.Id"/> matches. The
+    /// composer's per-shot cancel button drives this — auto-schedules
+    /// (6.6/7.8) can fan out multiple concurrent jobs, so killing only
+    /// the targeted shot is critical.
+    ///
+    /// Walks <see cref="_promptToShot"/> to find the matching prompt id(s),
+    /// cancels their <see cref="CancellationTokenSource"/>, and (for the
+    /// ComfyUI route) fires /interrupt only when a ComfyUI job was
+    /// actually involved — interrupting always-on would stop unrelated
+    /// queue work the user didn't ask to cancel.
     /// </summary>
     public async Task CancelByShotAsync(string shotId)
     {
-        // We don't index running jobs by shotId; walk the small map.
-        // Looking up the matching DB row would also work but synchronous
-        // SQLite from the UI thread isn't worth it for a button click.
-        foreach (var promptId in _running.Keys.ToArray())
+        bool comfySetupTouched = false;
+        foreach (var (promptId, sid) in _promptToShot.ToArray())
         {
-            // Cheap heuristic: prompt id in our map; we just cancel them
-            // all that match by cross-referencing the DB. To keep this
-            // O(1) we cancel ALL currently-running jobs of this service —
-            // the user only ever has one shot generating at a time in
-            // practice (the queue serializes through ComfyUI anyway).
-            if (_running.TryRemove(promptId, out var cts)) cts.Cancel();
+            if (sid != shotId) continue;
+            if (_running.TryRemove(promptId, out var cts))
+            {
+                try { cts.Cancel(); } catch { }
+            }
+            _promptToShot.TryRemove(promptId, out _);
+            // ComfyUI prompt ids are 36-char UUIDs; Replicate/Runway/etc.
+            // mint our shorter 16-hex ids. Cheap heuristic: if it parses
+            // as a Guid, it came from ComfyUI's /prompt endpoint.
+            if (System.Guid.TryParse(promptId, out _)) comfySetupTouched = true;
         }
 
+        if (!comfySetupTouched) return;
         var url = _ctx.Settings.ComfyUiUrl;
         if (string.IsNullOrWhiteSpace(url)) return;
         try
@@ -496,6 +516,7 @@ public sealed class GenerationService
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _running[jobId] = cts;
+        _promptToShot[jobId] = shot.Id;
 
         _ = Task.Run(async () =>
         {
@@ -554,6 +575,7 @@ public sealed class GenerationService
             finally
             {
                 _running.TryRemove(jobId, out _);
+                _promptToShot.TryRemove(jobId, out _);
             }
         });
 
@@ -646,6 +668,7 @@ public sealed class GenerationService
         finally
         {
             _running.TryRemove(promptId, out _);
+            _promptToShot.TryRemove(promptId, out _);
         }
     }
 
@@ -697,7 +720,14 @@ public sealed class GenerationService
         return null;
     }
 
-    /// <summary>WebSocket reader that only updates progress for our prompt id.</summary>
+    /// <summary>WebSocket reader that only updates progress for our prompt id.
+    /// All three branches gate on <c>e.PromptId == promptId</c> — the
+    /// "progress" branch used to skip the filter, which meant a second
+    /// concurrent job's progress would overwrite the first one's UI state
+    /// (the schedule fan-out in 6.6/7.8 makes this reachable). For
+    /// step-progress events that ComfyUI emits without a prompt_id (k-sampler
+    /// step counter) we allow the update through when only one job is in
+    /// flight, but skip it when multiple are running to avoid cross-talk.</summary>
     private async Task StreamWsProgressAsync(ComfyUiClient client, Shot shot, string promptId, CancellationToken ct)
     {
         try
@@ -708,7 +738,12 @@ public sealed class GenerationService
 
                 if (e.Type == "progress" && e.ProgressFraction is double frac)
                 {
-                    Raise(promptId, shot.Id, ShotStatus.Generating, frac * 100, null);
+                    // Step counter — only update OUR shot if this event
+                    // belongs to it OR no prompt id is attached AND we're
+                    // the only job running (so the bar still moves on the
+                    // common single-shot case).
+                    var ours = e.PromptId == promptId || (e.PromptId is null && _running.Count == 1);
+                    if (ours) Raise(promptId, shot.Id, ShotStatus.Generating, frac * 100, null);
                 }
                 else if (e.Type == "executing" && e.PromptId == promptId)
                 {
@@ -722,9 +757,10 @@ public sealed class GenerationService
             }
         }
         catch (OperationCanceledException) { /* expected */ }
-        catch
+        catch (Exception ex)
         {
             // WS disconnects are non-fatal — the poller still drives completion.
+            ActivityLog.Warn("generation", $"WS stream ended for {promptId[..Math.Min(8, promptId.Length)]}: {ex.Message}");
         }
     }
 

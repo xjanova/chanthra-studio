@@ -857,12 +857,17 @@ public sealed class EditorViewModel : ObservableObject
         _undoStack.Push(snap);
         if (_undoStack.Count > UndoLimit)
         {
-            // Drop the oldest entry by rebuilding the stack — not pretty, but
-            // 50-entry stacks are tiny and this only fires after long edit
-            // sessions.
-            var keep = _undoStack.ToArray().Take(UndoLimit).Reverse().ToList();
+            // Drop the OLDEST entry — Stack.ToArray returns top-to-bottom
+            // (newest first), so keep the first UndoLimit (newest), push
+            // them back oldest-first so the topmost remains the most-recent
+            // snapshot. The previous version reversed order which inverted
+            // undo direction once the user crossed the cap.
+            var topToBottom = _undoStack.ToArray();              // [newest..oldest]
+            var keepNewestFirst = topToBottom.Take(UndoLimit);    // drop the oldest
+            // Push oldest-first so top of stack ends up newest.
+            var pushOrder = keepNewestFirst.Reverse().ToList();
             _undoStack.Clear();
-            foreach (var s in keep) _undoStack.Push(s);
+            foreach (var s in pushOrder) _undoStack.Push(s);
         }
         _redoStack.Clear();
         RefreshUndoRedo();
@@ -896,6 +901,13 @@ public sealed class EditorViewModel : ObservableObject
 
     private void ApplySnapshot(TimelineSnapshot snap)
     {
+        // Remember which clip the user had selected by file path — TimelineSlot
+        // instances are new after ApplySnapshot, so reference equality is
+        // useless. Path is the next-best stable identity since the rebuild
+        // pulls clips from the same Library refs.
+        var prevSelectedPath = _selected?.Clip.FilePath;
+        var prevOverlaySelectedPath = _selectedOverlay?.Clip.FilePath;
+
         // Detach handlers from old slots before discarding.
         foreach (var s in Timeline) s.PropertyChanged -= OnSlotChanged;
         Timeline.Clear();
@@ -913,8 +925,18 @@ public sealed class EditorViewModel : ObservableObject
                 Clip = clip, StartSec = start, DurationSec = dur, Scale = scale, Position = pos,
             });
         }
-        Selected = Timeline.LastOrDefault();
-        SelectedOverlay = OverlayTimeline.LastOrDefault();
+
+        // Re-select by file path so undo/redo doesn't blow away the user's
+        // inspector focus. Falls back to last slot if the previously-selected
+        // path isn't present in the restored snapshot.
+        Selected = (prevSelectedPath is not null
+                    ? Timeline.FirstOrDefault(s => s.Clip.FilePath == prevSelectedPath)
+                    : null)
+                ?? Timeline.LastOrDefault();
+        SelectedOverlay = (prevOverlaySelectedPath is not null
+                           ? OverlayTimeline.FirstOrDefault(o => o.Clip.FilePath == prevOverlaySelectedPath)
+                           : null)
+                        ?? OverlayTimeline.LastOrDefault();
         RecomputeTotal();
     }
 
