@@ -121,7 +121,9 @@
                                         Background="{StaticResource BrushBgInset}"
                                         BorderBrush="{StaticResource BrushLineHairline}"
                                         BorderThickness="1"
-                                        CornerRadius="6">
+                                        CornerRadius="6"
+                                        PreviewMouseLeftButtonDown="LibraryClip_PreviewMouseLeftButtonDown"
+                                        PreviewMouseMove="LibraryClip_PreviewMouseMove">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="56" />
@@ -241,7 +243,13 @@
                                                 BorderThickness="1"
                                                 CornerRadius="6"
                                                 Cursor="Hand"
-                                                MinWidth="120">
+                                                MinWidth="120"
+                                                AllowDrop="True"
+                                                PreviewMouseLeftButtonDown="Slot_PreviewMouseLeftButtonDown"
+                                                PreviewMouseMove="Slot_PreviewMouseMove"
+                                                DragEnter="Slot_DragEnter"
+                                                DragLeave="Slot_DragLeave"
+                                                Drop="Slot_Drop">
                                                 <Border.Style>
                                                     <Style TargetType="Border">
                                                         <Setter Property="BorderBrush" Value="{StaticResource BrushLineHairline}" />
@@ -283,6 +291,20 @@
                                                                 Style="{StaticResource ButtonIcon}"
                                                                 ToolTip="Move right">
                                                             <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText2}" Text="›" />
+                                                        </Button>
+                                                        <Button Width="22" Height="22" Padding="0" Margin="0,0,2,0"
+                                                                Command="{Binding DataContext.SplitSlotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}"
+                                                                Style="{StaticResource ButtonIcon}"
+                                                                ToolTip="Razor split — halve duration + clone in place">
+                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="✂" />
+                                                        </Button>
+                                                        <Button Width="22" Height="22" Padding="0" Margin="0,0,2,0"
+                                                                Command="{Binding DataContext.DuplicateSlotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}"
+                                                                Style="{StaticResource ButtonIcon}"
+                                                                ToolTip="Duplicate slot (keep duration)">
+                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText2}" Text="❏" />
                                                         </Button>
                                                         <Button Width="22" Height="22" Padding="0"
                                                                 Command="{Binding DataContext.RemoveSlotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -332,6 +354,16 @@
                                     <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText1}" Text="{Binding OutputName, UpdateSourceTrigger=PropertyChanged}" />
                                 </Border>
 
+                                <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="CROSSFADE BETWEEN SLOTS" />
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider Grid.Column="0" Minimum="0" Maximum="2" SmallChange="0.1" LargeChange="0.5" Style="{StaticResource GoldSlider}" Value="{Binding CrossfadeSec, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding CrossfadeSec, StringFormat={}{0:F1}s}" />
+                                </Grid>
+
                                 <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="FRAME RATE" />
                                 <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
                                     <RadioButton GroupName="fps" Margin="0,0,4,0" Content="24" Style="{StaticResource ChipRadio}"
@@ -343,6 +375,87 @@
                                     <RadioButton GroupName="fps" Content="60" Style="{StaticResource ChipRadio}"
                                                  IsChecked="{Binding Fps, Converter={StaticResource StringEquals}, ConverterParameter=60, Mode=OneWay}"
                                                  Click="Fps_Click" Tag="60" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!--  Overlay / picture-in-picture  -->
+                        <Border Margin="0,12,0,0" Padding="14,10" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource TextMonoUpper}" Text="OVERLAY · PIP" />
+                                    <Button Grid.Column="1" Padding="6,2" Command="{Binding ClearOverlayCommand}"
+                                            Visibility="{Binding HasOverlay, Converter={StaticResource BoolToVis}}"
+                                            Style="{StaticResource ButtonPill}">
+                                        <TextBlock FontFamily="{StaticResource FontMono}" FontSize="10" Foreground="{StaticResource BrushText3}" Text="clear" />
+                                    </Button>
+                                </Grid>
+                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="10.5" Foreground="{StaticResource BrushText2}" TextTrimming="CharacterEllipsis" Text="{Binding OverlayLabel}" />
+                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="9.5" Foreground="{StaticResource BrushText4}" Text="Drop a Library clip here → uses right-click menu" />
+
+                                <!--  Drag-drop target  -->
+                                <Border Margin="0,6,0,0" MinHeight="48" Background="{StaticResource BrushSurface03}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6"
+                                        AllowDrop="True" Drop="Overlay_Drop" DragEnter="Overlay_DragEnter" DragLeave="Overlay_DragLeave">
+                                    <Grid>
+                                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="10" Foreground="{StaticResource BrushText3}" Text="DROP A LIBRARY CLIP HERE"
+                                                   Visibility="{Binding HasOverlay, Converter={StaticResource InvBoolToVis}}" />
+                                        <Image Source="{Binding OverlayClip.FilePath, Converter={StaticResource ClipPathToImage}}" Stretch="UniformToFill"
+                                               Visibility="{Binding HasOverlay, Converter={StaticResource BoolToVis}}" />
+                                    </Grid>
+                                </Border>
+
+                                <StackPanel Visibility="{Binding HasOverlay, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="START · DURATION" />
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider Grid.Column="0" Minimum="0" Maximum="60" SmallChange="0.5" LargeChange="2" Style="{StaticResource GoldSlider}" Value="{Binding OverlayStartSec, Mode=TwoWay}" />
+                                        <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding OverlayStartSec, StringFormat={}{0:F1}s}" />
+                                    </Grid>
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider Grid.Column="0" Minimum="0.5" Maximum="20" SmallChange="0.5" LargeChange="2" Style="{StaticResource GoldSlider}" Value="{Binding OverlayDurationSec, Mode=TwoWay}" />
+                                        <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding OverlayDurationSec, StringFormat={}{0:F1}s}" />
+                                    </Grid>
+
+                                    <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="SIZE" />
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider Grid.Column="0" Minimum="0.1" Maximum="0.6" SmallChange="0.05" LargeChange="0.15" Style="{StaticResource GoldSlider}" Value="{Binding OverlayScale, Mode=TwoWay}" />
+                                        <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding OverlayScale, StringFormat={}{0:P0}}" />
+                                    </Grid>
+
+                                    <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="POSITION" />
+                                    <UniformGrid Margin="0,4,0,0" Columns="3" Rows="2">
+                                        <RadioButton GroupName="ovpos" Margin="0,0,2,2" Content="↖ TL" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetOverlayPositionCommand}" CommandParameter="TL"
+                                                     IsChecked="{Binding OverlayPosition, Converter={StaticResource StringEquals}, ConverterParameter=TL, Mode=OneWay}" />
+                                        <RadioButton GroupName="ovpos" Margin="0,0,2,2" Content="● C" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetOverlayPositionCommand}" CommandParameter="C"
+                                                     IsChecked="{Binding OverlayPosition, Converter={StaticResource StringEquals}, ConverterParameter=C, Mode=OneWay}" />
+                                        <RadioButton GroupName="ovpos" Margin="0,0,0,2" Content="↗ TR" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetOverlayPositionCommand}" CommandParameter="TR"
+                                                     IsChecked="{Binding OverlayPosition, Converter={StaticResource StringEquals}, ConverterParameter=TR, Mode=OneWay}" />
+                                        <RadioButton GroupName="ovpos" Margin="0,0,2,0" Content="↙ BL" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetOverlayPositionCommand}" CommandParameter="BL"
+                                                     IsChecked="{Binding OverlayPosition, Converter={StaticResource StringEquals}, ConverterParameter=BL, Mode=OneWay}" />
+                                        <Border />
+                                        <RadioButton GroupName="ovpos" Content="↘ BR" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetOverlayPositionCommand}" CommandParameter="BR"
+                                                     IsChecked="{Binding OverlayPosition, Converter={StaticResource StringEquals}, ConverterParameter=BR, Mode=OneWay}" />
+                                    </UniformGrid>
                                 </StackPanel>
                             </StackPanel>
                         </Border>

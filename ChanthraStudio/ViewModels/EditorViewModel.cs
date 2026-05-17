@@ -90,6 +90,53 @@ public sealed class EditorViewModel : ObservableObject
     private int _fps = 30;
     public int Fps { get => _fps; set => SetProperty(ref _fps, value); }
 
+    private double _crossfadeSec;
+    /// <summary>Crossfade duration between adjacent slots, 0 = hard cut.
+    /// Passed through to SlideshowRenderer.Spec.CrossfadeSec.</summary>
+    public double CrossfadeSec { get => _crossfadeSec; set => SetProperty(ref _crossfadeSec, value); }
+
+    // ---------- Overlay / picture-in-picture (T13) ----------
+    private Clip? _overlayClip;
+    /// <summary>Optional picture-in-picture clip layered on top of the main
+    /// timeline. Null = no overlay. Picked from the Library rail like the
+    /// main-track slots.</summary>
+    public Clip? OverlayClip
+    {
+        get => _overlayClip;
+        set
+        {
+            if (SetProperty(ref _overlayClip, value))
+            {
+                OnPropertyChanged(nameof(HasOverlay));
+                OnPropertyChanged(nameof(OverlayLabel));
+            }
+        }
+    }
+
+    public bool HasOverlay => _overlayClip is not null;
+    public string OverlayLabel => _overlayClip is null ? "(no overlay)" : _overlayClip.FileName;
+
+    private double _overlayStartSec;
+    /// <summary>Seconds into the main timeline at which the overlay appears.
+    /// Must be &lt; total timeline duration.</summary>
+    public double OverlayStartSec { get => _overlayStartSec; set => SetProperty(ref _overlayStartSec, Math.Max(0, value)); }
+
+    private double _overlayDurationSec = 4.0;
+    public double OverlayDurationSec { get => _overlayDurationSec; set => SetProperty(ref _overlayDurationSec, Math.Max(0.5, value)); }
+
+    private double _overlayScale = 0.3;
+    /// <summary>Overlay size as a fraction of the main video frame width
+    /// (0.1–0.6). 0.3 = the overlay is 30% of the main frame.</summary>
+    public double OverlayScale { get => _overlayScale; set => SetProperty(ref _overlayScale, Math.Clamp(value, 0.1, 0.6)); }
+
+    private string _overlayPosition = "TR";
+    /// <summary>"TL" | "TR" | "BL" | "BR" | "C" — overlay corner / centre.</summary>
+    public string OverlayPosition { get => _overlayPosition; set => SetProperty(ref _overlayPosition, value); }
+
+    public IRelayCommand<Clip> SetOverlayCommand { get; private set; } = null!;
+    public IRelayCommand ClearOverlayCommand { get; private set; } = null!;
+    public IRelayCommand<string> SetOverlayPositionCommand { get; private set; } = null!;
+
     private double _totalDuration;
     /// <summary>Sum of all slot durations — drives the "0:32 total" stamp.</summary>
     public double TotalDuration { get => _totalDuration; set => SetProperty(ref _totalDuration, value); }
@@ -118,6 +165,8 @@ public sealed class EditorViewModel : ObservableObject
     public IRelayCommand<TimelineSlot> MoveLeftCommand { get; }
     public IRelayCommand<TimelineSlot> MoveRightCommand { get; }
     public IRelayCommand<TimelineSlot> SelectSlotCommand { get; }
+    public IRelayCommand<TimelineSlot> SplitSlotCommand { get; }
+    public IRelayCommand<TimelineSlot> DuplicateSlotCommand { get; }
     public IRelayCommand ClearTimelineCommand { get; }
     public IRelayCommand BrowseAudioCommand { get; }
     public IRelayCommand ClearAudioCommand { get; }
@@ -136,6 +185,11 @@ public sealed class EditorViewModel : ObservableObject
         MoveLeftCommand = new RelayCommand<TimelineSlot>(s => MoveSlot(s, -1));
         MoveRightCommand = new RelayCommand<TimelineSlot>(s => MoveSlot(s, +1));
         SelectSlotCommand = new RelayCommand<TimelineSlot>(s => Selected = s);
+        SplitSlotCommand = new RelayCommand<TimelineSlot>(SplitSlot);
+        DuplicateSlotCommand = new RelayCommand<TimelineSlot>(DuplicateSlot);
+        SetOverlayCommand = new RelayCommand<Clip>(c => OverlayClip = c);
+        ClearOverlayCommand = new RelayCommand(() => OverlayClip = null);
+        SetOverlayPositionCommand = new RelayCommand<string>(p => { if (!string.IsNullOrEmpty(p)) OverlayPosition = p; });
         ClearTimelineCommand = new RelayCommand(() =>
         {
             foreach (var t in Timeline) t.PropertyChanged -= OnSlotChanged;
@@ -195,6 +249,42 @@ public sealed class EditorViewModel : ObservableObject
         Timeline.Move(idx, newIdx);
     }
 
+    /// <summary>Razor split — halve the slot's duration and clone it in place
+    /// so the resulting pair plays the same clip back-to-back. With a
+    /// crossfade transition set, this becomes a smooth re-statement of the
+    /// same image; without it, an intentional hard re-cut.</summary>
+    private void SplitSlot(TimelineSlot? slot)
+    {
+        if (slot is null) return;
+        if (slot.DurationSec < 1.0) { ShowToast("Slot too short to split — bump duration first.", "warn"); return; }
+        var idx = Timeline.IndexOf(slot);
+        if (idx < 0) return;
+        var half = slot.DurationSec / 2.0;
+        slot.DurationSec = half;
+        var clone = new TimelineSlot { Clip = slot.Clip, DurationSec = half };
+        clone.PropertyChanged += OnSlotChanged;
+        Timeline.Insert(idx + 1, clone);
+        Selected = clone;
+        RecomputeTotal();
+        ShowToast($"Split — two {half:F1}s halves", "ok");
+    }
+
+    /// <summary>Duplicate the slot keeping its duration intact. Useful for
+    /// holding the same image across a transition or matching two halves of
+    /// a beat in the soundtrack.</summary>
+    private void DuplicateSlot(TimelineSlot? slot)
+    {
+        if (slot is null) return;
+        var idx = Timeline.IndexOf(slot);
+        if (idx < 0) return;
+        var clone = new TimelineSlot { Clip = slot.Clip, DurationSec = slot.DurationSec };
+        clone.PropertyChanged += OnSlotChanged;
+        Timeline.Insert(idx + 1, clone);
+        Selected = clone;
+        RecomputeTotal();
+        ShowToast($"Duplicated {slot.FileName}", "ok");
+    }
+
     private void OnSlotChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(TimelineSlot.DurationSec)) RecomputeTotal();
@@ -232,9 +322,15 @@ public sealed class EditorViewModel : ObservableObject
                 ClipDurations = Timeline.Select(s => s.DurationSec).ToList(),
                 SecondsPerClip = 3.0,
                 Fps = Fps,
+                CrossfadeSec = CrossfadeSec,
                 OutputName = OutputName,
                 AudioPath = string.IsNullOrEmpty(AudioPath) ? null : AudioPath,
                 AudioVolume = AudioVolume,
+                OverlayClip = OverlayClip,
+                OverlayStartSec = OverlayStartSec,
+                OverlayDurationSec = OverlayDurationSec,
+                OverlayScale = OverlayScale,
+                OverlayPosition = OverlayPosition,
             };
             var result = await _ctx.SlideshowRenderer.RenderAsync(spec);
             if (!result.Ok)
