@@ -1,0 +1,418 @@
+<UserControl
+    x:Class="ChanthraStudio.Views.EditorView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="clr-namespace:ChanthraStudio.ViewModels"
+    Background="{StaticResource BrushBgBase}"
+    d:DataContext="{d:DesignInstance vm:EditorViewModel}"
+    d:DesignHeight="900"
+    d:DesignWidth="1500"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <Style BasedOn="{StaticResource ThinScrollBar}" TargetType="ScrollBar" />
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!--  Toast  -->
+        <Border
+            Grid.Row="0"
+            Grid.RowSpan="3"
+            Margin="0,18,0,0"
+            Padding="14,8"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Panel.ZIndex="50"
+            CornerRadius="99"
+            Effect="{StaticResource ShadowGoldGlowSoft}"
+            Visibility="{Binding ToastMessage, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Background" Value="{StaticResource BrushSurface03}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource BrushLineHairline}" />
+                    <Setter Property="BorderThickness" Value="1" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ToastKind}" Value="ok">
+                            <Setter Property="Background" Value="#1F6DBF8C" />
+                            <Setter Property="BorderBrush" Value="#666DBF8C" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding ToastKind}" Value="warn">
+                            <Setter Property="Background" Value="#1FE0B056" />
+                            <Setter Property="BorderBrush" Value="#66E0B056" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding ToastKind}" Value="err">
+                            <Setter Property="Background" Value="#1FD05A5A" />
+                            <Setter Property="BorderBrush" Value="#66D05A5A" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="11.5" Foreground="{StaticResource BrushText1}" Text="{Binding ToastMessage}" />
+        </Border>
+
+        <!--  Header  -->
+        <Border
+            Grid.Row="0"
+            Padding="32,18"
+            Background="{StaticResource BrushSurface02}"
+            BorderBrush="{StaticResource BrushLineHairline}"
+            BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Style="{StaticResource TextPanelHeader}" FontSize="22">
+                        <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
+                        <Run Text="Editor · NLE-lite" />
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12"
+                               Text="Drop library clips onto the timeline, set per-slot durations, optionally pin an audio take, render." />
+                </StackPanel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Margin="0,0,14,0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText3}">
+                        <Run Text="TOTAL " />
+                        <Run Foreground="{StaticResource BrushGoldHi}" Text="{Binding TotalDurationLabel, Mode=OneWay}" />
+                    </TextBlock>
+                    <Button Margin="0,0,8,0" Padding="14,6" Command="{Binding RefreshCommand}" Content="↻ Refresh" Style="{StaticResource ButtonPill}" />
+                    <Button Padding="18,6" Command="{Binding ClearTimelineCommand}" Content="Clear timeline" Style="{StaticResource ButtonPill}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!--  Body  -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="320" />
+            </Grid.ColumnDefinitions>
+
+            <!--  LEFT: Library  -->
+            <Border Grid.Column="0" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="0,0,1,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Padding="14,12,14,8" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="0,0,0,1">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText3}" Text="LIBRARY" />
+                            <TextBlock Margin="0,3,0,0" FontFamily="{StaticResource FontMono}" FontSize="10" Foreground="{StaticResource BrushText4}"
+                                       Text="{Binding LibraryClips.Count, StringFormat={}{0} clips available}" />
+                        </StackPanel>
+                    </Border>
+                    <ScrollViewer Grid.Row="1" Padding="10,6,10,12" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding LibraryClips}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border
+                                        Margin="0,0,0,6"
+                                        Padding="8"
+                                        Background="{StaticResource BrushBgInset}"
+                                        BorderBrush="{StaticResource BrushLineHairline}"
+                                        BorderThickness="1"
+                                        CornerRadius="6">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="56" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Grid.Column="0" Width="56" Height="32" CornerRadius="4" ClipToBounds="True">
+                                                <Grid>
+                                                    <Border Background="{StaticResource BrushSurface03}" />
+                                                    <Image
+                                                        Source="{Binding FilePath, Converter={StaticResource ClipPathToImage}}"
+                                                        Stretch="UniformToFill" />
+                                                </Grid>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Margin="10,0,8,0" VerticalAlignment="Center">
+                                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="11" Foreground="{StaticResource BrushText1}" Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Margin="0,2,0,0" Style="{StaticResource TextMonoUpper}" FontSize="9" Text="{Binding SizeLabel}" />
+                                            </StackPanel>
+                                            <Button
+                                                Grid.Column="2"
+                                                Width="28"
+                                                Height="28"
+                                                Padding="0"
+                                                Command="{Binding DataContext.AddClipCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Style="{StaticResource ButtonSummonCta}"
+                                                ToolTip="Add to timeline">
+                                                <TextBlock FontFamily="{StaticResource FontMono}" FontSize="14" Foreground="#FF1A0D05" Text="+" />
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!--  CENTER: preview + timeline  -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!--  Preview pane — shows the selected slot's thumbnail  -->
+                <Border Grid.Row="0" Margin="22" CornerRadius="10" ClipToBounds="True" Effect="{StaticResource ShadowCanvas}">
+                    <Grid>
+                        <Border Background="{StaticResource BrushBgInset}" />
+                        <Image
+                            Source="{Binding Selected.FilePath, Converter={StaticResource ClipPathToImage}}"
+                            Stretch="Uniform" />
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontFamily="{StaticResource FontDisplay}"
+                            FontSize="22"
+                            FontStyle="Italic"
+                            Foreground="{StaticResource BrushText3}"
+                            Visibility="{Binding HasSelection, Converter={StaticResource InvBoolToVis}}"
+                            Text="Click a timeline slot to preview" />
+                        <Border
+                            Margin="14"
+                            Padding="8,3"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Background="{StaticResource BrushBlackOverlay55}"
+                            CornerRadius="4"
+                            Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}">
+                                <Run Text="SLOT · " /><Run Text="{Binding Selected.FileName, Mode=OneWay}" />
+                            </TextBlock>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!--  Timeline strip  -->
+                <Border
+                    Grid.Row="1"
+                    MinHeight="160"
+                    Background="{StaticResource BrushBlackOverlay35}"
+                    BorderBrush="{StaticResource BrushLineHairline}"
+                    BorderThickness="0,1,0,0">
+                    <Grid Margin="22,12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource TextSectionDivider}" Text="TIMELINE · VIDEO TRACK" />
+                            <TextBlock Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}"
+                                       Text="{Binding Timeline.Count, StringFormat={}{0} slots}" />
+                        </Grid>
+                        <Border
+                            Grid.Row="1"
+                            Background="{StaticResource BrushBgInset}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Padding="6">
+                                <ItemsControl ItemsSource="{Binding Timeline}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border
+                                                Margin="4"
+                                                Padding="6"
+                                                Background="{StaticResource BrushSurface02}"
+                                                BorderThickness="1"
+                                                CornerRadius="6"
+                                                Cursor="Hand"
+                                                MinWidth="120">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="BorderBrush" Value="{StaticResource BrushLineHairline}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                <Setter Property="BorderBrush" Value="{StaticResource BrushGoldHi}" />
+                                                                <Setter Property="Effect" Value="{StaticResource ShadowGoldGlowSoft}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <Border.InputBindings>
+                                                    <MouseBinding MouseAction="LeftClick"
+                                                                  Command="{Binding DataContext.SelectSlotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  CommandParameter="{Binding}" />
+                                                </Border.InputBindings>
+                                                <StackPanel>
+                                                    <Border Width="120" Height="68" CornerRadius="4" ClipToBounds="True">
+                                                        <Grid>
+                                                            <Border Background="{StaticResource BrushSurface03}" />
+                                                            <Image Source="{Binding FilePath, Converter={StaticResource ClipPathToImage}}" Stretch="UniformToFill" />
+                                                            <Border Margin="3" Padding="4,1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="{StaticResource BrushBlackOverlay55}" CornerRadius="3">
+                                                                <TextBlock Style="{StaticResource TextMonoGold}" FontSize="9" Text="{Binding DurationSec, StringFormat={}{0:F1}s}" />
+                                                            </Border>
+                                                        </Grid>
+                                                    </Border>
+                                                    <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="9" Foreground="{StaticResource BrushText2}" TextTrimming="CharacterEllipsis" MaxWidth="120" Text="{Binding FileName}" />
+                                                    <StackPanel Margin="0,4,0,0" HorizontalAlignment="Center" Orientation="Horizontal">
+                                                        <Button Width="22" Height="22" Padding="0" Margin="0,0,2,0"
+                                                                Command="{Binding DataContext.MoveLeftCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}"
+                                                                Style="{StaticResource ButtonIcon}"
+                                                                ToolTip="Move left">
+                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText2}" Text="‹" />
+                                                        </Button>
+                                                        <Button Width="22" Height="22" Padding="0" Margin="0,0,2,0"
+                                                                Command="{Binding DataContext.MoveRightCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}"
+                                                                Style="{StaticResource ButtonIcon}"
+                                                                ToolTip="Move right">
+                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText2}" Text="›" />
+                                                        </Button>
+                                                        <Button Width="22" Height="22" Padding="0"
+                                                                Command="{Binding DataContext.RemoveSlotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}"
+                                                                Style="{StaticResource ButtonIcon}"
+                                                                ToolTip="Remove">
+                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushCrimson}" Text="×" />
+                                                        </Button>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!--  RIGHT: inspector  -->
+            <Border Grid.Column="2" Background="{StaticResource BrushSurface02}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1,0,0,0">
+                <ScrollViewer Padding="18,16,18,18" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource TextPanelHeader}" FontSize="14">
+                            <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
+                            <Run Text="Inspector" />
+                        </TextBlock>
+
+                        <!--  Per-slot duration  -->
+                        <StackPanel Margin="0,12,0,0" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Style="{StaticResource TextMonoUpper}" Text="SLOT DURATION" />
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Slider Grid.Column="0" Minimum="0.5" Maximum="20" SmallChange="0.5" LargeChange="2" Style="{StaticResource GoldSlider}" Value="{Binding Selected.DurationSec, Mode=TwoWay}" />
+                                <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Selected.DurationSec, StringFormat={}{0:F1}s}" />
+                            </Grid>
+                        </StackPanel>
+
+                        <Border Margin="0,18,0,0" Padding="14,10" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Text="OUTPUT NAME" />
+                                <Border Margin="0,4,0,0" Padding="8,5" Background="{StaticResource BrushSurface03}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="4">
+                                    <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText1}" Text="{Binding OutputName, UpdateSourceTrigger=PropertyChanged}" />
+                                </Border>
+
+                                <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="FRAME RATE" />
+                                <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                                    <RadioButton GroupName="fps" Margin="0,0,4,0" Content="24" Style="{StaticResource ChipRadio}"
+                                                 IsChecked="{Binding Fps, Converter={StaticResource StringEquals}, ConverterParameter=24, Mode=OneWay}"
+                                                 Click="Fps_Click" Tag="24" />
+                                    <RadioButton GroupName="fps" Margin="0,0,4,0" Content="30" Style="{StaticResource ChipRadio}"
+                                                 IsChecked="{Binding Fps, Converter={StaticResource StringEquals}, ConverterParameter=30, Mode=OneWay}"
+                                                 Click="Fps_Click" Tag="30" />
+                                    <RadioButton GroupName="fps" Content="60" Style="{StaticResource ChipRadio}"
+                                                 IsChecked="{Binding Fps, Converter={StaticResource StringEquals}, ConverterParameter=60, Mode=OneWay}"
+                                                 Click="Fps_Click" Tag="60" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!--  Audio track  -->
+                        <Border Margin="0,12,0,0" Padding="14,10" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Text="AUDIO · OPTIONAL" />
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Padding="8,5" Background="{StaticResource BrushSurface03}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="4">
+                                        <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="10.5" Foreground="{StaticResource BrushText2}" Text="{Binding AudioFileName}" TextTrimming="CharacterEllipsis" />
+                                    </Border>
+                                    <Button Grid.Column="1" Margin="6,0,0,0" Padding="8,5" Command="{Binding BrowseAudioCommand}" Content="Browse" Style="{StaticResource ButtonPill}" />
+                                    <Button Grid.Column="2" Margin="6,0,0,0" Padding="8,5" Command="{Binding ClearAudioCommand}" Style="{StaticResource ButtonPill}">
+                                        <Path Width="9" Height="9" Data="{StaticResource IcoClose}" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
+                                    </Button>
+                                </Grid>
+
+                                <ComboBox Margin="0,8,0,0" ItemsSource="{Binding AudioTakes}" SelectionChanged="AudioTake_SelectionChanged">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel>
+                                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="11.5" Foreground="{StaticResource BrushText1}" Text="{Binding FileName}" />
+                                                <StackPanel Margin="0,2,0,0" Orientation="Horizontal">
+                                                    <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="9" Text="{Binding ProviderDisplayName}" />
+                                                    <TextBlock Margin="6,0" FontSize="9" Foreground="{StaticResource BrushText4}" Text="·" />
+                                                    <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="9" Text="{Binding VoiceDisplayName}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="VOLUME" />
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider Grid.Column="0" Minimum="0" Maximum="2" SmallChange="0.1" LargeChange="0.5" Style="{StaticResource GoldSlider}" Value="{Binding AudioVolume, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding AudioVolume, StringFormat={}{0:F2}×}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!--  Render bar (bottom)  -->
+        <Border Grid.Row="2" Padding="22,14" Background="{StaticResource BrushSurface02}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="0,1,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText3}">
+                        <Run Text="{Binding Timeline.Count, Mode=OneWay}" /><Run Text=" SLOTS · " />
+                        <Run Foreground="{StaticResource BrushGoldHi}" Text="{Binding TotalDurationLabel, Mode=OneWay}" />
+                    </TextBlock>
+                </StackPanel>
+                <Button Grid.Column="1" Padding="26,8" Command="{Binding RenderCommand}" Content="✦  Render film" Style="{StaticResource ButtonPillGold}"
+                        IsEnabled="{Binding IsRendering, Converter={StaticResource InvBoolToVis}, FallbackValue=True}" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

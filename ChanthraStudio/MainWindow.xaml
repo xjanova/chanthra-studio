@@ -41,9 +41,7 @@
                 <DataTrigger Binding="{Binding ActiveView}" Value="Edit">
                     <Setter Property="Content">
                         <Setter.Value>
-                            <views:StubView
-                                Tag="Editor · NLE"
-                                Description="Multi-track timeline (drag clips · razor split · transitions · effect chains · per-track audio) lands in a future phase. For now: select clips in Library and hit ✦ Render film for a slideshow concat with optional audio track." />
+                            <views:EditorView />
                         </Setter.Value>
                     </Setter>
                 </DataTrigger>

@@ -38,6 +38,14 @@ public sealed class SlideshowRenderer
 
         /// <summary>0.0 – 1.0 multiplier. Mapped to ffmpeg's volume filter.</summary>
         public double AudioVolume { get; init; } = 1.0;
+
+        /// <summary>
+        /// Per-clip duration overrides. When supplied (and the same length as
+        /// <see cref="Clips"/>), each input gets its own <c>-t</c> seconds so
+        /// the NLE timeline can show different durations per slot. Falls back
+        /// to the global <see cref="SecondsPerClip"/> when null/empty/mismatched.
+        /// </summary>
+        public IReadOnlyList<double>? ClipDurations { get; init; }
     }
 
     public async Task<RenderResult> RenderAsync(Spec spec, IProgress<string>? progress = null, CancellationToken ct = default)
@@ -118,11 +126,15 @@ public sealed class SlideshowRenderer
         var hasAudio = !string.IsNullOrWhiteSpace(spec.AudioPath) && File.Exists(spec.AudioPath);
         var args = new List<string> { "-y" };
 
-        foreach (var c in spec.Clips)
+        var perClipOverride = spec.ClipDurations is { Count: > 0 } durs && durs.Count == spec.Clips.Count
+            ? durs
+            : null;
+        for (int i = 0; i < spec.Clips.Count; i++)
         {
+            var dur = perClipOverride?[i] ?? spec.SecondsPerClip;
             args.Add("-loop");      args.Add("1");
-            args.Add("-t");         args.Add(spec.SecondsPerClip.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
-            args.Add("-i");         args.Add(c.FilePath);
+            args.Add("-t");         args.Add(dur.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
+            args.Add("-i");         args.Add(spec.Clips[i].FilePath);
         }
         var audioIndex = spec.Clips.Count;
         if (hasAudio)
