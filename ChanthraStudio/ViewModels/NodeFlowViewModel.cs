@@ -1,9 +1,12 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using ChanthraStudio.Models;
+using ChanthraStudio.Services;
+using ChanthraStudio.Services.Providers.ComfyUI;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -62,6 +65,30 @@ public sealed class NodeFlowViewModel : ObservableObject
     public IRelayCommand ZoomResetCommand { get; }
     public IRelayCommand AutoArrangeCommand { get; }
     public IRelayCommand<string> AddNodeCommand { get; }
+    public IRelayCommand SaveCommand { get; }
+    public IRelayCommand LoadCommand { get; }
+    public IAsyncRelayCommand RunCommand { get; }
+    public IRelayCommand<NodeSocket> SocketClickCommand { get; }
+
+    private string _statusMessage = "";
+    /// <summary>Bottom-bar message after a Save/Load/Run action — also drives
+    /// a small toast in the inspector.</summary>
+    public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
+
+    private string _statusKind = "info";
+    public string StatusKind { get => _statusKind; set => SetProperty(ref _statusKind, value); }
+
+    private string _graphName = "node_flow";
+    /// <summary>File name (no extension) the Save button uses. Editable so
+    /// the user can iterate on multiple drafts.</summary>
+    public string GraphName { get => _graphName; set => SetProperty(ref _graphName, value); }
+
+    /// <summary>
+    /// When the user clicks an output socket first, this holds the pending
+    /// "from" endpoint. Clicking an input socket next creates a wire to it.
+    /// Clicking another output (or pressing Esc — not yet wired) resets it.
+    /// </summary>
+    private (FlowNode Node, NodeSocket Socket)? _pendingFrom;
 
     public NodeFlowViewModel()
     {
@@ -72,8 +99,171 @@ public sealed class NodeFlowViewModel : ObservableObject
         ZoomResetCommand = new RelayCommand(() => { Zoom = 1.0; PanX = 0; PanY = 0; });
         AutoArrangeCommand = new RelayCommand(AutoArrange);
         AddNodeCommand = new RelayCommand<string>(AddNodeFromKind);
+        SaveCommand = new RelayCommand(SaveGraph);
+        LoadCommand = new RelayCommand(LoadGraph);
+        RunCommand = new AsyncRelayCommand(RunGraphAsync);
+        SocketClickCommand = new RelayCommand<NodeSocket>(OnSocketClicked);
 
         RecomputeWires();
+    }
+
+    private void SaveGraph()
+    {
+        try
+        {
+            var graph = new FlowGraph();
+            foreach (var n in Nodes) graph.Nodes.Add(n);
+            foreach (var w in Wires) graph.Wires.Add(w);
+            var path = NodeFlowConverter.SaveToUserWorkflows(graph, GraphName);
+            ShowStatus($"Saved · {System.IO.Path.GetFileName(path)} — refresh the Composer's workflow picker to use it", "ok");
+        }
+        catch (Exception ex)
+        {
+            ShowStatus($"Save failed: {ex.Message}", "err");
+        }
+    }
+
+    private void LoadGraph()
+    {
+        var userDir = System.IO.Path.Combine(AppPaths.Root, "workflows");
+        try { System.IO.Directory.CreateDirectory(userDir); } catch { }
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Open workflow JSON",
+            Filter = "ComfyUI workflows (*.json)|*.json|All files|*.*",
+            InitialDirectory = userDir,
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var loaded = NodeFlowConverter.LoadFromFile(dlg.FileName);
+            Nodes.Clear();
+            Wires.Clear();
+            foreach (var n in loaded.Nodes) Nodes.Add(n);
+            foreach (var w in loaded.Wires) Wires.Add(w);
+            GraphName = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName);
+            RecomputeWires();
+            Selected = Nodes.FirstOrDefault();
+            ShowStatus($"Loaded · {Nodes.Count} nodes · {Wires.Count} wires", "ok");
+        }
+        catch (Exception ex)
+        {
+            ShowStatus($"Load failed: {ex.Message}", "err");
+        }
+    }
+
+    /// <summary>
+    /// Submit the current graph to the ComfyUI server (Settings.ComfyUiUrl)
+    /// and return immediately — output download is handled the same way the
+    /// Composer does it via GenerationService when the workflow is re-picked
+    /// from the Composer. Here we just exercise the pipeline and report the
+    /// queued prompt id.
+    /// </summary>
+    private async Task RunGraphAsync()
+    {
+        var studio = (System.Windows.Application.Current as App)?.Studio;
+        if (studio is null)
+        {
+            ShowStatus("Run requires the app's StudioContext — not available at design time.", "warn");
+            return;
+        }
+        var url = studio.Settings.ComfyUiUrl;
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            ShowStatus("ComfyUI URL is empty — set it in Settings.", "warn");
+            return;
+        }
+        try
+        {
+            ShowStatus("Submitting graph to ComfyUI…", "info");
+            var graph = new FlowGraph();
+            foreach (var n in Nodes) graph.Nodes.Add(n);
+            foreach (var w in Wires) graph.Wires.Add(w);
+            var nodesJson = NodeFlowConverter.ToComfyApi(graph);
+
+            using var client = new ComfyUiClient(url);
+            var promptId = await client.SubmitPromptAsync(nodesJson);
+            ShowStatus($"Queued · prompt_id {promptId[..System.Math.Min(8, promptId.Length)]} — check ComfyUI's output folder", "ok");
+        }
+        catch (Exception ex)
+        {
+            ShowStatus($"Run failed: {ex.Message}", "err");
+        }
+    }
+
+    private void OnSocketClicked(NodeSocket? socket)
+    {
+        if (socket is null) return;
+        var owner = Nodes.FirstOrDefault(n => n.Inputs.Contains(socket) || n.Outputs.Contains(socket));
+        if (owner is null) return;
+
+        if (socket.IsInput)
+        {
+            // Need a pending "from" socket — otherwise just announce the click.
+            if (_pendingFrom is null)
+            {
+                ShowStatus("Click an OUTPUT socket first, then this input — directional rule.", "warn");
+                return;
+            }
+            var from = _pendingFrom.Value;
+            // Don't connect a node to itself, and don't duplicate wires.
+            if (ReferenceEquals(from.Node, owner))
+            {
+                ShowStatus("Can't wire a node to itself.", "warn");
+                _pendingFrom = null;
+                return;
+            }
+            var dupe = Wires.FirstOrDefault(w =>
+                w.FromNodeId == from.Node.Id && w.FromSocketId == from.Socket.Id &&
+                w.ToNodeId == owner.Id && w.ToSocketId == socket.Id);
+            if (dupe is not null)
+            {
+                ShowStatus("Wire already exists.", "warn");
+                _pendingFrom = null;
+                return;
+            }
+            // Any existing wire INTO the same input gets replaced — most
+            // ComfyUI inputs are single-source, multiple wires would crash
+            // the server at run time.
+            var replaced = Wires.Where(w => w.ToNodeId == owner.Id && w.ToSocketId == socket.Id).ToList();
+            foreach (var r in replaced) Wires.Remove(r);
+
+            Wires.Add(new FlowWire
+            {
+                Id = $"{from.Node.Id}.{from.Socket.Id}->{owner.Id}.{socket.Id}",
+                FromNodeId = from.Node.Id, FromSocketId = from.Socket.Id,
+                ToNodeId = owner.Id, ToSocketId = socket.Id,
+                Type = from.Socket.Type,
+            });
+            _pendingFrom = null;
+            RecomputeWires();
+            ShowStatus($"Wired {from.Socket.Label} → {socket.Label}", "ok");
+        }
+        else
+        {
+            // Output socket — set as the pending source. Click again to cancel.
+            if (_pendingFrom is { } cur && ReferenceEquals(cur.Socket, socket))
+            {
+                _pendingFrom = null;
+                ShowStatus("Wire start cancelled.", "info");
+                return;
+            }
+            _pendingFrom = (owner, socket);
+            ShowStatus($"From {owner.Title}.{socket.Label} — now click an input socket.", "info");
+        }
+    }
+
+    private void ShowStatus(string msg, string kind)
+    {
+        StatusMessage = msg;
+        StatusKind = kind;
+    }
+
+    /// <summary>Delete a wire (e.g. context menu on a wire path).</summary>
+    public void RemoveWire(FlowWire w)
+    {
+        Wires.Remove(w);
+        ShowStatus($"Disconnected {w.FromSocketId} → {w.ToSocketId}", "info");
     }
 
     private void SeedSampleGraph()
@@ -269,17 +459,116 @@ public sealed class NodeFlowViewModel : ObservableObject
         {
             Id = $"n{Nodes.Count + 1}",
             Kind = kind,
-            Title = kind.ToString(),
-            AccentKey = "BrushClipPlum",
+            Title = HumaniseKind(kind),
+            AccentKey = AccentForKind(kind),
             X = 80 - PanX,
             Y = 80 - PanY,
-            Width = 220,
+            Width = 230,
         };
-        // Minimal default sockets so users can wire it up
-        n.Inputs.Add(new NodeSocket { Id = "in0", Label = "in", Type = SocketType.Image, IsInput = true, Row = 0 });
-        n.Outputs.Add(new NodeSocket { Id = "out0", Label = "OUT", Type = SocketType.Image, IsInput = false, Row = 0 });
+        SeedSocketsForKind(n, kind);
         Nodes.Add(n);
         Selected = n;
         RecomputeWires();
     }
+
+    /// <summary>
+    /// Populate the socket layout to match the real ComfyUI node of the
+    /// given <see cref="NodeKind"/>. The socket IDs ARE the ComfyUI input
+    /// keys — NodeFlowConverter relies on that to emit valid wire targets.
+    /// </summary>
+    private static void SeedSocketsForKind(FlowNode n, NodeKind kind)
+    {
+        switch (kind)
+        {
+            case NodeKind.LoadCheckpoint:
+                n.Outputs.Add(new NodeSocket { Id = "model", Label = "MODEL", Type = SocketType.Model, Row = 0 });
+                n.Outputs.Add(new NodeSocket { Id = "clip",  Label = "CLIP",  Type = SocketType.Clip,  Row = 1 });
+                n.Outputs.Add(new NodeSocket { Id = "vae",   Label = "VAE",   Type = SocketType.Vae,   Row = 2 });
+                n.Params.Add(new NodeParam { Label = "ckpt_name", Value = "v1-5-pruned-emaonly.safetensors" });
+                break;
+            case NodeKind.CLIPTextEncode:
+                n.Inputs.Add(new NodeSocket { Id = "clip", Label = "clip", Type = SocketType.Clip, IsInput = true, Row = 0 });
+                n.Outputs.Add(new NodeSocket { Id = "cond", Label = "CONDITIONING", Type = SocketType.Conditioning, Row = 0 });
+                n.Params.Add(new NodeParam { Label = "text", Value = "", Editor = "textarea" });
+                break;
+            case NodeKind.KSampler:
+                n.Inputs.Add(new NodeSocket { Id = "model",    Label = "model",        Type = SocketType.Model,        IsInput = true, Row = 0 });
+                n.Inputs.Add(new NodeSocket { Id = "positive", Label = "positive",     Type = SocketType.Conditioning, IsInput = true, Row = 1 });
+                n.Inputs.Add(new NodeSocket { Id = "negative", Label = "negative",     Type = SocketType.Conditioning, IsInput = true, Row = 2 });
+                n.Inputs.Add(new NodeSocket { Id = "latent_image", Label = "latent_image", Type = SocketType.Latent,   IsInput = true, Row = 3 });
+                n.Outputs.Add(new NodeSocket { Id = "latent", Label = "LATENT", Type = SocketType.Latent, Row = 0 });
+                n.Params.Add(new NodeParam { Label = "seed", Value = "0" });
+                n.Params.Add(new NodeParam { Label = "steps", Value = "28" });
+                n.Params.Add(new NodeParam { Label = "cfg", Value = "7.5" });
+                n.Params.Add(new NodeParam { Label = "sampler_name", Value = "dpmpp_2m" });
+                n.Params.Add(new NodeParam { Label = "scheduler", Value = "karras" });
+                n.Params.Add(new NodeParam { Label = "denoise", Value = "1.0" });
+                break;
+            case NodeKind.VAEDecode:
+                n.Inputs.Add(new NodeSocket { Id = "samples", Label = "samples", Type = SocketType.Latent, IsInput = true, Row = 0 });
+                n.Inputs.Add(new NodeSocket { Id = "vae",     Label = "vae",     Type = SocketType.Vae,    IsInput = true, Row = 1 });
+                n.Outputs.Add(new NodeSocket { Id = "image", Label = "IMAGE", Type = SocketType.Image, Row = 0 });
+                break;
+            case NodeKind.SaveImage:
+                n.Inputs.Add(new NodeSocket { Id = "images", Label = "images", Type = SocketType.Image, IsInput = true, Row = 0 });
+                n.Params.Add(new NodeParam { Label = "filename_prefix", Value = "chanthra" });
+                break;
+            case NodeKind.EmptyLatentImage:
+                n.Outputs.Add(new NodeSocket { Id = "latent", Label = "LATENT", Type = SocketType.Latent, Row = 0 });
+                n.Params.Add(new NodeParam { Label = "width", Value = "1024" });
+                n.Params.Add(new NodeParam { Label = "height", Value = "1024" });
+                n.Params.Add(new NodeParam { Label = "batch_size", Value = "1" });
+                break;
+            case NodeKind.LoadImage:
+                n.Outputs.Add(new NodeSocket { Id = "image", Label = "IMAGE", Type = SocketType.Image, Row = 0 });
+                n.Outputs.Add(new NodeSocket { Id = "mask",  Label = "MASK",  Type = SocketType.Image, Row = 1 });
+                n.Params.Add(new NodeParam { Label = "image", Value = "reference.png" });
+                break;
+            case NodeKind.LoraLoader:
+                n.Inputs.Add(new NodeSocket { Id = "model", Label = "model", Type = SocketType.Model, IsInput = true, Row = 0 });
+                n.Inputs.Add(new NodeSocket { Id = "clip",  Label = "clip",  Type = SocketType.Clip,  IsInput = true, Row = 1 });
+                n.Outputs.Add(new NodeSocket { Id = "model", Label = "MODEL", Type = SocketType.Model, Row = 0 });
+                n.Outputs.Add(new NodeSocket { Id = "clip",  Label = "CLIP",  Type = SocketType.Clip,  Row = 1 });
+                n.Params.Add(new NodeParam { Label = "lora_name", Value = "" });
+                n.Params.Add(new NodeParam { Label = "strength_model", Value = "1.0" });
+                n.Params.Add(new NodeParam { Label = "strength_clip",  Value = "1.0" });
+                break;
+            case NodeKind.ControlNetApply:
+                n.Inputs.Add(new NodeSocket { Id = "conditioning", Label = "conditioning", Type = SocketType.Conditioning, IsInput = true, Row = 0 });
+                n.Inputs.Add(new NodeSocket { Id = "control_net",  Label = "control_net",  Type = SocketType.Model,        IsInput = true, Row = 1 });
+                n.Inputs.Add(new NodeSocket { Id = "image",        Label = "image",        Type = SocketType.Image,        IsInput = true, Row = 2 });
+                n.Outputs.Add(new NodeSocket { Id = "conditioning", Label = "CONDITIONING", Type = SocketType.Conditioning, Row = 0 });
+                n.Params.Add(new NodeParam { Label = "strength", Value = "1.0" });
+                break;
+            case NodeKind.AnimateDiff:
+                n.Inputs.Add(new NodeSocket { Id = "model", Label = "model", Type = SocketType.Model, IsInput = true, Row = 0 });
+                n.Outputs.Add(new NodeSocket { Id = "model", Label = "MODEL", Type = SocketType.Model, Row = 0 });
+                n.Params.Add(new NodeParam { Label = "motion_model", Value = "" });
+                n.Params.Add(new NodeParam { Label = "beta_schedule", Value = "autoselect" });
+                break;
+        }
+    }
+
+    private static string HumaniseKind(NodeKind k) => k switch
+    {
+        NodeKind.LoadCheckpoint  => "Load Checkpoint",
+        NodeKind.CLIPTextEncode  => "CLIP Text Encode",
+        NodeKind.KSampler        => "K Sampler",
+        NodeKind.VAEDecode       => "VAE Decode",
+        NodeKind.SaveImage       => "Save Image",
+        NodeKind.EmptyLatentImage => "Empty Latent Image",
+        NodeKind.LoadImage       => "Load Image",
+        NodeKind.LoraLoader      => "Load LoRA",
+        NodeKind.ControlNetApply => "ControlNet Apply",
+        NodeKind.AnimateDiff     => "AnimateDiff",
+        _ => k.ToString(),
+    };
+
+    private static string AccentForKind(NodeKind k) => k switch
+    {
+        NodeKind.LoadCheckpoint or NodeKind.KSampler or NodeKind.LoraLoader => "BrushClipGold",
+        NodeKind.CLIPTextEncode or NodeKind.VAEDecode                       => "BrushClipAmber",
+        NodeKind.EmptyLatentImage or NodeKind.SaveImage                     => "BrushClipPlum",
+        _ => "BrushClipPlum",
+    };
 }

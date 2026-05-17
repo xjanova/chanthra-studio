@@ -246,50 +246,132 @@
                 Background="{StaticResource BrushSurface02}"
                 BorderBrush="{StaticResource BrushLineHairline}"
                 BorderThickness="0,0,0,1">
-                <StackPanel Margin="14,8" Orientation="Horizontal">
-                    <Button
-                        Margin="0,0,8,0"
-                        Command="{Binding AutoArrangeCommand}"
-                        Content="✦ Auto-arrange"
-                        Style="{StaticResource ButtonPill}" />
-                    <TextBlock
-                        Margin="14,0,8,0"
-                        VerticalAlignment="Center"
-                        FontFamily="{StaticResource FontMono}"
-                        FontSize="10"
-                        Foreground="{StaticResource BrushText3}"
-                        Text="ZOOM" />
-                    <Button
-                        Width="28"
-                        Margin="0,0,4,0"
-                        Command="{Binding ZoomOutCommand}"
-                        Content="−"
-                        Style="{StaticResource ButtonPill}" />
-                    <Border
-                        Width="60"
-                        VerticalAlignment="Center"
-                        Background="{StaticResource BrushBgInset}"
-                        CornerRadius="3">
+                <Grid Margin="14,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <Button
+                            Margin="0,0,8,0"
+                            Command="{Binding AutoArrangeCommand}"
+                            Content="✦ Auto-arrange"
+                            Style="{StaticResource ButtonPill}" />
                         <TextBlock
-                            Padding="0,4"
-                            HorizontalAlignment="Center"
+                            Margin="14,0,8,0"
+                            VerticalAlignment="Center"
                             FontFamily="{StaticResource FontMono}"
                             FontSize="10"
+                            Foreground="{StaticResource BrushText3}"
+                            Text="ZOOM" />
+                        <Button
+                            Width="28"
+                            Margin="0,0,4,0"
+                            Command="{Binding ZoomOutCommand}"
+                            Content="−"
+                            Style="{StaticResource ButtonPill}" />
+                        <Border
+                            Width="60"
+                            VerticalAlignment="Center"
+                            Background="{StaticResource BrushBgInset}"
+                            CornerRadius="3">
+                            <TextBlock
+                                Padding="0,4"
+                                HorizontalAlignment="Center"
+                                FontFamily="{StaticResource FontMono}"
+                                FontSize="10"
+                                Foreground="{StaticResource BrushText1}"
+                                Text="{Binding Zoom, StringFormat={}{0:P0}}" />
+                        </Border>
+                        <Button
+                            Width="28"
+                            Margin="4,0,8,0"
+                            Command="{Binding ZoomInCommand}"
+                            Content="+"
+                            Style="{StaticResource ButtonPill}" />
+                        <Button
+                            Margin="0,0,8,0"
+                            Command="{Binding ZoomResetCommand}"
+                            Content="reset"
+                            Style="{StaticResource ButtonPill}" />
+                    </StackPanel>
+
+                    <!--  Status pill — shows the most recent Save/Load/Run/Wire message  -->
+                    <Border
+                        Grid.Column="1"
+                        Margin="14,0"
+                        Padding="10,4"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        CornerRadius="99"
+                        Visibility="{Binding StatusMessage, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="#1FD4A76A" />
+                                <Setter Property="BorderBrush" Value="#66D4A76A" />
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding StatusKind}" Value="ok">
+                                        <Setter Property="Background" Value="#1F6DBF8C" />
+                                        <Setter Property="BorderBrush" Value="#666DBF8C" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding StatusKind}" Value="warn">
+                                        <Setter Property="Background" Value="#1FE0B056" />
+                                        <Setter Property="BorderBrush" Value="#66E0B056" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding StatusKind}" Value="err">
+                                        <Setter Property="Background" Value="#1FD05A5A" />
+                                        <Setter Property="BorderBrush" Value="#66D05A5A" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock
+                            FontFamily="{StaticResource FontMono}"
+                            FontSize="10.5"
                             Foreground="{StaticResource BrushText1}"
-                            Text="{Binding Zoom, StringFormat={}{0:P0}}" />
+                            Text="{Binding StatusMessage}" />
                     </Border>
-                    <Button
-                        Width="28"
-                        Margin="4,0,8,0"
-                        Command="{Binding ZoomInCommand}"
-                        Content="+"
-                        Style="{StaticResource ButtonPill}" />
-                    <Button
-                        Margin="0,0,8,0"
-                        Command="{Binding ZoomResetCommand}"
-                        Content="reset"
-                        Style="{StaticResource ButtonPill}" />
-                </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Border
+                            Width="160"
+                            Margin="0,0,6,0"
+                            Padding="8,2"
+                            VerticalAlignment="Center"
+                            Background="{StaticResource BrushBgInset}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="4">
+                            <TextBox
+                                Background="Transparent"
+                                BorderThickness="0"
+                                CaretBrush="{StaticResource BrushGoldHi}"
+                                FontFamily="{StaticResource FontMono}"
+                                FontSize="11"
+                                Foreground="{StaticResource BrushText1}"
+                                Text="{Binding GraphName, UpdateSourceTrigger=PropertyChanged}"
+                                ToolTip="File name (no extension)" />
+                        </Border>
+                        <Button
+                            Margin="0,0,6,0"
+                            Command="{Binding LoadCommand}"
+                            Content="Load"
+                            Style="{StaticResource ButtonPill}" />
+                        <Button
+                            Margin="0,0,6,0"
+                            Command="{Binding SaveCommand}"
+                            Content="Save"
+                            Style="{StaticResource ButtonPill}" />
+                        <Button
+                            Padding="14,4"
+                            Command="{Binding RunCommand}"
+                            Content="▶ Run this graph"
+                            Style="{StaticResource ButtonPillGold}"
+                            ToolTip="Submit the current graph to the configured ComfyUI server" />
+                    </StackPanel>
+                </Grid>
             </Border>
 
             <!--  Canvas viewport  -->
@@ -409,11 +491,20 @@
                                                                 <ColumnDefinition Width="Auto" />
                                                                 <ColumnDefinition Width="*" />
                                                             </Grid.ColumnDefinitions>
-                                                            <Ellipse
+                                                            <!--  Clickable socket — click an OUT then an IN to draw a wire  -->
+                                                            <Button
                                                                 Grid.Column="0"
                                                                 Margin="-4,0,8,0"
+                                                                Padding="0"
+                                                                Background="Transparent"
+                                                                BorderThickness="0"
                                                                 VerticalAlignment="Center"
-                                                                Style="{StaticResource SocketDot}" />
+                                                                Cursor="Cross"
+                                                                Command="{Binding DataContext.SocketClickCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}"
+                                                                ToolTip="Click to attach a wire from a previously-clicked output socket">
+                                                                <Ellipse Style="{StaticResource SocketDot}" />
+                                                            </Button>
                                                             <TextBlock
                                                                 Grid.Column="1"
                                                                 VerticalAlignment="Center"
@@ -443,11 +534,19 @@
                                                                 FontSize="10"
                                                                 Foreground="{StaticResource BrushText1}"
                                                                 Text="{Binding Label}" />
-                                                            <Ellipse
+                                                            <Button
                                                                 Grid.Column="1"
                                                                 Margin="8,0,-4,0"
+                                                                Padding="0"
+                                                                Background="Transparent"
+                                                                BorderThickness="0"
                                                                 VerticalAlignment="Center"
-                                                                Style="{StaticResource SocketDot}" />
+                                                                Cursor="Cross"
+                                                                Command="{Binding DataContext.SocketClickCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}"
+                                                                ToolTip="Click to start a wire — then click an input socket on another node to finish">
+                                                                <Ellipse Style="{StaticResource SocketDot}" />
+                                                            </Button>
                                                         </Grid>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>

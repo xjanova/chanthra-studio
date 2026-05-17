@@ -19,14 +19,14 @@ internal abstract class StubLlmProvider : ILlmProvider
     public abstract string ApiKeyHint { get; }
     public ProviderKind Kind => ProviderKind.Llm;
     public bool RequiresApiKey => true;
+    public bool IsImplemented => false;
 
     public Task<ProviderHealth> ProbeAsync(string apiKey, CancellationToken ct = default)
-        => Task.FromResult(string.IsNullOrWhiteSpace(apiKey)
-            ? new ProviderHealth(false, "no key", "Paste an API key in Settings.")
-            : new ProviderHealth(true, "key present", "Live probe lands in phase 3."));
+        => Task.FromResult(new ProviderHealth(false, "not implemented",
+            $"{DisplayName} has no real HTTP client yet — use Gemini, OpenAI, or Anthropic."));
 
     public Task<LlmResult> CompleteAsync(LlmRequest req, CancellationToken ct = default)
-        => throw new NotImplementedException($"{DisplayName} chat completion arrives in phase 3.");
+        => throw new NotImplementedException($"{DisplayName} chat completion not yet implemented.");
 }
 
 internal abstract class StubVideoProvider : IVideoProvider
@@ -36,20 +36,20 @@ internal abstract class StubVideoProvider : IVideoProvider
     public abstract string ApiKeyHint { get; }
     public ProviderKind Kind => ProviderKind.Video;
     public virtual bool RequiresApiKey => true;
+    public virtual bool IsImplemented => false;
 
     public virtual Task<ProviderHealth> ProbeAsync(string apiKey, CancellationToken ct = default)
-        => Task.FromResult(string.IsNullOrWhiteSpace(apiKey)
-            ? new ProviderHealth(false, "no key", "Paste an API key in Settings.")
-            : new ProviderHealth(true, "key present", "Live probe lands in phase 3."));
+        => Task.FromResult(new ProviderHealth(false, "not implemented",
+            $"{DisplayName} has no real HTTP client yet — use Replicate or ComfyUI."));
 
     public Task<VideoJob> SubmitAsync(VideoRequest req, CancellationToken ct = default)
-        => throw new NotImplementedException($"{DisplayName} submit arrives in phase 3.");
+        => throw new NotImplementedException($"{DisplayName} submit not yet implemented.");
 
     public Task<VideoJob> PollAsync(string jobId, CancellationToken ct = default)
-        => throw new NotImplementedException($"{DisplayName} poll arrives in phase 3.");
+        => throw new NotImplementedException($"{DisplayName} poll not yet implemented.");
 
     public Task CancelAsync(string jobId, CancellationToken ct = default)
-        => throw new NotImplementedException($"{DisplayName} cancel arrives in phase 3.");
+        => throw new NotImplementedException($"{DisplayName} cancel not yet implemented.");
 }
 
 internal abstract class StubPostingProvider : IPostingProvider
@@ -59,14 +59,14 @@ internal abstract class StubPostingProvider : IPostingProvider
     public abstract string ApiKeyHint { get; }
     public ProviderKind Kind => ProviderKind.Posting;
     public virtual bool RequiresApiKey => true;
+    public virtual bool IsImplemented => false;
 
     public virtual Task<ProviderHealth> ProbeAsync(string apiKey, CancellationToken ct = default)
-        => Task.FromResult(string.IsNullOrWhiteSpace(apiKey)
-            ? new ProviderHealth(false, "no key", "Paste credentials in Settings.")
-            : new ProviderHealth(true, "key present", "Live probe lands in phase 7."));
+        => Task.FromResult(new ProviderHealth(false, "not implemented",
+            $"{DisplayName} has no real HTTP client yet."));
 
     public Task<PostResult> PostAsync(PostRequest req, CancellationToken ct = default)
-        => throw new NotImplementedException($"{DisplayName} post arrives in phase 7.");
+        => throw new NotImplementedException($"{DisplayName} post not yet implemented.");
 }
 
 // All four LLM providers now have real implementations under
@@ -81,6 +81,17 @@ internal sealed class ComfyUiVideoProvider : StubVideoProvider
     public override string DisplayName => "ComfyUI · local GPU";
     public override string ApiKeyHint => "Server URL in Settings · no key needed";
     public override bool RequiresApiKey => false;
+
+    /// <summary>
+    /// ComfyUI route IS wired — it just bypasses the IVideoProvider interface
+    /// and goes through ComfyUiClient directly from GenerationService. We
+    /// keep this shell so Settings renders a row for the local-GPU route.
+    /// </summary>
+    public override bool IsImplemented => true;
+
+    public override Task<ProviderHealth> ProbeAsync(string apiKey, CancellationToken ct = default)
+        => Task.FromResult(new ProviderHealth(true, "local",
+            "Connect via Settings → ComfyUI URL; the generation orchestrator probes the server live before each submit."));
 }
 
 // Replicate is now a real implementation in Services/Providers/Video/ —

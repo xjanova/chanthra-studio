@@ -14,6 +14,14 @@ public interface IProvider
     bool RequiresApiKey { get; }
     string ApiKeyHint { get; }
 
+    /// <summary>
+    /// True when this provider has a real HTTP implementation we can call
+    /// today. Stubs (the Runway/Pika/fal.ai shells, OpenRouter, etc.) return
+    /// false so the Settings page can hide them and the Composer's workflow
+    /// picker won't surface routes that would throw NotImplementedException.
+    /// </summary>
+    bool IsImplemented => true;
+
     /// <summary>Quick liveness probe. Should not consume credits.</summary>
     Task<ProviderHealth> ProbeAsync(string apiKey, CancellationToken ct = default);
 }

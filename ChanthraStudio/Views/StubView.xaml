@@ -9,29 +9,43 @@
     d:DesignWidth="1500"
     mc:Ignorable="d">
     <Grid>
-        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="540">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="620">
             <TextBlock
                 HorizontalAlignment="Center"
                 FontFamily="{StaticResource FontDisplay}"
-                FontSize="38"
+                FontSize="42"
                 FontStyle="Italic"
                 Foreground="{StaticResource BrushGoldHi}"
                 Effect="{StaticResource ShadowGoldGlowSoft}"
                 Text="✦" />
             <TextBlock
-                Margin="0,12,0,0"
+                Margin="0,14,0,0"
                 HorizontalAlignment="Center"
                 FontFamily="{StaticResource FontDisplay}"
-                FontSize="24"
+                FontSize="26"
+                FontStyle="Italic"
                 Foreground="{StaticResource BrushText1}"
-                Text="{Binding Tag, RelativeSource={RelativeSource AncestorType=UserControl}, StringFormat={}{0} · coming next phase}" />
+                Text="{Binding Tag, RelativeSource={RelativeSource AncestorType=UserControl}, StringFormat={}{0}}" />
             <TextBlock
-                Margin="0,8,0,0"
+                Margin="0,4,0,0"
                 HorizontalAlignment="Center"
-                Style="{StaticResource TextSecondary}"
-                FontSize="13"
-                TextAlignment="Center"
-                Text="The atelier is mid-build. Phase 1 ships the lunar shell, design system, and Generate workspace. Editor, Sound, and Node-flow follow." />
+                Style="{StaticResource TextMonoUpper}"
+                Foreground="{StaticResource BrushGoldHi}"
+                Text="COMING SOON" />
+            <Border
+                Margin="0,18,0,0"
+                Padding="22,14"
+                Background="{StaticResource BrushBgSurface}"
+                BorderBrush="{StaticResource BrushLineHairline}"
+                BorderThickness="1"
+                CornerRadius="10">
+                <TextBlock
+                    Style="{StaticResource TextSecondary}"
+                    FontSize="12.5"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap"
+                    Text="{Binding Description, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+            </Border>
         </StackPanel>
     </Grid>
 </UserControl>

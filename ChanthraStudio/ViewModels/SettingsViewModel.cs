@@ -257,10 +257,14 @@ public sealed class SettingsViewModel : ObservableObject
         _settings = settings;
         _registry = registry;
 
-        foreach (var p in registry.Llm) LlmProviders.Add(new ProviderRow(p, settings));
-        foreach (var p in registry.Video) VideoProviders.Add(new ProviderRow(p, settings));
-        foreach (var p in registry.Voice) VoiceProviders.Add(new ProviderRow(p, settings));
-        foreach (var p in registry.Posting) PostingProviders.Add(new ProviderRow(p, settings));
+        // Only surface providers with a real HTTP client. The stub shells
+        // (Runway / Pika / fal.ai / OpenRouter) stay registered for future
+        // wire-up but don't pollute the Settings UI with rows that error
+        // the moment the user pastes a key.
+        foreach (var p in registry.Llm.Where(p => p.IsImplemented)) LlmProviders.Add(new ProviderRow(p, settings));
+        foreach (var p in registry.Video.Where(p => p.IsImplemented)) VideoProviders.Add(new ProviderRow(p, settings));
+        foreach (var p in registry.Voice.Where(p => p.IsImplemented)) VoiceProviders.Add(new ProviderRow(p, settings));
+        foreach (var p in registry.Posting.Where(p => p.IsImplemented)) PostingProviders.Add(new ProviderRow(p, settings));
 
         SaveAllCommand = new RelayCommand(SaveAll);
 

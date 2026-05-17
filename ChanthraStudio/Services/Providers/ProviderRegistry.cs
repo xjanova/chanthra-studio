@@ -32,7 +32,7 @@ public sealed class ProviderRegistry
             new GeminiLlmProvider(),
             new OpenAiLlmProvider(),
             new AnthropicLlmProvider(),
-            new OpenRouterLlmProvider(),  // still stub
+            new OpenRouterLlmProvider(),
         };
 
         Video = new IVideoProvider[]
