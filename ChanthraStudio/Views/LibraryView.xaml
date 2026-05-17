@@ -82,6 +82,21 @@
                     <Button Margin="8,0,0,0" Command="{Binding RenderFilmCommand}" Content="✦  Render film" Style="{StaticResource ButtonPillGold}" />
                     <Border Width="14" />
                 </StackPanel>
+                <!--  Page-size chips — switch how many clips the next Refresh pulls  -->
+                <StackPanel Margin="0,0,8,0" Orientation="Horizontal">
+                    <RadioButton GroupName="libLimit" Margin="0,0,2,0" Content="50" Style="{StaticResource ChipRadio}"
+                                 Command="{Binding SetLimitCommand}" CommandParameter="50"
+                                 IsChecked="{Binding LimitMode, Converter={StaticResource StringEquals}, ConverterParameter=50, Mode=OneWay}"
+                                 ToolTip="Show only the 50 newest clips" />
+                    <RadioButton GroupName="libLimit" Margin="0,0,2,0" Content="200" Style="{StaticResource ChipRadio}"
+                                 Command="{Binding SetLimitCommand}" CommandParameter="200"
+                                 IsChecked="{Binding LimitMode, Converter={StaticResource StringEquals}, ConverterParameter=200, Mode=OneWay}"
+                                 ToolTip="Default · 200 newest clips" />
+                    <RadioButton GroupName="libLimit" Content="all" Style="{StaticResource ChipRadio}"
+                                 Command="{Binding SetLimitCommand}" CommandParameter="all"
+                                 IsChecked="{Binding LimitMode, Converter={StaticResource StringEquals}, ConverterParameter=all, Mode=OneWay}"
+                                 ToolTip="Pull up to 1000 clips — slower if your library is large" />
+                </StackPanel>
                 <Button Margin="0,0,8,0" Command="{Binding SelectAllCommand}" Content="Select all" Style="{StaticResource ButtonPill}"
                         Visibility="{Binding HasClips, Converter={StaticResource BoolToVis}}" />
                 <Button Command="{Binding RefreshCommand}" Content="Refresh" Style="{StaticResource ButtonPill}" />

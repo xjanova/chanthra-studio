@@ -709,6 +709,8 @@ public sealed class EditorViewModel : ObservableObject
                 OutputName = OutputName,
                 Fps = Fps,
                 CrossfadeSec = CrossfadeSec,
+                RenderAspect = RenderAspect,
+                RenderQuality = RenderQuality,
                 AudioPath = string.IsNullOrEmpty(AudioPath) ? null : AudioPath,
                 AudioVolume = AudioVolume,
                 Timeline = Timeline.Select(s => new NleProjectSerializer.SlotEntry
@@ -796,6 +798,8 @@ public sealed class EditorViewModel : ObservableObject
             OutputName = file.OutputName;
             Fps = file.Fps;
             CrossfadeSec = file.CrossfadeSec;
+            RenderAspect = string.IsNullOrEmpty(file.RenderAspect) ? "16:9" : file.RenderAspect;
+            RenderQuality = string.IsNullOrEmpty(file.RenderQuality) ? "full" : file.RenderQuality;
             AudioPath = file.AudioPath ?? "";
             AudioVolume = file.AudioVolume;
             ProjectName = file.Name;

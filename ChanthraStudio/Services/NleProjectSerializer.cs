@@ -38,6 +38,14 @@ public static class NleProjectSerializer
         public int Fps { get; set; } = 30;
         public double CrossfadeSec { get; set; }
 
+        /// <summary>"16:9" / "9:16" / "1:1" / "21:9". Default mirrors the
+        /// EditorViewModel default so old projects without this field load
+        /// cleanly.</summary>
+        public string RenderAspect { get; set; } = "16:9";
+
+        /// <summary>"draft" / "full" / "hi" — quality preset.</summary>
+        public string RenderQuality { get; set; } = "full";
+
         public string? AudioPath { get; set; }
         public double AudioVolume { get; set; } = 1.0;
 

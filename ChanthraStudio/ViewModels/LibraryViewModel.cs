@@ -35,6 +35,27 @@ public sealed class LibraryViewModel : ObservableObject
     public string ToastKind { get => _toastKind; set => SetProperty(ref _toastKind, value); }
 
     public IRelayCommand RefreshCommand { get; }
+    public IRelayCommand<string> SetLimitCommand { get; }
+
+    /// <summary>"50" | "200" | "all" — how many recent clips to pull from
+    /// the DB. The default "200" matches ClipsRepository's default; "all"
+    /// caps at 1000 so we never realistically OOM the WrapPanel.</summary>
+    private string _limitMode = "200";
+    public string LimitMode
+    {
+        get => _limitMode;
+        set
+        {
+            if (SetProperty(ref _limitMode, value)) Refresh();
+        }
+    }
+
+    private int ResolveLimit() => _limitMode switch
+    {
+        "50"  => 50,
+        "all" => 1000,
+        _     => 200,
+    };
     public IRelayCommand<Clip> OpenClipCommand { get; }
     public IRelayCommand<Clip> RevealCommand { get; }
     public IRelayCommand<Clip> CopyPathCommand { get; }
@@ -72,6 +93,7 @@ public sealed class LibraryViewModel : ObservableObject
             UpdateSelectionState();
         });
         DeleteSelectedCommand = new RelayCommand(DeleteSelected);
+        SetLimitCommand = new RelayCommand<string>(m => { if (!string.IsNullOrEmpty(m)) LimitMode = m!; });
 
         // Auto-refresh whenever a generation completes — the ProgressChanged
         // event fires on the UI thread already (GenerationService dispatches).
@@ -99,7 +121,7 @@ public sealed class LibraryViewModel : ObservableObject
         foreach (var old in _allClips) old.PropertyChanged -= OnClipPropertyChanged;
         _allClips.Clear();
 
-        var rows = _ctx.Clips.RecentClips();
+        var rows = _ctx.Clips.RecentClips(ResolveLimit());
         foreach (var c in rows)
         {
             if (prevSelected.Contains(c.Id)) c.IsSelected = true;
