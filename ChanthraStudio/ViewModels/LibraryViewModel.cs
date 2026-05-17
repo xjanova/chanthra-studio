@@ -42,6 +42,8 @@ public sealed class LibraryViewModel : ObservableObject
     public IAsyncRelayCommand<Clip> PostClipCommand { get; }
     public IAsyncRelayCommand RenderFilmCommand { get; }
     public IRelayCommand ClearSelectionCommand { get; }
+    public IRelayCommand DeleteSelectedCommand { get; }
+    public IRelayCommand SelectAllCommand { get; }
 
     private int _selectedCount;
     public int SelectedCount { get => _selectedCount; set => SetProperty(ref _selectedCount, value); }
@@ -64,6 +66,12 @@ public sealed class LibraryViewModel : ObservableObject
             foreach (var c in Clips) c.IsSelected = false;
             UpdateSelectionState();
         });
+        SelectAllCommand = new RelayCommand(() =>
+        {
+            foreach (var c in Clips) c.IsSelected = true;
+            UpdateSelectionState();
+        });
+        DeleteSelectedCommand = new RelayCommand(DeleteSelected);
 
         // Auto-refresh whenever a generation completes — the ProgressChanged
         // event fires on the UI thread already (GenerationService dispatches).
@@ -180,10 +188,47 @@ public sealed class LibraryViewModel : ObservableObject
             }
             _ctx.Clips.DeleteClip(clip.Id);
             Clips.Remove(clip);
+            _allClips.Remove(clip);
             HasClips = Clips.Count > 0;
             ShowToast($"Deleted {clip.FileName}", "ok");
         }
         catch (Exception ex) { ShowToast($"Delete failed: {ex.Message}", "err"); }
+    }
+
+    /// <summary>Confirm-then-delete every currently-checked clip. Files come
+    /// off disk first (best-effort), then DB rows, then in-memory state.
+    /// Faster than clicking through each clip's context menu when triaging
+    /// a large generation batch.</summary>
+    private void DeleteSelected()
+    {
+        var victims = Clips.Where(c => c.IsSelected).ToList();
+        if (victims.Count == 0) { ShowToast("No clips selected.", "warn"); return; }
+        var ok = System.Windows.MessageBox.Show(
+            $"Delete {victims.Count} selected clip{(victims.Count == 1 ? "" : "s")} and their files?",
+            "Confirm bulk delete",
+            System.Windows.MessageBoxButton.OKCancel,
+            System.Windows.MessageBoxImage.Warning);
+        if (ok != System.Windows.MessageBoxResult.OK) return;
+
+        int filesDropped = 0;
+        foreach (var clip in victims)
+        {
+            try
+            {
+                if (File.Exists(clip.FilePath))
+                {
+                    try { File.Delete(clip.FilePath); filesDropped++; }
+                    catch { /* locked / read-only — DB row still goes */ }
+                }
+                _ctx.Clips.DeleteClip(clip.Id);
+                _allClips.Remove(clip);
+                Clips.Remove(clip);
+            }
+            catch { /* per-clip best effort — keep deleting the rest */ }
+        }
+        HasClips = Clips.Count > 0;
+        UpdateSelectionState();
+        ShowToast($"Deleted {victims.Count} · {filesDropped} files removed from disk", "ok");
     }
 
     private async System.Threading.Tasks.Task RenderFilmAsync()

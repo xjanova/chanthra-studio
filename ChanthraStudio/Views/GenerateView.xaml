@@ -356,6 +356,36 @@
                             </Grid>
                         </Border>
 
+                        <!--  3c-real. Route picker — comfyui (local) vs replicate / runway / pika / fal (cloud)  -->
+                        <Border
+                            Margin="0,10,0,0"
+                            Background="{StaticResource BrushBgSurface}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="10">
+                            <Grid Margin="10,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText3}" Text="ROUTE" />
+                                <ComboBox
+                                    Grid.Column="1"
+                                    Margin="10,0,0,0"
+                                    Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="0"
+                                    Foreground="{StaticResource BrushText1}"
+                                    FontFamily="{StaticResource FontUI}"
+                                    FontSize="12.5"
+                                    ItemsSource="{Binding VideoRoutes}"
+                                    SelectedItem="{Binding ActiveRoute, Mode=TwoWay}"
+                                    DisplayMemberPath="DisplayName"
+                                    Cursor="Hand"
+                                    ToolTip="Where to run this generation. ComfyUI = local GPU · Replicate/Runway/Pika/fal = cloud (paid)" />
+                            </Grid>
+                        </Border>
+
                         <!--  3c-bis. Reference image — drop or browse, used by img2img / WAN i2v workflows  -->
                         <Border
                             Margin="0,18,0,0"

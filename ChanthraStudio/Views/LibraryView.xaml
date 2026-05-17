@@ -77,9 +77,13 @@
                         </TextBlock>
                     </Border>
                     <Button Margin="8,0,0,0" Command="{Binding ClearSelectionCommand}" Content="Clear" Style="{StaticResource ButtonPill}" />
+                    <Button Margin="8,0,0,0" Command="{Binding DeleteSelectedCommand}" Content="Delete selected" Style="{StaticResource ButtonPill}"
+                            ToolTip="Drop the selected clips + their files (confirmation required)" />
                     <Button Margin="8,0,0,0" Command="{Binding RenderFilmCommand}" Content="✦  Render film" Style="{StaticResource ButtonPillGold}" />
                     <Border Width="14" />
                 </StackPanel>
+                <Button Margin="0,0,8,0" Command="{Binding SelectAllCommand}" Content="Select all" Style="{StaticResource ButtonPill}"
+                        Visibility="{Binding HasClips, Converter={StaticResource BoolToVis}}" />
                 <Button Command="{Binding RefreshCommand}" Content="Refresh" Style="{StaticResource ButtonPill}" />
             </StackPanel>
         </Grid>

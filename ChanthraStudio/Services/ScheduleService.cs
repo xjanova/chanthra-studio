@@ -51,6 +51,13 @@ public sealed class ScheduleService : IDisposable
         _timer = null;
     }
 
+    /// <summary>
+    /// Force the scheduler to scan + fire any due rows right now, without
+    /// waiting for the 60-second timer tick. Called from the Schedule
+    /// view's "Run now" button after the UI sets next_fire_at into the past.
+    /// </summary>
+    public Task ForceTickAsync() => TickAsync();
+
     private async Task TickAsync()
     {
         // Re-entrancy guard: the previous tick's fired generations may

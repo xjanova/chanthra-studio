@@ -21,11 +21,13 @@ public sealed class QueueViewModel : ObservableObject
     public bool HasJobs { get => _hasJobs; set => SetProperty(ref _hasJobs, value); }
 
     public IRelayCommand RefreshCommand { get; }
+    public IAsyncRelayCommand<GenerationJob> CancelJobCommand { get; }
 
     public QueueViewModel(StudioContext ctx)
     {
         _ctx = ctx;
         RefreshCommand = new RelayCommand(Refresh);
+        CancelJobCommand = new AsyncRelayCommand<GenerationJob>(CancelJobAsync);
 
         // Refresh on terminal events only. Subscribing to every progress frame
         // (multiple per second) was Clear()-ing + reloading the ItemsControl
@@ -56,5 +58,17 @@ public sealed class QueueViewModel : ObservableObject
         var done = Jobs.Count(j => j.Status == "done");
         var error = Jobs.Count(j => j.Status == "error");
         Summary = $"{Jobs.Count} jobs · {running} active · {done} done · {error} failed";
+    }
+
+    /// <summary>Cancel an in-flight job. Only meaningful for queued/running
+    /// statuses — the GenerationService's _running map has the matching
+    /// CancellationTokenSource and (for ComfyUI) ALSO fires /interrupt to
+    /// stop the GPU mid-step.</summary>
+    private async System.Threading.Tasks.Task CancelJobAsync(GenerationJob? job)
+    {
+        if (job is null) return;
+        if (job.Status != "queued" && job.Status != "running") return;
+        await _ctx.Generation.CancelAsync(job.Id);
+        Refresh();
     }
 }

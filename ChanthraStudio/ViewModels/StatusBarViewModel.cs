@@ -55,6 +55,38 @@ public sealed class StatusBarViewModel : ObservableObject
     private string _autosaveLabel = "Auto-save —";
     public string AutosaveLabel { get => _autosaveLabel; set => SetProperty(ref _autosaveLabel, value); }
 
+    private System.Windows.Threading.DispatcherTimer? _autosaveTicker;
+    /// <summary>Drives the bottom-right "Saved 04s ago" pill. Reads from
+    /// AppSettings.LastSavedAt every second once started by the App ctor.</summary>
+    public void StartAutosaveTicker()
+    {
+        if (_autosaveTicker is not null) return;
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null) return;
+        _autosaveTicker = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background, dispatcher)
+        {
+            Interval = TimeSpan.FromSeconds(1),
+        };
+        _autosaveTicker.Tick += (_, _) =>
+        {
+            var settings = (System.Windows.Application.Current as App)?.Studio.Settings;
+            if (settings is null) return;
+            if (settings.LastSavedAt is { } t)
+            {
+                var ago = DateTime.UtcNow - t;
+                if (ago.TotalSeconds < 5) AutosaveLabel = "Saved · just now";
+                else if (ago.TotalSeconds < 60) AutosaveLabel = $"Saved · {(int)ago.TotalSeconds}s ago";
+                else if (ago.TotalMinutes < 60) AutosaveLabel = $"Saved · {(int)ago.TotalMinutes}m ago";
+                else AutosaveLabel = $"Saved · {(int)ago.TotalHours}h ago";
+            }
+            else
+            {
+                AutosaveLabel = "Auto-save · not yet";
+            }
+        };
+        _autosaveTicker.Start();
+    }
+
     public StatusBarViewModel()
     {
         _versionLabel = "v " + UpdateService.CurrentVersion();

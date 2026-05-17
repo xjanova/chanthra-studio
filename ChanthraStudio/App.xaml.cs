@@ -24,6 +24,13 @@ public partial class App : Application
         System.Diagnostics.Debug.WriteLine(
             $"[chanthra] sqlite foreign_keys = {(Studio.Db.ForeignKeysEnforced ? "ON" : "OFF")}");
 
+        // Recover shots that were left in Generating state by a previous
+        // session crash or hard-kill. Flip them to Error so the storyboard
+        // rebuild shows them with a red dot instead of an animated gold one.
+        var swept = Studio.Shots.SweepStuckGenerations();
+        if (swept > 0)
+            System.Diagnostics.Debug.WriteLine($"[chanthra] swept {swept} stuck Generating shots → Error");
+
         // Kick off the nvidia-smi poller so the StatusBar shows real numbers
         // within ~2 seconds of launch. Service detects no-NVIDIA and goes
         // dormant — safe to start unconditionally.

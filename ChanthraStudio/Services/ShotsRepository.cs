@@ -136,6 +136,29 @@ public sealed class ShotsRepository
         }
     }
 
+    /// <summary>
+    /// Mark any shot that's been in <c>Generating</c> status for more than
+    /// <paramref name="staleAfterMinutes"/> as <c>Error</c>. Called once at
+    /// app launch — if a previous session crashed mid-render or the user
+    /// quit while a long video was in flight, the row would otherwise stay
+    /// forever-Generating in the storyboard rebuild.
+    /// </summary>
+    public int SweepStuckGenerations(int staleAfterMinutes = 10)
+    {
+        try
+        {
+            using var c = _db.Open();
+            var cutoff = DateTimeOffset.UtcNow.AddMinutes(-staleAfterMinutes).ToUnixTimeSeconds();
+            return c.Execute("""
+                UPDATE shots
+                SET status = 'Error', updated_at = $now
+                WHERE status = 'Generating' AND updated_at < $cutoff
+                """,
+                new { now = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), cutoff });
+        }
+        catch { return 0; }
+    }
+
     private static Shot Map(ShotRow r)
     {
         Enum.TryParse<AspectRatio>(r.Aspect, out var aspect);

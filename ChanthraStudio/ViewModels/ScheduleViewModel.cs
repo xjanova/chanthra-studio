@@ -144,15 +144,17 @@ public sealed class ScheduleViewModel : ObservableObject
         ShowToast($"Deleted {s.Name}");
     }
 
-    /// <summary>Force a fire right now — bumps next_fire_at to now so the
-    /// next ScheduleService tick picks it up. Useful for testing without
-    /// waiting an hour.</summary>
-    private void RunNow(Schedule? s)
+    /// <summary>Force a fire right now — bumps next_fire_at into the past
+    /// AND kicks ScheduleService.ForceTickAsync so the user doesn't wait
+    /// up to 60s for the timer to come around.</summary>
+    private async void RunNow(Schedule? s)
     {
         if (s is null || _ctx is null) return;
         s.NextFireAt = DateTimeOffset.UtcNow.AddSeconds(-1);
         _ctx.Schedules.Update(s);
-        ShowToast($"Forced · {s.Name} runs on next 60s tick");
+        ShowToast($"Firing {s.Name}…");
+        try { await _ctx.ScheduleService.ForceTickAsync(); }
+        catch { /* schedule service swallows per-row errors already */ }
     }
 
     private void ShowToast(string msg)

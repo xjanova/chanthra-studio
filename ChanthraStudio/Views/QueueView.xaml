@@ -176,6 +176,29 @@
                                             Style="{StaticResource TextMono}"
                                             Foreground="{StaticResource BrushText3}"
                                             Text="{Binding SubmittedAt, StringFormat={}{0:HH:mm:ss}}" />
+                                        <!--  Cancel button — only shown while the job is still in flight  -->
+                                        <Button
+                                            Margin="0,6,0,0"
+                                            Padding="10,3"
+                                            HorizontalAlignment="Right"
+                                            Command="{Binding DataContext.CancelJobCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            Content="cancel"
+                                            ToolTip="Stop the job + interrupt GPU (ComfyUI) / cancel prediction (cloud)">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource ButtonPill}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="queued">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="running">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
                                     </StackPanel>
                                 </Grid>
                             </Border>

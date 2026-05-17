@@ -37,7 +37,60 @@ public sealed class WorkflowRepository
         BuiltinDir = Path.Combine(exeDir, "Assets", "Workflows");
         UserDir = Path.Combine(AppPaths.Root, "workflows");
         Directory.CreateDirectory(UserDir);
+        SeedSampleUserWorkflow();
         Refresh();
+    }
+
+    /// <summary>
+    /// Drop a tiny README + sample workflow into the user folder on first
+    /// boot so the Composer's "open user folder" button doesn't lead to an
+    /// empty directory. The README explains how the comment-header is
+    /// parsed; the sample is a renamed copy of default_text2img so the
+    /// user can experiment without breaking the bundled version.
+    /// </summary>
+    private void SeedSampleUserWorkflow()
+    {
+        var marker = Path.Combine(UserDir, ".seeded");
+        if (File.Exists(marker)) return;
+        try
+        {
+            File.WriteAllText(Path.Combine(UserDir, "README.txt"),
+                """
+                Chanthra Studio · user workflows folder
+                ───────────────────────────────────────
+                Drop ComfyUI API-format JSON files here. They appear in the
+                Composer's workflow picker on the next "Refresh workflows".
+
+                The first line can be a // comment of the form:
+                  // "Display Name" · SPEC · description
+                ...which becomes the picker's label + caption.
+
+                Files saved from the Node Flow editor's Save button also
+                land here automatically.
+                """);
+
+            // Try to seed a friendly-named copy of the bundled default so
+            // the user has something to look at. Doesn't fail the boot if
+            // the bundled default is missing.
+            var bundled = Path.Combine(BuiltinDir, "default_text2img.json");
+            if (File.Exists(bundled))
+            {
+                var dest = Path.Combine(UserDir, "my_first_workflow.json");
+                if (!File.Exists(dest))
+                {
+                    var content = "// \"My first workflow\" · SDXL · clone of the bundled default — tweak and save\n"
+                                + File.ReadAllText(bundled);
+                    File.WriteAllText(dest, content);
+                }
+            }
+
+            File.WriteAllText(marker, DateTime.UtcNow.ToString("o"));
+        }
+        catch
+        {
+            // Seeding is convenience — don't crash bootstrap if the disk
+            // is read-only or the bundled file is missing.
+        }
     }
 
     public void Refresh()

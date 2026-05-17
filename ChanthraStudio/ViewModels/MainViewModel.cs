@@ -76,6 +76,10 @@ public sealed class MainViewModel : ObservableObject
         OpenTabs.Add(new TabItem { Id = "moondog", Title = "Moondog", IsLive = false });
         OpenTabs.Add(new TabItem { Id = "veil-fall", Title = "Veil Fall", IsLive = false });
 
+        // Kick the status-bar autosave label ticker so it stops showing
+        // the stale "Auto-save —" placeholder forever.
+        Status.StartAutosaveTicker();
+
         SwitchViewCommand = new RelayCommand<string>(view =>
         {
             if (view is not null && System.Enum.TryParse<AppView>(view, ignoreCase: true, out var v))

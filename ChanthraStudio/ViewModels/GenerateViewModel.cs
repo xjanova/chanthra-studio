@@ -10,6 +10,17 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace ChanthraStudio.ViewModels;
 
+/// <summary>
+/// One row in the Composer's engine-route picker. Lightweight wrapper so
+/// the ComboBox can bind without reaching into IProvider properties from
+/// XAML.
+/// </summary>
+public sealed class VideoRouteOption
+{
+    public string Id { get; init; } = "";
+    public string DisplayName { get; init; } = "";
+}
+
 public sealed class GenerateViewModel : ObservableObject
 {
     private readonly StudioContext? _ctx;
@@ -21,6 +32,28 @@ public sealed class GenerateViewModel : ObservableObject
     public string SceneLabel { get => _sceneLabel; set => SetProperty(ref _sceneLabel, value); }
 
     public ObservableCollection<WorkflowDescriptor> Workflows { get; } = new();
+
+    /// <summary>
+    /// Provider routes the user can switch between on the Composer's engine
+    /// row (without going to Settings). Each one binds to GenerationService's
+    /// route switch — comfyui = local, replicate = cloud Replicate, etc.
+    /// </summary>
+    public ObservableCollection<VideoRouteOption> VideoRoutes { get; } = new();
+
+    private VideoRouteOption? _activeRoute;
+    public VideoRouteOption? ActiveRoute
+    {
+        get => _activeRoute;
+        set
+        {
+            if (!SetProperty(ref _activeRoute, value)) return;
+            if (value is not null && _ctx is not null)
+            {
+                _ctx.Settings.ActiveVideo = value.Id;
+                try { _ctx.Settings.Save(); } catch { /* best-effort */ }
+            }
+        }
+    }
 
     private WorkflowDescriptor? _activeWorkflow;
     public WorkflowDescriptor? ActiveWorkflow
@@ -282,8 +315,31 @@ public sealed class GenerateViewModel : ObservableObject
 
         _ctx.Generation.ProgressChanged += OnGenerationProgress;
         LoadWorkflows();
+        LoadVideoRoutes();
         RebuildStoryboardFromHistory();
         IsGenerating = false;
+    }
+
+    /// <summary>Populate the Composer's engine-route dropdown from the live
+    /// provider registry (only providers with a real HTTP implementation
+    /// surface, via IProvider.IsImplemented). Selects whatever
+    /// <c>Settings.ActiveVideo</c> says.</summary>
+    private void LoadVideoRoutes()
+    {
+        if (_ctx is null) return;
+        VideoRoutes.Clear();
+        foreach (var p in _ctx.Providers.Video)
+        {
+            if (!p.IsImplemented) continue;
+            VideoRoutes.Add(new VideoRouteOption { Id = p.Id, DisplayName = p.DisplayName });
+        }
+        var current = _ctx.Settings.ActiveVideo;
+        var match = VideoRoutes.FirstOrDefault(r => r.Id == current) ?? VideoRoutes.FirstOrDefault();
+        if (match is not null)
+        {
+            _activeRoute = match;
+            OnPropertyChanged(nameof(ActiveRoute));
+        }
     }
 
     /// <summary>
