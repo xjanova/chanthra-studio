@@ -287,20 +287,26 @@ public sealed class GenerateViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Re-populate the right-rail Storyboard from recent clips on the disk so
-    /// reopening the app feels continuous instead of starting empty. Each
-    /// clip in the most recent N becomes a Done shot pointing at the saved
-    /// media file. Prompt + camera/style aren't recoverable from the clips
-    /// table alone — they'd need a shots table write at submit time. For
-    /// now: visual continuity, not full state recovery.
+    /// Re-populate the right-rail Storyboard from the persisted <c>shots</c>
+    /// table on launch. Phase 7.4 starts writing shots at submit time so
+    /// rebuilds carry the full composer state (prompt, style, seed, camera)
+    /// — not just thumbnails. Falls back to clip-grouping if the shots
+    /// table is empty (e.g. legacy users from before 7.4).
     /// </summary>
     private void RebuildStoryboardFromHistory()
     {
         if (_ctx is null) return;
         try
         {
-            // Group clips by shot_id so a video + its frame-grab don't appear
-            // as two separate cards. Newest shots first.
+            var shots = _ctx.Shots.Recent(12);
+            if (shots.Count > 0)
+            {
+                foreach (var s in shots) Storyboard.Add(s);
+                ActiveShot ??= Storyboard.FirstOrDefault();
+                return;
+            }
+
+            // Legacy fallback — pre-7.4 clip-only rebuild.
             var clips = _ctx.Clips.RecentClips(50);
             var byShot = clips
                 .GroupBy(c => c.ShotId)
@@ -312,24 +318,22 @@ public sealed class GenerateViewModel : ObservableObject
             foreach (var group in byShot)
             {
                 var primary = group.OrderByDescending(c => c.CreatedAt).First();
-                var shot = new Shot
+                Storyboard.Add(new Shot
                 {
                     Id = group.Key,
                     Number = idx.ToString("D2"),
                     Title = string.IsNullOrEmpty(primary.FileName)
                         ? $"Shot {idx:D2}"
                         : System.IO.Path.GetFileNameWithoutExtension(primary.FileName),
-                    Description = "Restored from clip history. Prompt not preserved across launches.",
+                    Description = "Restored from clip history (pre-7.4 · prompt not preserved).",
                     Status = ShotStatus.Done,
                     ThumbUrl = primary.FilePath,
                     VideoUrl = primary.FilePath,
                     DurationLabel = primary.SizeLabel,
-                };
-                Storyboard.Add(shot);
+                });
                 idx++;
             }
-            if (Storyboard.Count > 0 && _activeShot is null)
-                ActiveShot = Storyboard.First();  // newest first
+            ActiveShot ??= Storyboard.FirstOrDefault();
         }
         catch
         {

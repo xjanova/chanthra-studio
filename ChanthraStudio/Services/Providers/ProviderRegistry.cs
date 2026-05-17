@@ -39,7 +39,7 @@ public sealed class ProviderRegistry
         {
             new ComfyUiVideoProvider(),
             new ReplicateVideoProvider(),
-            new RunwayVideoProvider(),
+            new Video.RunwayVideoProvider(),
             new PikaVideoProvider(),
             new FalVideoProvider(),
         };

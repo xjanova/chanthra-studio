@@ -14,6 +14,7 @@ public sealed class StudioContext
     public ProviderRegistry Providers { get; }
     public GenerationService Generation { get; }
     public ClipsRepository Clips { get; }
+    public ShotsRepository Shots { get; }
     public ChanthraStudio.Services.Providers.ComfyUI.WorkflowRepository Workflows { get; }
     public PostingService Posting { get; }
     public FFmpegService FFmpeg { get; }
@@ -36,6 +37,7 @@ public sealed class StudioContext
         Settings = AppSettings.Load(Db);
         Providers = new ProviderRegistry();
         Clips = new ClipsRepository(Db);
+        Shots = new ShotsRepository(Db);
         Workflows = new ChanthraStudio.Services.Providers.ComfyUI.WorkflowRepository();
         Generation = new GenerationService(this);
         Posting = new PostingService(this);

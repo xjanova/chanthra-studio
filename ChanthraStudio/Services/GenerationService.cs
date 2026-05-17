@@ -60,8 +60,104 @@ public sealed class GenerationService
         return route switch
         {
             "replicate" => SubmitToReplicateAsync(shot, workflowOverride, ct),
-            _ => SubmitToComfyUiAsync(shot, workflowOverride, ct),
+            "runway"    => SubmitToRunwayAsync(shot, ct),
+            _           => SubmitToComfyUiAsync(shot, workflowOverride, ct),
         };
+    }
+
+    /// <summary>
+    /// Cloud route through Runway Gen-3 (image-to-video only — the shot
+    /// MUST carry a reference image). Same orchestration shape as
+    /// <see cref="SubmitToReplicateAsync"/>: mint a local jobId, kick off
+    /// a background task that submits + polls, download the result, raise
+    /// the same Done event so storyboard cards work identically.
+    /// </summary>
+    private async Task<string> SubmitToRunwayAsync(Shot shot, CancellationToken ct)
+    {
+        var apiKey = _ctx.Settings["runway"];
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException(
+                "Runway API key missing — paste your key_… token in Settings → Video Providers.");
+        if (string.IsNullOrEmpty(shot.ReferenceImagePath))
+            throw new InvalidOperationException(
+                "Runway Gen-3 needs a reference image. Drop one in the Composer first.");
+
+        var provider = new Providers.Video.RunwayVideoProvider();
+        var aspect = shot.Aspect switch
+        {
+            AspectRatio.Vertical => "9:16",
+            AspectRatio.Square => "1:1",
+            AspectRatio.Cinema => "21:9",
+            _ => "16:9",
+        };
+        var req = new Providers.VideoRequest
+        {
+            ApiKey = apiKey,
+            Model = Providers.Video.RunwayVideoProvider.DefaultModel,
+            Prompt = PromptAugmenter.Augment(shot),
+            ReferenceImagePath = shot.ReferenceImagePath,
+            Aspect = aspect,
+            Seed = shot.Seed.A,
+            DurationSec = shot.DurationSec,
+        };
+
+        var jobId = Guid.NewGuid().ToString("N").Substring(0, 16);
+        _ctx.Shots.Insert(shot);
+        WriteJobRow(shot.Id, jobId, "queued");
+
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _running[jobId] = cts;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                Raise(jobId, shot.Id, ShotStatus.Generating, 1, null);
+                var progress = new Progress<double>(p => Raise(jobId, shot.Id, ShotStatus.Generating, p, null));
+                var outputUrl = await provider.SubmitAndWaitAsync(req, progress, cts.Token);
+
+                // Runway returns .mp4 URLs valid for ~24 hours — pull it
+                // local so Library + Render film treat it like every other clip.
+                var safeName = SafeFilename($"{shot.Id}_runway.mp4");
+                var dest = Path.Combine(AppPaths.MediaFolder, safeName);
+                using (var dl = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) })
+                {
+                    using var resp = await dl.GetAsync(outputUrl, cts.Token);
+                    resp.EnsureSuccessStatusCode();
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? ".");
+                    await using var fs = File.Create(dest);
+                    await resp.Content.CopyToAsync(fs, cts.Token);
+                }
+
+                WriteClipRow(shot.Id, dest, "videos");
+                WriteJobUpdate(jobId, "done", null);
+
+                // Bill the call. Runway is per-second; PromptAugmenter doesn't
+                // map runway to a duration param itself, but UsageTracker
+                // picks up the per-second rate from ProviderCatalog if the
+                // user has runway pricing configured.
+                try { _ctx.Tracker.RecordSeconds("runway", req.Model, req.DurationSec, "video"); }
+                catch { }
+
+                Raise(jobId, shot.Id, ShotStatus.Done, 100, null, dest);
+            }
+            catch (OperationCanceledException)
+            {
+                WriteJobUpdate(jobId, "cancelled", null);
+                Raise(jobId, shot.Id, ShotStatus.Error, 0, "cancelled");
+            }
+            catch (Exception ex)
+            {
+                WriteJobUpdate(jobId, "error", ex.Message);
+                Raise(jobId, shot.Id, ShotStatus.Error, 0, ex.Message);
+            }
+            finally
+            {
+                _running.TryRemove(jobId, out _);
+            }
+        });
+
+        return jobId;
     }
 
     private async Task<string> SubmitToComfyUiAsync(Shot shot, string? workflowOverride, CancellationToken ct)
@@ -157,6 +253,10 @@ public sealed class GenerationService
             await AutoFixModelReferencesAsync(client, workflow, shot, ct);
 
             var promptId = await client.SubmitPromptAsync(workflow.Nodes, ct);
+            // Persist the shot's full composer state before the job row so
+            // the FK from generation_jobs.shot_id resolves cleanly and so a
+            // relaunch can rebuild the storyboard with prompts intact.
+            _ctx.Shots.Insert(shot);
             WriteJobRow(shot.Id, promptId, "queued");
 
             var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -279,6 +379,7 @@ public sealed class GenerationService
         // We mint a temporary one until the first poll returns the real one,
         // so the storyboard card has something to bind progress against.
         var jobId = Guid.NewGuid().ToString("N").Substring(0, 16);
+        _ctx.Shots.Insert(shot);
         WriteJobRow(shot.Id, jobId, "queued");
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -532,6 +633,10 @@ public sealed class GenerationService
 
     private void Raise(string promptId, string shotId, ShotStatus status, double progress, string? error, string? mediaPath = null)
     {
+        // Mirror status into the shots table so relaunch sees Done/Error
+        // accurately instead of a stuck "Queue" badge from submit-time.
+        _ctx.Shots.UpdateStatus(shotId, status, progress, mediaPath, mediaPath);
+
         var args = new GenerationProgressEventArgs(promptId, shotId, status, progress, error, mediaPath);
         if (_ui.CheckAccess())
             ProgressChanged?.Invoke(this, args);

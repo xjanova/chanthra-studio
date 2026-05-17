@@ -60,6 +60,78 @@ public sealed class NodeFlowViewModel : ObservableObject
     private double _panY;
     public double PanY { get => _panY; set => SetProperty(ref _panY, value); }
 
+    /// <summary>
+    /// Bezier path drawn while the user is dragging from a socket. Null when
+    /// not actively dragging. The view's MouseMove handler updates this each
+    /// frame; the XAML <c>Path</c> binds Data to it.
+    /// </summary>
+    private System.Windows.Media.Geometry? _ghostWireGeometry;
+    public System.Windows.Media.Geometry? GhostWireGeometry
+    {
+        get => _ghostWireGeometry;
+        set => SetProperty(ref _ghostWireGeometry, value);
+    }
+
+    /// <summary>
+    /// Compute the bezier for a wire-in-flight from socket origin to the
+    /// current mouse position. Same control-point math as the committed
+    /// wires so the visual transition on drop is seamless.
+    /// </summary>
+    public void UpdateGhostWire(Point from, Point to)
+    {
+        double strength = Math.Max(60, Math.Abs(to.X - from.X) * 0.5);
+        var p1 = new Point(from.X + strength, from.Y);
+        var p2 = new Point(to.X - strength, to.Y);
+        var fig = new System.Windows.Media.PathFigure { StartPoint = from, IsFilled = false };
+        fig.Segments.Add(new System.Windows.Media.BezierSegment(p1, p2, to, true));
+        var geo = new System.Windows.Media.PathGeometry();
+        geo.Figures.Add(fig);
+        geo.Freeze();
+        GhostWireGeometry = geo;
+    }
+
+    public void ClearGhostWire()
+    {
+        GhostWireGeometry = null;
+    }
+
+    /// <summary>
+    /// Public attempt-to-wire used by the drag-drop flow in the code-behind.
+    /// Returns true if the wire was created (or already existed); false if
+    /// invalid (same node, wrong direction, etc.).
+    /// </summary>
+    public bool TryAddWire(FlowNode fromNode, NodeSocket fromSocket, FlowNode toNode, NodeSocket toSocket)
+    {
+        if (fromSocket.IsInput || !toSocket.IsInput) return false;
+        if (ReferenceEquals(fromNode, toNode)) return false;
+        var dupe = Wires.FirstOrDefault(w =>
+            w.FromNodeId == fromNode.Id && w.FromSocketId == fromSocket.Id &&
+            w.ToNodeId == toNode.Id && w.ToSocketId == toSocket.Id);
+        if (dupe is not null) return true;
+        // Replace any existing wire into the same input.
+        var replaced = Wires.Where(w => w.ToNodeId == toNode.Id && w.ToSocketId == toSocket.Id).ToList();
+        foreach (var r in replaced) Wires.Remove(r);
+        Wires.Add(new FlowWire
+        {
+            Id = $"{fromNode.Id}.{fromSocket.Id}->{toNode.Id}.{toSocket.Id}",
+            FromNodeId = fromNode.Id, FromSocketId = fromSocket.Id,
+            ToNodeId = toNode.Id, ToSocketId = toSocket.Id,
+            Type = fromSocket.Type,
+        });
+        RecomputeWires();
+        ShowStatus($"Wired {fromSocket.Label} → {toSocket.Label}", "ok");
+        return true;
+    }
+
+    /// <summary>
+    /// Find the FlowNode that owns the given socket. The socket model itself
+    /// doesn't back-reference its parent (POCOs stay clean) so we walk the
+    /// node list once per lookup; node count is small enough that the linear
+    /// scan beats a maintained reverse-index.
+    /// </summary>
+    public FlowNode? FindNodeForSocket(NodeSocket socket)
+        => Nodes.FirstOrDefault(n => n.Inputs.Contains(socket) || n.Outputs.Contains(socket));
+
     public IRelayCommand ZoomInCommand { get; }
     public IRelayCommand ZoomOutCommand { get; }
     public IRelayCommand ZoomResetCommand { get; }

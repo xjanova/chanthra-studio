@@ -424,6 +424,16 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
+                    <!--  Ghost wire — drawn while the user is dragging from a socket  -->
+                    <Path
+                        Data="{Binding GhostWireGeometry}"
+                        Stroke="{StaticResource BrushGoldHi}"
+                        StrokeThickness="1.8"
+                        StrokeDashArray="4,3"
+                        Opacity="0.85"
+                        IsHitTestVisible="False"
+                        Effect="{StaticResource ShadowGoldGlowSoft}" />
+
                     <!--  Nodes  -->
                     <ItemsControl ItemsSource="{Binding Nodes}">
                         <ItemsControl.ItemsPanel>
@@ -491,20 +501,21 @@
                                                                 <ColumnDefinition Width="Auto" />
                                                                 <ColumnDefinition Width="*" />
                                                             </Grid.ColumnDefinitions>
-                                                            <!--  Clickable socket — click an OUT then an IN to draw a wire  -->
-                                                            <Button
+                                                            <!--  Socket dot — drag from an OUT to an IN, OR click an OUT then an IN.  -->
+                                                            <Border
                                                                 Grid.Column="0"
                                                                 Margin="-4,0,8,0"
-                                                                Padding="0"
+                                                                Padding="2"
                                                                 Background="Transparent"
-                                                                BorderThickness="0"
                                                                 VerticalAlignment="Center"
                                                                 Cursor="Cross"
-                                                                Command="{Binding DataContext.SocketClickCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                CommandParameter="{Binding}"
-                                                                ToolTip="Click to attach a wire from a previously-clicked output socket">
+                                                                MouseLeftButtonDown="Socket_MouseLeftButtonDown"
+                                                                MouseEnter="Socket_MouseEnter"
+                                                                MouseLeave="Socket_MouseLeave"
+                                                                Tag="{Binding}"
+                                                                ToolTip="Drag from an output socket and drop here to wire — or click after clicking an output">
                                                                 <Ellipse Style="{StaticResource SocketDot}" />
-                                                            </Button>
+                                                            </Border>
                                                             <TextBlock
                                                                 Grid.Column="1"
                                                                 VerticalAlignment="Center"
@@ -534,19 +545,20 @@
                                                                 FontSize="10"
                                                                 Foreground="{StaticResource BrushText1}"
                                                                 Text="{Binding Label}" />
-                                                            <Button
+                                                            <Border
                                                                 Grid.Column="1"
                                                                 Margin="8,0,-4,0"
-                                                                Padding="0"
+                                                                Padding="2"
                                                                 Background="Transparent"
-                                                                BorderThickness="0"
                                                                 VerticalAlignment="Center"
                                                                 Cursor="Cross"
-                                                                Command="{Binding DataContext.SocketClickCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                CommandParameter="{Binding}"
-                                                                ToolTip="Click to start a wire — then click an input socket on another node to finish">
+                                                                MouseLeftButtonDown="Socket_MouseLeftButtonDown"
+                                                                MouseEnter="Socket_MouseEnter"
+                                                                MouseLeave="Socket_MouseLeave"
+                                                                Tag="{Binding}"
+                                                                ToolTip="Drag from here to an input socket on another node to wire">
                                                                 <Ellipse Style="{StaticResource SocketDot}" />
-                                                            </Button>
+                                                            </Border>
                                                         </Grid>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>

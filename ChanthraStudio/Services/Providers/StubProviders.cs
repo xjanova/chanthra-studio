@@ -97,12 +97,9 @@ internal sealed class ComfyUiVideoProvider : StubVideoProvider
 // Replicate is now a real implementation in Services/Providers/Video/ —
 // the registry instantiates it directly.
 
-internal sealed class RunwayVideoProvider : StubVideoProvider
-{
-    public override string Id => "runway";
-    public override string DisplayName => "Runway · Gen-3";
-    public override string ApiKeyHint => "key_… · dev.runwayml.com (not yet wired — use Replicate or ComfyUI)";
-}
+// Runway moved to Services/Providers/Video/RunwayVideoProvider.cs with a
+// real HTTP client in phase 7.6. The shell that used to live here was
+// only useful as scaffolding — deleted to avoid the dead-class confusion.
 
 internal sealed class PikaVideoProvider : StubVideoProvider
 {

@@ -165,7 +165,7 @@ public sealed class Database
             //   "images"  → input_units = images, output_units = 0
             //   "seconds" → input_units = duration seconds, output_units = 0
             Exec(c, tx, """
-                CREATE TABLE usage_events (
+                CREATE TABLE IF NOT EXISTS usage_events (
                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
                     occurred_at   INTEGER NOT NULL,
                     provider_id   TEXT    NOT NULL,
@@ -178,8 +178,8 @@ public sealed class Database
                     cost_thb      REAL    NOT NULL DEFAULT 0,
                     note          TEXT
                 );
-                CREATE INDEX idx_usage_occurred ON usage_events(occurred_at DESC);
-                CREATE INDEX idx_usage_provider ON usage_events(provider_id, occurred_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_usage_occurred ON usage_events(occurred_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_usage_provider ON usage_events(provider_id, occurred_at DESC);
                 """);
             SetSchemaVersion(c, tx, 4);
         }
@@ -197,8 +197,13 @@ public sealed class Database
             // schedule_runs — append-only history of every fire so the user
             // can see a "last 30 days" timeline per schedule (planned, but
             // even just for debugging "did it run?" it's invaluable).
+            //
+            // IF NOT EXISTS guard added retroactively in 7.4 because the
+            // ordering bug (this block ran before the <4 usage block and
+            // overwrote schema_version=4 with 3) meant relaunches of an
+            // installed 6.8 build hit "table already exists".
             Exec(c, tx, """
-                CREATE TABLE schedules (
+                CREATE TABLE IF NOT EXISTS schedules (
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
                     name            TEXT    NOT NULL,
                     prompt_template TEXT    NOT NULL,
@@ -210,8 +215,6 @@ public sealed class Database
                     camera          TEXT    NOT NULL DEFAULT 'Push',
                     duration_sec    REAL    NOT NULL DEFAULT 8,
                     motion          REAL    NOT NULL DEFAULT 0.7,
-                    -- 'daily_slots' (spec="08:00,12:00,18:00") or
-                    -- 'interval'    (spec="60" minutes)
                     kind            TEXT    NOT NULL DEFAULT 'daily_slots',
                     spec            TEXT    NOT NULL,
                     auto_post       INTEGER NOT NULL DEFAULT 0,
@@ -222,7 +225,7 @@ public sealed class Database
                     created_at      INTEGER NOT NULL,
                     updated_at      INTEGER NOT NULL
                 );
-                CREATE TABLE schedule_runs (
+                CREATE TABLE IF NOT EXISTS schedule_runs (
                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
                     schedule_id   INTEGER NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
                     fired_at      INTEGER NOT NULL,
@@ -230,10 +233,31 @@ public sealed class Database
                     status        TEXT    NOT NULL,
                     error_message TEXT
                 );
-                CREATE INDEX idx_schedules_enabled ON schedules(is_enabled, next_fire_at);
-                CREATE INDEX idx_schedule_runs_sched ON schedule_runs(schedule_id, fired_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_schedules_enabled ON schedules(is_enabled, next_fire_at);
+                CREATE INDEX IF NOT EXISTS idx_schedule_runs_sched ON schedule_runs(schedule_id, fired_at DESC);
                 """);
-            SetSchemaVersion(c, tx, 3);
+            // Note: we DON'T SetSchemaVersion(3) here — the <4 block above
+            // already wrote 4. Keeping the final version monotonic.
+        }
+
+        if (current < 5)
+        {
+            // Phase 7.4 — Generation pipeline writes Shot rows on submit so
+            // we can rebuild the storyboard with full prompts/style/seed on
+            // relaunch (was: thumbnail-only rebuild from clips). The schema
+            // already defines shots → sequences → projects FKs; we just need
+            // a default project + sequence so existing inserts don't violate
+            // them once the GenerationService starts writing real rows.
+            //
+            // INSERT OR IGNORE so this migration is idempotent.
+            Exec(c, tx, """
+                INSERT OR IGNORE INTO projects (id, title, created_at, updated_at)
+                VALUES ('default', 'Chanthra Studio', strftime('%s','now'), strftime('%s','now'));
+
+                INSERT OR IGNORE INTO sequences (id, project_id, title, sort_order)
+                VALUES ('default', 'default', 'Untitled sequence', 0);
+                """);
+            SetSchemaVersion(c, tx, 5);
         }
     }
 
