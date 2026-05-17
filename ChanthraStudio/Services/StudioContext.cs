@@ -25,6 +25,7 @@ public sealed class StudioContext
     public ScheduleService ScheduleService { get; }
     public UsageRepository Usage { get; }
     public UsageTracker Tracker { get; }
+    public SearchBus Search { get; } = new();
 
     public StudioContext()
     {

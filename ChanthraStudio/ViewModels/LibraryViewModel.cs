@@ -15,6 +15,11 @@ public sealed class LibraryViewModel : ObservableObject
 {
     private readonly StudioContext _ctx;
 
+    /// <summary>Full unfiltered list — Refresh() repopulates this from the DB,
+    /// then <see cref="ApplyFilter"/> projects the visible subset into
+    /// <see cref="Clips"/> based on the SearchBus query.</summary>
+    private readonly System.Collections.Generic.List<Clip> _allClips = new();
+
     public ObservableCollection<Clip> Clips { get; } = new();
 
     private bool _hasClips;
@@ -67,6 +72,9 @@ public sealed class LibraryViewModel : ObservableObject
             if (e.Status == ShotStatus.Done) Refresh();
         };
 
+        // Title-bar search box re-filters the visible clips live.
+        _ctx.Search.PropertyChanged += (_, _) => ApplyFilter();
+
         Refresh();
     }
 
@@ -80,20 +88,39 @@ public sealed class LibraryViewModel : ObservableObject
             Clips.Where(c => c.IsSelected).Select(c => c.Id));
 
         // Detach old clips' PropertyChanged handlers before discarding them.
-        foreach (var old in Clips) old.PropertyChanged -= OnClipPropertyChanged;
-        Clips.Clear();
+        foreach (var old in _allClips) old.PropertyChanged -= OnClipPropertyChanged;
+        _allClips.Clear();
 
         var rows = _ctx.Clips.RecentClips();
         foreach (var c in rows)
         {
             if (prevSelected.Contains(c.Id)) c.IsSelected = true;
             c.PropertyChanged += OnClipPropertyChanged;
-            Clips.Add(c);
+            _allClips.Add(c);
+        }
+        ApplyFilter();
+    }
+
+    /// <summary>Project <see cref="_allClips"/> through the SearchBus query
+    /// into the visible <see cref="Clips"/> collection. Match is a case-
+    /// insensitive substring against the clip's file name — that's all we
+    /// have to filter on without a prompt-history table.</summary>
+    private void ApplyFilter()
+    {
+        var q = _ctx.Search.Query.Trim();
+        Clips.Clear();
+        foreach (var c in _allClips)
+        {
+            if (string.IsNullOrEmpty(q) || c.FileName.Contains(q, StringComparison.OrdinalIgnoreCase))
+                Clips.Add(c);
         }
         HasClips = Clips.Count > 0;
-        Summary = HasClips
-            ? $"{Clips.Count} clip{(Clips.Count == 1 ? "" : "s")} · {AppPaths.MediaFolder}"
-            : $"No clips yet · {AppPaths.MediaFolder}";
+        var suffix = _allClips.Count == Clips.Count
+            ? ""
+            : $" of {_allClips.Count}";
+        Summary = _allClips.Count == 0
+            ? $"No clips yet · {AppPaths.MediaFolder}"
+            : $"{Clips.Count}{suffix} clip{(Clips.Count == 1 ? "" : "s")} · {AppPaths.MediaFolder}";
         UpdateSelectionState();
     }
 

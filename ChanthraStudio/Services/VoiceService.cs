@@ -241,7 +241,11 @@ public sealed class VoiceTake
     public DateTime CreatedAt { get; set; }
 
     public string FileName => Path.GetFileName(FilePath);
-    public string DurationLabel
+
+    /// <summary>File-size label (B / KB / MB). Used by the Voice atelier
+    /// take list — the old field was misleadingly named DurationLabel but
+    /// always returned bytes; renamed so the binding tells the truth.</summary>
+    public string SizeLabel
     {
         get
         {

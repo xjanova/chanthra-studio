@@ -158,7 +158,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Text="OR PICK A VOICE TAKE:" />
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Text="OR PICK A TAKE:" />
                             <Border Grid.Column="1" Margin="8,0,0,0" Padding="12,6" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
                                 <ComboBox x:Name="RecentTakesBox"
                                           ItemsSource="{Binding RecentTakes, RelativeSource={RelativeSource AncestorType=Window}}"

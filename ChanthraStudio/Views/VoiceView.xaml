@@ -349,7 +349,7 @@
                                                     <TextBlock Margin="6,0,0,0" Style="{StaticResource TextMonoUpper}" Text="{Binding VoiceDisplayName}" />
                                                 </StackPanel>
                                             </StackPanel>
-                                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" FontSize="10.5" Text="{Binding DurationLabel}" />
+                                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" FontSize="10.5" Text="{Binding SizeLabel}" />
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -385,7 +385,7 @@
                                                         <TextBlock Margin="6,0,0,0" Style="{StaticResource TextMonoUpper}" Text="{Binding VoiceDisplayName}" />
                                                     </StackPanel>
                                                 </StackPanel>
-                                                <TextBlock Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" FontSize="10.5" Text="{Binding DurationLabel}" />
+                                                <TextBlock Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" FontSize="10.5" Text="{Binding SizeLabel}" />
                                             </Grid>
                                         </Border>
                                     </DataTemplate>

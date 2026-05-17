@@ -40,10 +40,15 @@ public partial class RenderFilmDialog : Window
             ? Color.FromArgb(0xFF, 0xD0, 0x5A, 0x5A)
             : Color.FromArgb(0xFF, 0x6D, 0xBF, 0x8C));
 
-        // Pull voice takes so the user can skip the Browse… → file picker step
-        // when they just generated a take in the Voice atelier.
-        foreach (var t in ctx.VoiceService.ListTakes(20))
+        // Pull both voice + music takes so the user can pick either a TTS
+        // narration or a generated score as the soundtrack. Music gets a ♪
+        // glyph in front of the file name so they're visually distinct.
+        foreach (var t in ctx.VoiceService.ListTakes(15))
             RecentTakes.Add(t);
+        foreach (var t in ctx.VoiceService.ListMusicTakes(15))
+            RecentTakes.Add(t);
+        // Newest-first across both sources.
+        RecentTakes.Sort((a, b) => b.CreatedAt.CompareTo(a.CreatedAt));
 
         InitializeComponent();
         DataContext = this;

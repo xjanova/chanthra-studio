@@ -37,6 +37,24 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Title-bar search box → SearchBus on the StudioContext. Any list view
+    /// that opted in (Library, Generate storyboard) re-filters live as the
+    /// user types.
+    /// </summary>
+    public string SearchQuery
+    {
+        get => (System.Windows.Application.Current as App)?.Studio.Search.Query ?? "";
+        set
+        {
+            var bus = (System.Windows.Application.Current as App)?.Studio.Search;
+            if (bus is null) return;
+            if (bus.Query == value) return;
+            bus.Query = value;
+            OnPropertyChanged();
+        }
+    }
+
     public ObservableCollection<TabItem> OpenTabs { get; } = new();
 
     public GenerateViewModel Generate { get; }

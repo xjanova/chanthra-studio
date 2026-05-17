@@ -167,7 +167,8 @@
                         Padding="8,0,0,0"
                         VerticalAlignment="Center"
                         Style="{StaticResource SearchTextBox}"
-                        Tag="Search prompts, scenes, models…" />
+                        Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                        Tag="Filter library + storyboard…" />
                     <Border
                         Grid.Column="2"
                         Padding="6,2"
