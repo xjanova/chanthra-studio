@@ -27,6 +27,7 @@ public sealed class StudioContext
     public UsageRepository Usage { get; }
     public UsageTracker Tracker { get; }
     public SearchBus Search { get; } = new();
+    public RecentProjectsService RecentProjects { get; } = new();
 
     public StudioContext()
     {

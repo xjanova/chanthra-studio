@@ -308,6 +308,12 @@ public sealed class EditorViewModel : ObservableObject
         RedoCommand = new RelayCommand(Redo, () => _redoStack.Count > 0);
         SaveProjectCommand = new RelayCommand(SaveProject);
         LoadProjectCommand = new RelayCommand(LoadProject);
+        OpenRecentCommand = new RelayCommand<RecentProjectEntry>(e =>
+        {
+            if (e is null || !System.IO.File.Exists(e.Path)) return;
+            LoadProjectAtPath(e.Path);
+        });
+        RefreshRecentProjects();
         SetRenderAspectCommand = new RelayCommand<string>(s => { if (!string.IsNullOrEmpty(s)) RenderAspect = s; });
         SetRenderQualityCommand = new RelayCommand<string>(s => { if (!string.IsNullOrEmpty(s)) RenderQuality = s; });
 
@@ -652,9 +658,31 @@ public sealed class EditorViewModel : ObservableObject
         RecomputeTotal();
     }
 
-    // ---------- Project save / load (T25) ----------
+    // ---------- Project save / load (T25) + MRU (T29) ----------
     private string _projectName = "Untitled";
     public string ProjectName { get => _projectName; set => SetProperty(ref _projectName, value); }
+
+    /// <summary>Most-recently-used .chstudio paths for the dropdown next to
+    /// the Open… button. Refreshed after every save/load so the list reflects
+    /// the current MRU on disk (with phantom-entry pruning).</summary>
+    public ObservableCollection<RecentProjectEntry> RecentProjects { get; } = new();
+
+    public sealed class RecentProjectEntry
+    {
+        public string Path { get; init; } = "";
+        public string DisplayName => System.IO.Path.GetFileNameWithoutExtension(Path);
+        public string Folder => System.IO.Path.GetDirectoryName(Path) ?? "";
+    }
+
+    public IRelayCommand<RecentProjectEntry> OpenRecentCommand { get; private set; } = null!;
+
+    private void RefreshRecentProjects()
+    {
+        if (_ctx is null) return;
+        RecentProjects.Clear();
+        foreach (var path in _ctx.RecentProjects.Load())
+            RecentProjects.Add(new RecentProjectEntry { Path = path });
+    }
 
     private void SaveProject()
     {
@@ -701,6 +729,8 @@ public sealed class EditorViewModel : ObservableObject
             };
             NleProjectSerializer.Save(dlg.FileName, file);
             ProjectName = file.Name;
+            _ctx?.RecentProjects.Promote(dlg.FileName);
+            RefreshRecentProjects();
             ShowToast($"Saved · {System.IO.Path.GetFileName(dlg.FileName)}", "ok");
         }
         catch (Exception ex)
@@ -721,9 +751,16 @@ public sealed class EditorViewModel : ObservableObject
             CheckFileExists = true,
         };
         if (dlg.ShowDialog() != true) return;
+        LoadProjectAtPath(dlg.FileName);
+    }
+
+    /// <summary>Load a specific project path. Extracted so the MRU dropdown
+    /// can open recent entries directly without re-prompting the user.</summary>
+    private void LoadProjectAtPath(string path)
+    {
         try
         {
-            var file = NleProjectSerializer.Load(dlg.FileName);
+            var file = NleProjectSerializer.Load(path);
 
             // Rebuild slots — look the Clip up from the in-memory library by
             // FilePath (most stable identifier across sessions). Missing clips
@@ -766,6 +803,9 @@ public sealed class EditorViewModel : ObservableObject
             SelectedOverlay = OverlayTimeline.FirstOrDefault();
             RecomputeTotal();
 
+            _ctx?.RecentProjects.Promote(path);
+            RefreshRecentProjects();
+
             var note = missing == 0
                 ? $"Loaded · {Timeline.Count} slots · {OverlayTimeline.Count} overlays"
                 : $"Loaded · {Timeline.Count} slots ({missing} clip refs missing from Library — re-import)";
@@ -773,7 +813,7 @@ public sealed class EditorViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ActivityLog.Error("nle", $"LoadProject {dlg.FileName}", ex);
+            ActivityLog.Error("nle", $"LoadProject {path}", ex);
             ShowToast($"Load failed: {ex.Message}", "err");
         }
     }

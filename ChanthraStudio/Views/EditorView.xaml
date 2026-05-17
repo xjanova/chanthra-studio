@@ -101,6 +101,22 @@
                     <Button Margin="0,0,8,0" Padding="10,6" Command="{Binding UndoCommand}" Content="↶ Undo" Style="{StaticResource ButtonPill}" ToolTip="Undo (Ctrl+Z)" />
                     <Button Margin="0,0,14,0" Padding="10,6" Command="{Binding RedoCommand}" Content="↷ Redo" Style="{StaticResource ButtonPill}" ToolTip="Redo (Ctrl+Y)" />
                     <Button Margin="0,0,6,0" Padding="10,6" Command="{Binding LoadProjectCommand}" Content="Open…" Style="{StaticResource ButtonPill}" ToolTip="Open NLE project (Ctrl+O)" />
+                    <Button Margin="0,0,6,0" Padding="8,6" Click="Recent_Click" Style="{StaticResource ButtonPill}"
+                            ToolTip="Recent projects · last 5 .chstudio files you opened or saved">
+                        <Button.ContextMenu>
+                            <ContextMenu ItemsSource="{Binding RecentProjects}">
+                                <ContextMenu.ItemContainerStyle>
+                                    <Style TargetType="MenuItem">
+                                        <Setter Property="Header" Value="{Binding DisplayName}" />
+                                        <Setter Property="ToolTip" Value="{Binding Path}" />
+                                        <Setter Property="Command" Value="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        <Setter Property="CommandParameter" Value="{Binding}" />
+                                    </Style>
+                                </ContextMenu.ItemContainerStyle>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                        <TextBlock>Recent <Run Foreground="{StaticResource BrushText3}" Text="▾" /></TextBlock>
+                    </Button>
                     <Button Margin="0,0,14,0" Padding="10,6" Command="{Binding SaveProjectCommand}" Content="Save…" Style="{StaticResource ButtonPill}" ToolTip="Save NLE project as .chstudio (Ctrl+S)" />
                     <Button Margin="0,0,8,0" Padding="14,6" Command="{Binding RefreshCommand}" Content="↻ Refresh" Style="{StaticResource ButtonPill}" />
                     <Button Padding="18,6" Command="{Binding ClearTimelineCommand}" Content="Clear timeline" Style="{StaticResource ButtonPill}" />

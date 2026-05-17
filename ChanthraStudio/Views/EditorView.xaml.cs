@@ -27,6 +27,21 @@ public partial class EditorView : UserControl
         };
     }
 
+    private void Recent_Click(object sender, RoutedEventArgs e)
+    {
+        // Wire the Recent ▾ button to its own context menu — clicking the
+        // button itself shows the dropdown, instead of requiring a right-click
+        // (the default ContextMenu trigger).
+        if (sender is Button btn && btn.ContextMenu is not null)
+        {
+            // Re-bind DataContext so the menu inherits the editor VM (and
+            // therefore its RecentProjects ObservableCollection).
+            btn.ContextMenu.DataContext = btn.DataContext;
+            btn.ContextMenu.PlacementTarget = btn;
+            btn.ContextMenu.IsOpen = true;
+        }
+    }
+
     private void Fps_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is not EditorViewModel vm) return;
