@@ -337,6 +337,13 @@ public sealed class SlideshowRenderer
     // StringBuilder and returns nothing; the chain's video label
     // bookkeeping is fixed-name ([out] → [outpip]) so we don't need
     // to thread it through return values.
+    //
+    // Terminator contract: stage 1 (scale-pad) emits a TRAILING ';' per
+    // clip. Stage 2's concat branch leaves NO trailing terminator; stage
+    // 2's xfade branch trims its own trailing ';'. Stages 3-5 (overlay /
+    // title / audio) each begin with a LEADING ';'. Order matters — if
+    // you insert a new stage, follow the leading-';' convention so the
+    // concat branch's lack-of-terminator stays compatible.
     // ============================================================
 
     /// <summary>Stage 1: scale + letterbox-pad each main-track clip into

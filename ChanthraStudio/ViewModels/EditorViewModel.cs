@@ -960,7 +960,7 @@ public sealed class EditorViewModel : ObservableObject
         RefreshRecentProjects();
         var note = result.MissingRefs == 0
             ? $"Loaded · {result.Slots} slots · {result.Overlays} overlays"
-            : $"Loaded · {result.Slots} slots ({result.MissingRefs} clip refs missing — re-import)";
+            : $"Loaded · {result.Slots} slots ({result.MissingRefs} clip refs missing from Library — re-import)";
         ShowToast(note, result.MissingRefs == 0 ? "ok" : "warn");
     }
 

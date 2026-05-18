@@ -238,6 +238,21 @@ public sealed class SettingsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Monthly spending cap in THB. 0 disables the alert pill in
+    /// the status bar. Drives a warn pill at 75% and an err pill at 100%
+    /// of the cap so the user notices before the credit card does.</summary>
+    public double MonthlyBudgetThb
+    {
+        get => _settings.MonthlyBudgetThb;
+        set
+        {
+            if (Math.Abs(_settings.MonthlyBudgetThb - value) < 0.001) return;
+            _settings.MonthlyBudgetThb = Math.Max(0, value);
+            OnPropertyChanged();
+            TryPersist();
+        }
+    }
+
     private void TryPersist()
     {
         try { _settings.Save(); }

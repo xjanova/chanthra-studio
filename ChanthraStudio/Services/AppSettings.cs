@@ -35,6 +35,11 @@ public sealed class AppSettings
     public string PostFacebookPageId { get; set; } = "";
     public string PostWebhookUrl { get; set; } = "";
     public int AutosaveSeconds { get; set; } = 30;
+
+    /// <summary>Monthly spending budget in THB. 0 = no budget (alerts disabled).
+    /// The status bar polls UsageRepository.MonthSpentThb against this number
+    /// and surfaces a warn/err pill at 75% / 100% of the cap.</summary>
+    public double MonthlyBudgetThb { get; set; } = 0;
     public string Theme { get; set; } = "lunar";
 
     /// <summary>Optional manual override. Empty = auto-detect from PATH.</summary>
@@ -131,6 +136,7 @@ public sealed class AppSettings
         Upsert(c, tx, "postFacebookPageId", PostFacebookPageId, false, now);
         Upsert(c, tx, "postWebhookUrl", PostWebhookUrl, false, now);
         Upsert(c, tx, "autosaveSeconds", AutosaveSeconds.ToString(), false, now);
+        Upsert(c, tx, "monthlyBudgetThb", MonthlyBudgetThb.ToString(System.Globalization.CultureInfo.InvariantCulture), false, now);
         Upsert(c, tx, "theme", Theme, false, now);
         Upsert(c, tx, "ffmpegPath", FfmpegPath, false, now);
 
@@ -191,6 +197,7 @@ public sealed class AppSettings
             case "postFacebookPageId": s.PostFacebookPageId = r.Value; break;
             case "postWebhookUrl":     s.PostWebhookUrl = r.Value; break;
             case "autosaveSeconds":    if (int.TryParse(r.Value, out var n)) s.AutosaveSeconds = n; break;
+            case "monthlyBudgetThb":   if (double.TryParse(r.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var b)) s.MonthlyBudgetThb = b; break;
             case "theme":              s.Theme = r.Value; break;
             case "ffmpegPath":         s.FfmpegPath = r.Value; break;
             default:

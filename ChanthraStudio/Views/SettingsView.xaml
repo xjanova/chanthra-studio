@@ -478,6 +478,56 @@
                 </Border>
                 <ItemsControl ItemTemplate="{StaticResource ProviderRowTemplate}" ItemsSource="{Binding VideoProviders}" />
 
+                <!--  Monthly budget — drives the status-bar pill (warn @ 75%, err @ 100%)  -->
+                <Border Margin="0,12,0,0" Padding="16,14" Style="{StaticResource SurfaceCard}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock
+                                FontFamily="{StaticResource FontDisplay}"
+                                FontSize="13"
+                                FontWeight="Medium"
+                                Foreground="{StaticResource BrushText1}"
+                                Text="Monthly budget · THB" />
+                            <TextBlock
+                                Margin="0,2,0,0"
+                                Style="{StaticResource TextSecondary}"
+                                FontSize="11"
+                                Text="Status-bar pill turns warn at 75%, err at 100%. Set 0 to disable." />
+                        </StackPanel>
+                        <Border
+                            Grid.Column="1"
+                            Width="120"
+                            Margin="14,0,0,0"
+                            Padding="12,8"
+                            Background="{StaticResource BrushBgInset}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                            <TextBox
+                                Background="Transparent"
+                                BorderThickness="0"
+                                FontFamily="{StaticResource FontMono}"
+                                FontSize="12"
+                                Foreground="{StaticResource BrushGoldHi}"
+                                TextAlignment="Right"
+                                Text="{Binding MonthlyBudgetThb, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:F0}}" />
+                        </Border>
+                        <TextBlock
+                            Grid.Column="2"
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Center"
+                            FontFamily="{StaticResource FontMono}"
+                            FontSize="11"
+                            Foreground="{StaticResource BrushText3}"
+                            Text="฿ / month" />
+                    </Grid>
+                </Border>
+
                 <!--  Voice section  -->
                 <TextBlock
                     Margin="0,28,0,4"
