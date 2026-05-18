@@ -64,6 +64,14 @@ public sealed class SlideshowRenderer
         public IReadOnlyList<double>? ClipDurations { get; init; }
 
         /// <summary>
+        /// Per-clip Ken Burns + color grading. Same-length list parallel to
+        /// <see cref="Clips"/> (and <see cref="ClipDurations"/>). Slots with
+        /// identity values (no zoom, no grade) skip the extra filter
+        /// emission. (T47 + T48 / 7.18)
+        /// </summary>
+        public IReadOnlyList<SlotDescriptor>? SlotMeta { get; init; }
+
+        /// <summary>
         /// Crossfade duration in seconds between adjacent clips. Zero (the
         /// default) is the legacy hard-cut concat. When &gt; 0, ffmpeg
         /// xfade chains each pair so the timeline reads as one continuous
@@ -87,6 +95,30 @@ public sealed class SlideshowRenderer
         /// the same between(t,start,end) expression as image overlays.
         /// </summary>
         public IReadOnlyList<TitleDescriptor> Titles { get; init; } = Array.Empty<TitleDescriptor>();
+    }
+
+    /// <summary>Per-clip Ken Burns + color grading. Defaults are identity
+    /// (no zoom · no grade) so an unset descriptor produces a no-op
+    /// filter chain. (T47 + T48 / 7.18)</summary>
+    public sealed class SlotDescriptor
+    {
+        /// <summary>Zoom percent at slot start (100 = no zoom).</summary>
+        public double ZoomStartPct { get; init; } = 100;
+        /// <summary>Zoom percent at slot end (100 = no zoom).</summary>
+        public double ZoomEndPct { get; init; } = 100;
+        /// <summary>ffmpeg eq.brightness — -0.5..+0.5, 0 = identity.</summary>
+        public double Brightness { get; init; }
+        /// <summary>ffmpeg eq.contrast — 0.5..2.0, 1.0 = identity.</summary>
+        public double Contrast { get; init; } = 1.0;
+        /// <summary>ffmpeg eq.saturation — 0..3, 1.0 = identity.</summary>
+        public double Saturation { get; init; } = 1.0;
+
+        public bool HasZoom =>
+            Math.Abs(ZoomStartPct - ZoomEndPct) > 0.5 || ZoomStartPct > 100.5;
+        public bool HasGrade =>
+            Math.Abs(Brightness) > 0.001 ||
+            Math.Abs(Contrast - 1.0) > 0.001 ||
+            Math.Abs(Saturation - 1.0) > 0.001;
     }
 
     /// <summary>One audio track on the multi-audio mixer. ffmpeg renders
@@ -356,13 +388,55 @@ public sealed class SlideshowRenderer
     // ============================================================
 
     /// <summary>Stage 1: scale + letterbox-pad each main-track clip into
-    /// a uniform output frame. Emits <c>[i:v]scale=…pad=…[vN]</c> per clip.</summary>
+    /// a uniform output frame. Emits <c>[i:v]scale=…pad=…[vN]</c> per clip
+    /// with optional eq (color grade) and zoompan (Ken Burns) stages
+    /// appended when SlotMeta supplies non-identity values. (7.18)</summary>
     private static void AppendScalePadStage(StringBuilder filter, Spec spec)
     {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var perClipOverride = spec.ClipDurations is { Count: > 0 } durs && durs.Count == spec.Clips.Count
+            ? durs : null;
+        var perSlotMeta = spec.SlotMeta is { Count: > 0 } metas && metas.Count == spec.Clips.Count
+            ? metas : null;
+
         for (int i = 0; i < spec.Clips.Count; i++)
         {
+            // Base stage: fit-and-letterbox into output frame.
             filter.Append($"[{i}:v]scale={spec.Width}:{spec.Height}:force_original_aspect_ratio=decrease,");
-            filter.Append($"pad={spec.Width}:{spec.Height}:(ow-iw)/2:(oh-ih)/2:color=#060409,setsar=1[v{i}];");
+            filter.Append($"pad={spec.Width}:{spec.Height}:(ow-iw)/2:(oh-ih)/2:color=#060409,setsar=1");
+
+            var meta = perSlotMeta?[i];
+            // Color grade (eq) — applied AFTER scale/pad so values map to
+            // final output luma without source-aspect oddities.
+            if (meta is not null && meta.HasGrade)
+            {
+                filter.Append(",eq=")
+                      .Append("brightness=").Append(meta.Brightness.ToString("F3", inv))
+                      .Append(":contrast=").Append(meta.Contrast.ToString("F3", inv))
+                      .Append(":saturation=").Append(meta.Saturation.ToString("F3", inv));
+            }
+
+            // Ken Burns (zoompan) — applied LAST so the zoom interp doesn't
+            // re-letterbox. d= is total output frames, computed from this
+            // slot's duration × output fps. zoom centred via the standard
+            // iw/2-(iw/zoom/2) anchor — full pan support (start/end X/Y)
+            // is on the wishlist but kept out of v1 for UI complexity.
+            if (meta is not null && meta.HasZoom)
+            {
+                var dur = perClipOverride?[i] ?? spec.SecondsPerClip;
+                var frames = Math.Max(1, (int)System.Math.Round(dur * spec.Fps));
+                var z0 = (meta.ZoomStartPct / 100.0).ToString("F3", inv);
+                var z1 = (meta.ZoomEndPct / 100.0).ToString("F3", inv);
+                // Linear interp: z(t) = z0 + (z1 - z0) * on / (d - 1).
+                // Guard d=1 (one-frame slot) with a Max above so we don't
+                // divide by zero in the expression.
+                var dMinus1 = Math.Max(1, frames - 1);
+                filter.Append($",zoompan=z='{z0}+({z1}-{z0})*on/{dMinus1}'")
+                      .Append(":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'")
+                      .Append($":d={frames}:s={spec.Width}x{spec.Height}:fps={spec.Fps}");
+            }
+
+            filter.Append($"[v{i}];");
         }
     }
 

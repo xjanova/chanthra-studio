@@ -153,6 +153,8 @@ public sealed class NleProjectFiles
         Timeline = vm.Timeline.Select(s => new NleProjectSerializer.SlotEntry
         {
             ShotId = s.Clip.ShotId, FilePath = s.Clip.FilePath, DurationSec = s.DurationSec,
+            ZoomStartPct = s.ZoomStartPct, ZoomEndPct = s.ZoomEndPct,
+            Brightness = s.Brightness, Contrast = s.Contrast, Saturation = s.Saturation,
         }).ToList(),
         Overlay = vm.OverlayTimeline.Select(o => new NleProjectSerializer.OverlayEntry
         {
@@ -239,7 +241,9 @@ public sealed class NleProjectFiles
             {
                 var clip = ResolveClip(vm, entry.FilePath, entry.ShotId);
                 if (clip is null) { missing++; continue; }
-                vm.AppendRestoredSlot(clip, entry.DurationSec);
+                vm.AppendRestoredSlot(clip, entry.DurationSec,
+                    entry.ZoomStartPct, entry.ZoomEndPct,
+                    entry.Brightness, entry.Contrast, entry.Saturation);
             }
             foreach (var entry in file.Overlay)
             {

@@ -142,6 +142,64 @@ public sealed class TimelineSlot : ObservableObject
     /// edge so the user can preview where the drop will land.</summary>
     public bool IsDropTarget { get => _isDropTarget; set => SetProperty(ref _isDropTarget, value); }
 
+    // ---------- Ken Burns zoom (T47 · 7.18) ----------
+    /// <summary>Zoom level at the start of the slot, in percent. 100 = no
+    /// zoom (frame fits). 100→100 = static; 100→120 = push-in 20%;
+    /// 120→100 = pull-back. Clamped 100..200 — values outside that range
+    /// produce visible scale-up artefacts on most source images.</summary>
+    private double _zoomStartPct = 100;
+    public double ZoomStartPct
+    {
+        get => _zoomStartPct;
+        set => SetProperty(ref _zoomStartPct, Math.Clamp(value, 100, 200));
+    }
+
+    private double _zoomEndPct = 100;
+    public double ZoomEndPct
+    {
+        get => _zoomEndPct;
+        set => SetProperty(ref _zoomEndPct, Math.Clamp(value, 100, 200));
+    }
+
+    /// <summary>True when the slot has a non-identity Ken Burns
+    /// (start ≠ end). The renderer skips zoompan emission when this is
+    /// false so the common static-slideshow case stays cheap.</summary>
+    public bool HasKenBurns => Math.Abs(_zoomStartPct - _zoomEndPct) > 0.5 || _zoomStartPct > 100.5;
+
+    // ---------- Color grading (T48 · 7.18) ----------
+    /// <summary>Linear brightness adjustment, -0.5 to +0.5. ffmpeg's eq
+    /// filter treats 0 = identity.</summary>
+    private double _brightness;
+    public double Brightness
+    {
+        get => _brightness;
+        set => SetProperty(ref _brightness, Math.Clamp(value, -0.5, 0.5));
+    }
+
+    /// <summary>Contrast multiplier, 0.5 to 2.0. 1.0 = identity.</summary>
+    private double _contrast = 1.0;
+    public double Contrast
+    {
+        get => _contrast;
+        set => SetProperty(ref _contrast, Math.Clamp(value, 0.5, 2.0));
+    }
+
+    /// <summary>Saturation multiplier, 0 to 3. 1.0 = identity; 0 = greyscale;
+    /// 3 = oversaturated. Most lunar-atelier looks live in 0.7..1.4.</summary>
+    private double _saturation = 1.0;
+    public double Saturation
+    {
+        get => _saturation;
+        set => SetProperty(ref _saturation, Math.Clamp(value, 0, 3));
+    }
+
+    /// <summary>True when any grading value differs from identity. Same
+    /// purpose as <see cref="HasKenBurns"/> — gate the eq filter emission.</summary>
+    public bool HasColorGrade =>
+        Math.Abs(_brightness) > 0.001 ||
+        Math.Abs(_contrast - 1.0) > 0.001 ||
+        Math.Abs(_saturation - 1.0) > 0.001;
+
     public string FileName => Clip.FileName;
     public string FilePath => Clip.FilePath;
 }
@@ -409,6 +467,10 @@ public sealed class EditorViewModel : ObservableObject
     public IRelayCommand<TimelineSlot> SelectSlotCommand { get; }
     public IRelayCommand<TimelineSlot> SplitSlotCommand { get; }
     public IRelayCommand<TimelineSlot> DuplicateSlotCommand { get; }
+    public IRelayCommand KenBurnsPushInCommand { get; private set; } = null!;
+    public IRelayCommand KenBurnsPullBackCommand { get; private set; } = null!;
+    public IRelayCommand ResetKenBurnsCommand { get; private set; } = null!;
+    public IRelayCommand ResetColorGradeCommand { get; private set; } = null!;
     public IRelayCommand RazorAtPlayheadCommand { get; }
     public IRelayCommand UndoCommand { get; private set; } = null!;
     public IRelayCommand RedoCommand { get; private set; } = null!;
@@ -447,6 +509,32 @@ public sealed class EditorViewModel : ObservableObject
         SelectSlotCommand = new RelayCommand<TimelineSlot>(s => Selected = s);
         SplitSlotCommand = new RelayCommand<TimelineSlot>(SplitSlot);
         DuplicateSlotCommand = new RelayCommand<TimelineSlot>(DuplicateSlot);
+
+        KenBurnsPushInCommand = new RelayCommand(() =>
+        {
+            if (_selected is null) return;
+            _selected.ZoomStartPct = 100;
+            _selected.ZoomEndPct = 115;
+        });
+        KenBurnsPullBackCommand = new RelayCommand(() =>
+        {
+            if (_selected is null) return;
+            _selected.ZoomStartPct = 115;
+            _selected.ZoomEndPct = 100;
+        });
+        ResetKenBurnsCommand = new RelayCommand(() =>
+        {
+            if (_selected is null) return;
+            _selected.ZoomStartPct = 100;
+            _selected.ZoomEndPct = 100;
+        });
+        ResetColorGradeCommand = new RelayCommand(() =>
+        {
+            if (_selected is null) return;
+            _selected.Brightness = 0;
+            _selected.Contrast = 1.0;
+            _selected.Saturation = 1.0;
+        });
         RazorAtPlayheadCommand = new RelayCommand(RazorAtPlayhead);
         UndoCommand = new RelayCommand(Undo, () => _undo.CanUndo);
         RedoCommand = new RelayCommand(Redo, () => _undo.CanRedo);
@@ -826,6 +914,14 @@ public sealed class EditorViewModel : ObservableObject
             {
                 Clips = Timeline.Select(s => s.Clip).ToList(),
                 ClipDurations = Timeline.Select(s => s.DurationSec).ToList(),
+                SlotMeta = Timeline.Select(s => new SlideshowRenderer.SlotDescriptor
+                {
+                    ZoomStartPct = s.ZoomStartPct,
+                    ZoomEndPct = s.ZoomEndPct,
+                    Brightness = s.Brightness,
+                    Contrast = s.Contrast,
+                    Saturation = s.Saturation,
+                }).ToList(),
                 SecondsPerClip = 3.0,
                 Fps = Fps,
                 Width = w,
@@ -1104,9 +1200,20 @@ public sealed class EditorViewModel : ObservableObject
         foreach (var s in Timeline) s.PropertyChanged -= OnSlotChanged;
         Timeline.Clear();
     }
-    internal void AppendRestoredSlot(Models.Clip clip, double durationSec)
+    internal void AppendRestoredSlot(Models.Clip clip, double durationSec,
+        double zoomStartPct = 100, double zoomEndPct = 100,
+        double brightness = 0, double contrast = 1.0, double saturation = 1.0)
     {
-        var slot = new TimelineSlot { Clip = clip, DurationSec = durationSec };
+        var slot = new TimelineSlot
+        {
+            Clip = clip,
+            DurationSec = durationSec,
+            ZoomStartPct = zoomStartPct,
+            ZoomEndPct = zoomEndPct,
+            Brightness = brightness,
+            Contrast = contrast,
+            Saturation = saturation,
+        };
         slot.PropertyChanged += OnSlotChanged;
         Timeline.Add(slot);
     }

@@ -517,6 +517,92 @@
                             </Grid>
                         </StackPanel>
 
+                        <!--  Ken Burns (T47) — start/end zoom %, presets, reset  -->
+                        <Border Margin="0,12,0,0" Padding="14,10" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8"
+                                Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource TextMonoUpper}" Text="KEN BURNS · ZOOM" />
+                                    <Button Grid.Column="1" Padding="6,2" Command="{Binding ResetKenBurnsCommand}" Content="reset" Style="{StaticResource ButtonPill}" />
+                                </Grid>
+                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="9.5" Foreground="{StaticResource BrushText4}" Text="100 → 100 = static · 100 → 115 = push-in · 115 → 100 = pull-back" />
+
+                                <TextBlock Margin="0,8,0,0" Style="{StaticResource TextMonoUpper}" Text="START · END" />
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider Grid.Column="0" Minimum="100" Maximum="200" SmallChange="1" LargeChange="5" Style="{StaticResource GoldSlider}" Value="{Binding Selected.ZoomStartPct, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Selected.ZoomStartPct, StringFormat={}{0:F0}%}" />
+                                </Grid>
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider Grid.Column="0" Minimum="100" Maximum="200" SmallChange="1" LargeChange="5" Style="{StaticResource GoldSlider}" Value="{Binding Selected.ZoomEndPct, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Selected.ZoomEndPct, StringFormat={}{0:F0}%}" />
+                                </Grid>
+
+                                <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                                    <Button Margin="0,0,6,0" Padding="8,3" Command="{Binding KenBurnsPushInCommand}" Content="↗ push-in" Style="{StaticResource ButtonPill}"
+                                            ToolTip="Set zoom 100 → 115% — slow camera push into the frame" />
+                                    <Button Padding="8,3" Command="{Binding KenBurnsPullBackCommand}" Content="↙ pull-back" Style="{StaticResource ButtonPill}"
+                                            ToolTip="Set zoom 115 → 100% — slow camera pull-back" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!--  Color grade (T48) — eq=brightness:contrast:saturation  -->
+                        <Border Margin="0,12,0,0" Padding="14,10" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8"
+                                Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource TextMonoUpper}" Text="COLOR GRADE · EQ" />
+                                    <Button Grid.Column="1" Padding="6,2" Command="{Binding ResetColorGradeCommand}" Content="reset" Style="{StaticResource ButtonPill}" />
+                                </Grid>
+
+                                <TextBlock Margin="0,8,0,0" Style="{StaticResource TextMonoUpper}" Text="BRIGHTNESS" />
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider Grid.Column="0" Minimum="-0.5" Maximum="0.5" SmallChange="0.01" LargeChange="0.1" Style="{StaticResource GoldSlider}" Value="{Binding Selected.Brightness, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Selected.Brightness, StringFormat={}{0:F2}}" />
+                                </Grid>
+
+                                <TextBlock Margin="0,8,0,0" Style="{StaticResource TextMonoUpper}" Text="CONTRAST" />
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider Grid.Column="0" Minimum="0.5" Maximum="2.0" SmallChange="0.05" LargeChange="0.2" Style="{StaticResource GoldSlider}" Value="{Binding Selected.Contrast, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Selected.Contrast, StringFormat={}{0:F2}}" />
+                                </Grid>
+
+                                <TextBlock Margin="0,8,0,0" Style="{StaticResource TextMonoUpper}" Text="SATURATION" />
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider Grid.Column="0" Minimum="0" Maximum="3" SmallChange="0.05" LargeChange="0.25" Style="{StaticResource GoldSlider}" Value="{Binding Selected.Saturation, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Selected.Saturation, StringFormat={}{0:F2}}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <Border Margin="0,18,0,0" Padding="14,10" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
                             <StackPanel>
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Text="OUTPUT NAME" />
