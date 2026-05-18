@@ -39,6 +39,30 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!--  Autosave recovery banner — shown on first paint if a previous
+              session left an .autosave.chstudio file behind. User clicks
+              Recover to restore that state OR Dismiss to delete it.  -->
+        <Border
+            Grid.Row="0"
+            Grid.RowSpan="3"
+            Margin="0,62,0,0"
+            Padding="16,10"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Panel.ZIndex="60"
+            Background="#1FE0B056"
+            BorderBrush="#66E0B056"
+            BorderThickness="1"
+            CornerRadius="10"
+            Effect="{StaticResource ShadowGoldGlowSoft}"
+            Visibility="{Binding HasAutosaveRecovery, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="14" Foreground="{StaticResource BrushText1}" Text="✦ Autosave found from a previous session" />
+                <Button Margin="14,0,6,0" Padding="12,4" Command="{Binding RecoverAutosaveCommand}" Content="Recover" Style="{StaticResource ButtonPillGold}" />
+                <Button Padding="12,4" Command="{Binding DismissAutosaveCommand}" Content="Dismiss" Style="{StaticResource ButtonPill}" />
+            </StackPanel>
+        </Border>
+
         <!--  Toast  -->
         <Border
             Grid.Row="0"
@@ -874,6 +898,26 @@
                                         </Grid.ColumnDefinitions>
                                         <Slider Grid.Column="0" Minimum="0" Maximum="2" SmallChange="0.1" LargeChange="0.5" Style="{StaticResource GoldSlider}" Value="{Binding SelectedAudio.Volume, Mode=TwoWay}" />
                                         <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding SelectedAudio.Volume, StringFormat={}{0:F2}×}" />
+                                    </Grid>
+
+                                    <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="FADE IN · FADE OUT" />
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider Grid.Column="0" Minimum="0" Maximum="10" SmallChange="0.1" LargeChange="0.5" Style="{StaticResource GoldSlider}" Value="{Binding SelectedAudio.FadeInSec, Mode=TwoWay}"
+                                                ToolTip="Linear fade-up at the start of this track" />
+                                        <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding SelectedAudio.FadeInSec, StringFormat={}↗ {0:F1}s}" />
+                                    </Grid>
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider Grid.Column="0" Minimum="0" Maximum="10" SmallChange="0.1" LargeChange="0.5" Style="{StaticResource GoldSlider}" Value="{Binding SelectedAudio.FadeOutSec, Mode=TwoWay}"
+                                                ToolTip="Linear fade-down at the end of this track" />
+                                        <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding SelectedAudio.FadeOutSec, StringFormat={}↘ {0:F1}s}" />
                                     </Grid>
                                 </StackPanel>
                             </StackPanel>

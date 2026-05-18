@@ -266,6 +266,13 @@ public sealed class SettingsViewModel : ObservableObject
     public IRelayCommand SaveAllCommand { get; }
     public IRelayCommand RevealDataFolderCommand { get; }
     public IRelayCommand RevealWorkflowsFolderCommand { get; }
+    public IAsyncRelayCommand TestAllCommand { get; private set; } = null!;
+
+    private bool _isProbingAll;
+    /// <summary>True while a Test-all parallel probe is in flight. Drives
+    /// the button's disabled state so the user doesn't queue 5 probes
+    /// by accident.</summary>
+    public bool IsProbingAll { get => _isProbingAll; set => SetProperty(ref _isProbingAll, value); }
 
     public SettingsViewModel(AppSettings settings, ProviderRegistry registry)
     {
@@ -282,6 +289,7 @@ public sealed class SettingsViewModel : ObservableObject
         foreach (var p in registry.Posting.Where(p => p.IsImplemented)) PostingProviders.Add(new ProviderRow(p, settings));
 
         SaveAllCommand = new RelayCommand(SaveAll);
+        TestAllCommand = new AsyncRelayCommand(TestAllAsync, () => !IsProbingAll);
 
         RevealDataFolderCommand = new RelayCommand(() => RevealFolder(AppPaths.Root));
         RevealWorkflowsFolderCommand = new RelayCommand(() =>
@@ -308,6 +316,42 @@ public sealed class SettingsViewModel : ObservableObject
         catch
         {
             // ignore — path is shown on the page.
+        }
+    }
+
+    /// <summary>
+    /// Probe every visible provider row in parallel. Each row's TestCommand
+    /// is already async + sets StatusKind="probing" → ok/err — we just kick
+    /// them all off and wait on the combined task. Disabled while in flight
+    /// so a double-click doesn't fan out 2N probes.
+    /// </summary>
+    private async Task TestAllAsync()
+    {
+        IsProbingAll = true;
+        try
+        {
+            var rows = LlmProviders
+                .Concat(VideoProviders)
+                .Concat(VoiceProviders)
+                .Concat(PostingProviders)
+                .ToList();
+            ShowToast($"Probing {rows.Count} providers in parallel…", "info");
+            // Fan out — each row's TestCommand pulls the saved key out of
+            // settings itself, so no extra plumbing needed.
+            var tasks = rows.Select(r => r.TestCommand.ExecuteAsync(null)).ToList();
+            await Task.WhenAll(tasks);
+            var ok = rows.Count(r => r.StatusKind == "ok");
+            var err = rows.Count(r => r.StatusKind == "err");
+            ShowToast($"Probed {rows.Count} · {ok} ok · {err} failed", err > 0 ? "warn" : "ok");
+        }
+        catch (Exception ex)
+        {
+            ShowToast("Probe-all failed: " + ex.Message, "err");
+        }
+        finally
+        {
+            IsProbingAll = false;
+            TestAllCommand.NotifyCanExecuteChanged();
         }
     }
 

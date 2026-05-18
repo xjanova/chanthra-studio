@@ -45,6 +45,104 @@ public sealed class NleProjectFiles
         }
     }
 
+    /// <summary>Path to the autosave recovery file. Single slot —
+    /// overwritten on every autosave tick, deleted on a successful
+    /// explicit save or a clean exit so launching after a clean shutdown
+    /// doesn't pop the recovery banner.</summary>
+    public string AutosaveFilePath => Path.Combine(DefaultDirectory, ".autosave.chstudio");
+
+    /// <summary>True when there's a recovery file from a previous session.
+    /// Checked at app launch to decide whether to show the restore banner.</summary>
+    public bool HasAutosaveRecovery
+    {
+        get
+        {
+            try
+            {
+                if (!File.Exists(AutosaveFilePath)) return false;
+                // Only count it as a recovery candidate if it's at least 5
+                // seconds old — anything fresher might be from a tick that
+                // happened while the user was still actively saving.
+                var age = DateTimeOffset.UtcNow - new FileInfo(AutosaveFilePath).LastWriteTimeUtc;
+                return age > TimeSpan.FromSeconds(5);
+            }
+            catch { return false; }
+        }
+    }
+
+    /// <summary>Write the current editor state to the autosave slot.
+    /// Best-effort — failures (file locked, disk full) get logged but
+    /// don't bubble up; the next tick will try again.</summary>
+    public void Autosave(EditorViewModel vm)
+    {
+        try
+        {
+            // Skip empty projects — autosaving a blank slate just keeps
+            // the recovery banner showing forever after a clean launch.
+            if (vm.Timeline.Count == 0 && vm.OverlayTimeline.Count == 0
+                && vm.TitleTimeline.Count == 0 && vm.AudioTracks.Count == 0)
+            {
+                ClearAutosave();
+                return;
+            }
+            var file = BuildProjectFile(vm, name: "autosave");
+            NleProjectSerializer.Save(AutosaveFilePath, file);
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn("nle", $"autosave failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Delete the autosave recovery file. Called after a
+    /// successful explicit Save and on a clean exit so the banner
+    /// doesn't fire on the next launch.</summary>
+    public void ClearAutosave()
+    {
+        try
+        {
+            if (File.Exists(AutosaveFilePath)) File.Delete(AutosaveFilePath);
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn("nle", $"clear autosave failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Construct the ProjectFile DTO from a VM — shared between
+    /// explicit Save and Autosave so both serialise the same shape.</summary>
+    private static NleProjectSerializer.ProjectFile BuildProjectFile(EditorViewModel vm, string name) => new()
+    {
+        Name = name,
+        OutputName = vm.OutputName,
+        Fps = vm.Fps,
+        CrossfadeSec = vm.CrossfadeSec,
+        RenderAspect = vm.RenderAspect,
+        RenderQuality = vm.RenderQuality,
+        AudioPath = string.IsNullOrEmpty(vm.AudioPath) ? null : vm.AudioPath,
+        AudioVolume = vm.AudioVolume,
+        AudioTracks = vm.AudioTracks.Select(a => new NleProjectSerializer.AudioEntry
+        {
+            FilePath = a.FilePath, StartSec = a.StartSec, Volume = a.Volume,
+            FadeInSec = a.FadeInSec, FadeOutSec = a.FadeOutSec, Label = a.Label,
+        }).ToList(),
+        Timeline = vm.Timeline.Select(s => new NleProjectSerializer.SlotEntry
+        {
+            ShotId = s.Clip.ShotId, FilePath = s.Clip.FilePath, DurationSec = s.DurationSec,
+        }).ToList(),
+        Overlay = vm.OverlayTimeline.Select(o => new NleProjectSerializer.OverlayEntry
+        {
+            ShotId = o.Clip.ShotId, FilePath = o.Clip.FilePath,
+            StartSec = o.StartSec, DurationSec = o.DurationSec,
+            Scale = o.Scale, Position = o.Position,
+        }).ToList(),
+        Titles = vm.TitleTimeline.Select(t => new NleProjectSerializer.TitleEntry
+        {
+            Text = t.Text, StartSec = t.StartSec, DurationSec = t.DurationSec,
+            FontSize = t.FontSize, Color = t.Color, Position = t.Position,
+        }).ToList(),
+    };
+
     /// <summary>Show a Save dialog seeded with the suggested file name.
     /// Returns the chosen path or null if the user cancelled.</summary>
     public string? PromptSavePath(string suggestedName)
@@ -80,50 +178,12 @@ public sealed class NleProjectFiles
     {
         try
         {
-            var file = new NleProjectSerializer.ProjectFile
-            {
-                Name = Path.GetFileNameWithoutExtension(path),
-                OutputName = vm.OutputName,
-                Fps = vm.Fps,
-                CrossfadeSec = vm.CrossfadeSec,
-                RenderAspect = vm.RenderAspect,
-                RenderQuality = vm.RenderQuality,
-                AudioPath = string.IsNullOrEmpty(vm.AudioPath) ? null : vm.AudioPath,
-                AudioVolume = vm.AudioVolume,
-                AudioTracks = vm.AudioTracks.Select(a => new NleProjectSerializer.AudioEntry
-                {
-                    FilePath = a.FilePath,
-                    StartSec = a.StartSec,
-                    Volume = a.Volume,
-                    Label = a.Label,
-                }).ToList(),
-                Timeline = vm.Timeline.Select(s => new NleProjectSerializer.SlotEntry
-                {
-                    ShotId = s.Clip.ShotId,
-                    FilePath = s.Clip.FilePath,
-                    DurationSec = s.DurationSec,
-                }).ToList(),
-                Overlay = vm.OverlayTimeline.Select(o => new NleProjectSerializer.OverlayEntry
-                {
-                    ShotId = o.Clip.ShotId,
-                    FilePath = o.Clip.FilePath,
-                    StartSec = o.StartSec,
-                    DurationSec = o.DurationSec,
-                    Scale = o.Scale,
-                    Position = o.Position,
-                }).ToList(),
-                Titles = vm.TitleTimeline.Select(t => new NleProjectSerializer.TitleEntry
-                {
-                    Text = t.Text,
-                    StartSec = t.StartSec,
-                    DurationSec = t.DurationSec,
-                    FontSize = t.FontSize,
-                    Color = t.Color,
-                    Position = t.Position,
-                }).ToList(),
-            };
+            var file = BuildProjectFile(vm, Path.GetFileNameWithoutExtension(path));
             NleProjectSerializer.Save(path, file);
             _ctx.RecentProjects.Promote(path);
+            // Explicit save replaces the autosave recovery slot — if the
+            // user saved manually they don't need the banner next launch.
+            ClearAutosave();
             return SaveResult.Ok(file.Name);
         }
         catch (Exception ex)
@@ -189,6 +249,8 @@ public sealed class NleProjectFiles
                     FilePath = entry.FilePath,
                     StartSec = entry.StartSec,
                     Volume = entry.Volume,
+                    FadeInSec = entry.FadeInSec,
+                    FadeOutSec = entry.FadeOutSec,
                     Label = entry.Label,
                 });
             }

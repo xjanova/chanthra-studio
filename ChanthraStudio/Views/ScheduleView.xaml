@@ -90,6 +90,7 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
 
                                     <Grid Grid.Row="0">
@@ -156,6 +157,14 @@
                                                     Content="delete" Style="{StaticResource ButtonPill}" />
                                         </StackPanel>
                                     </Grid>
+
+                                    <!--  Next 5 fires — small mono row so the user can verify the spec at a glance  -->
+                                    <StackPanel Grid.Row="3" Margin="0,8,0,0" Orientation="Horizontal">
+                                        <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="UPCOMING" />
+                                        <TextBlock Margin="8,0,0,0" FontFamily="{StaticResource FontMono}" FontSize="9.5" Foreground="{StaticResource BrushText3}"
+                                                   Text="{Binding NextFiresPreviewLabel}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
                                 </Grid>
                             </Border>
                         </DataTemplate>

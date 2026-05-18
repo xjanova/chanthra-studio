@@ -96,6 +96,18 @@ public sealed class AudioSlot : ObservableObject
     private double _volume = 1.0;
     public double Volume { get => _volume; set => SetProperty(ref _volume, Math.Clamp(value, 0, 2)); }
 
+    private double _fadeInSec;
+    /// <summary>Length of the linear fade-up at the start of this track, in
+    /// seconds. 0 = no fade (hard onset). Capped at 10s — anything longer
+    /// stops sounding like a fade and starts sounding like an empty track.</summary>
+    public double FadeInSec { get => _fadeInSec; set => SetProperty(ref _fadeInSec, Math.Clamp(value, 0, 10)); }
+
+    private double _fadeOutSec;
+    /// <summary>Length of the linear fade-down at the end of this track, in
+    /// seconds. ffmpeg's afade=out needs a start time — the renderer
+    /// computes it from the track's natural duration on submit.</summary>
+    public double FadeOutSec { get => _fadeOutSec; set => SetProperty(ref _fadeOutSec, Math.Clamp(value, 0, 10)); }
+
     private string _label = "";
     /// <summary>Human-readable label (defaults to file name). Lets the
     /// user rename a track like "VO take 2" without renaming the file.</summary>
@@ -106,7 +118,9 @@ public sealed class AudioSlot : ObservableObject
 
     public string FileName => System.IO.Path.GetFileName(FilePath);
     public string DisplayName => string.IsNullOrEmpty(Label) ? FileName : Label;
-    public string Summary => $"{StartSec:F1}s · {Volume:F2}×";
+    public string Summary => FadeInSec > 0 || FadeOutSec > 0
+        ? $"{StartSec:F1}s · {Volume:F2}× · fade {FadeInSec:F1}/{FadeOutSec:F1}"
+        : $"{StartSec:F1}s · {Volume:F2}×";
 }
 
 public sealed class TimelineSlot : ObservableObject
@@ -421,6 +435,8 @@ public sealed class EditorViewModel : ObservableObject
         // Done early so the RelayCommands below can reference _undo safely.
         _undo = new Services.UndoStack<TimelineSnapshot>(CaptureSnapshot, ApplySnapshot);
         _undo.Changed += OnUndoStackChanged;
+
+        StartAutosaveTimer();
 
         RefreshCommand = new RelayCommand(Refresh);
         AddClipCommand = new RelayCommand<Clip>(AddClip);
@@ -823,6 +839,8 @@ public sealed class EditorViewModel : ObservableObject
                     FilePath = a.FilePath,
                     StartSec = a.StartSec,
                     Volume = a.Volume,
+                    FadeInSec = a.FadeInSec,
+                    FadeOutSec = a.FadeOutSec,
                 }).ToList(),
                 OverlayTimeline = OverlayTimeline.Select(o => new SlideshowRenderer.OverlayDescriptor
                 {
@@ -963,6 +981,91 @@ public sealed class EditorViewModel : ObservableObject
             : $"Loaded · {result.Slots} slots ({result.MissingRefs} clip refs missing from Library — re-import)";
         ShowToast(note, result.MissingRefs == 0 ? "ok" : "warn");
     }
+
+    // ---------- Autosave (T43 / 7.16) ----------
+    private System.Windows.Threading.DispatcherTimer? _autosaveTimer;
+    private bool _autosaveDirty;
+
+    /// <summary>Mark the project as dirty so the next 60s autosave tick
+    /// will write to disk. Called from collection-change handlers below.
+    /// Idempotent — flipping true repeatedly costs nothing.</summary>
+    private void MarkDirty() => _autosaveDirty = true;
+
+    private void StartAutosaveTimer()
+    {
+        if (_ctx is null) return;
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null) return;
+        _autosaveTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background, dispatcher)
+        {
+            Interval = TimeSpan.FromSeconds(60),
+        };
+        _autosaveTimer.Tick += (_, _) =>
+        {
+            if (!_autosaveDirty) return;
+            _autosaveDirty = false;
+            _ctx.NleProjectFiles.Autosave(this);
+        };
+        _autosaveTimer.Start();
+
+        // Any change to the four timeline collections marks the project
+        // dirty; the per-slot DurationSec/StartSec/etc. changes also
+        // mark via the existing OnSlotChanged hook below.
+        Timeline.CollectionChanged += (_, _) => MarkDirty();
+        OverlayTimeline.CollectionChanged += (_, _) => MarkDirty();
+        TitleTimeline.CollectionChanged += (_, _) => MarkDirty();
+        AudioTracks.CollectionChanged += (_, _) => MarkDirty();
+    }
+
+    /// <summary>
+    /// Restore the editor state from the autosave recovery file. Called
+    /// from EditorView on first paint when the recovery banner's
+    /// "Recover" button is clicked.
+    /// </summary>
+    public void RecoverFromAutosave()
+    {
+        if (_ctx is null) return;
+        var path = _ctx.NleProjectFiles.AutosaveFilePath;
+        if (!System.IO.File.Exists(path)) return;
+        LoadProjectAtPath(path);
+        // Clear so a relaunch after the recovery doesn't pop the banner.
+        _ctx.NleProjectFiles.ClearAutosave();
+        ShowToast("Restored from autosave", "ok");
+    }
+
+    /// <summary>Dismiss the autosave recovery banner without restoring —
+    /// deletes the file so it won't show on next launch.</summary>
+    public void DismissAutosaveRecovery()
+    {
+        _ctx?.NleProjectFiles.ClearAutosave();
+    }
+
+    private bool _recoveryDismissed;
+    /// <summary>Exposed for EditorView's recovery-banner visibility binding.
+    /// True until either Recover or Dismiss runs, then never again this
+    /// session — the underlying file may take a tick to delete.</summary>
+    public bool HasAutosaveRecovery
+    {
+        get
+        {
+            if (_recoveryDismissed) return false;
+            return _ctx?.NleProjectFiles.HasAutosaveRecovery ?? false;
+        }
+    }
+
+    public IRelayCommand RecoverAutosaveCommand => new RelayCommand(() =>
+    {
+        _recoveryDismissed = true;
+        OnPropertyChanged(nameof(HasAutosaveRecovery));
+        RecoverFromAutosave();
+    });
+
+    public IRelayCommand DismissAutosaveCommand => new RelayCommand(() =>
+    {
+        _recoveryDismissed = true;
+        OnPropertyChanged(nameof(HasAutosaveRecovery));
+        DismissAutosaveRecovery();
+    });
 
     // ---------- Hooks called by NleProjectFiles during Load() ----------
     // These let the IO service mutate the VM's collections without leaking

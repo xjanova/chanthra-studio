@@ -118,6 +118,40 @@ public sealed class Schedule : ObservableObject
         }
     }
 
+    /// <summary>Compute the next N fire times starting AFTER
+    /// <paramref name="reference"/>. Returns the empty list if Kind/Spec
+    /// can't produce a single valid time. Used by the Schedule view's
+    /// "next 5 fires" preview (T45 / 7.16).</summary>
+    public IReadOnlyList<DateTimeOffset> ComputeNextFires(DateTimeOffset reference, int count)
+    {
+        var results = new List<DateTimeOffset>(count);
+        var cursor = reference;
+        for (int i = 0; i < count; i++)
+        {
+            var next = ComputeNextFireAt(cursor);
+            if (next is null) break;
+            results.Add(next.Value);
+            // Advance the cursor 1 second past the just-emitted fire so the
+            // next iteration looks for the FOLLOWING slot — without this,
+            // DailySlots would keep returning the same time.
+            cursor = next.Value.AddSeconds(1);
+        }
+        return results;
+    }
+
+    /// <summary>Formatted preview of the next 5 fires, used by the Schedule
+    /// card binding. Empty schedules return "—".</summary>
+    public string NextFiresPreviewLabel
+    {
+        get
+        {
+            if (!_isEnabled) return "disabled";
+            var fires = ComputeNextFires(DateTimeOffset.UtcNow, 5);
+            if (fires.Count == 0) return "—";
+            return string.Join(" · ", fires.Select(f => f.ToLocalTime().ToString("MMM d · HH:mm")));
+        }
+    }
+
     /// <summary>Compute the next fire time AFTER <paramref name="reference"/>, based on Kind + Spec.</summary>
     public DateTimeOffset? ComputeNextFireAt(DateTimeOffset reference)
     {

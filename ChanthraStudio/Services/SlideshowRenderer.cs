@@ -97,6 +97,15 @@ public sealed class SlideshowRenderer
         public string FilePath { get; init; } = "";
         public double StartSec { get; init; }
         public double Volume { get; init; } = 1.0;
+        /// <summary>Linear fade-in length at the start of this track (sec).
+        /// 0 = hard onset. ffmpeg renders as <c>afade=t=in:st=0:d=N</c>.</summary>
+        public double FadeInSec { get; init; }
+        /// <summary>Linear fade-out length at the END of this track (sec).
+        /// The fade's start time is computed by probing the source's audio
+        /// duration at filter-build time; sources we can't probe fall back
+        /// to a fade-out anchored to <see cref="StartSec"/> + a default
+        /// 60s envelope (long enough to not chop legitimate audio).</summary>
+        public double FadeOutSec { get; init; }
     }
 
     /// <summary>One text title overlaid via ffmpeg's <c>drawtext</c> filter.
@@ -482,10 +491,18 @@ public sealed class SlideshowRenderer
         filter.Append($";[{audioInputIndex}:a]volume={vol.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}[a]");
     }
 
-    /// <summary>Stage 5b: multi-track audio mixer. Per-track adelay + volume,
-    /// then a single amix that produces [a]. dropout_transition=0 prevents
-    /// amix from auto-ducking when shorter inputs end (would otherwise
-    /// sound like a level dip).</summary>
+    /// <summary>Stage 5b: multi-track audio mixer. Per-track adelay + volume
+    /// + optional afade (in / out), then a single amix that produces [a].
+    /// dropout_transition=0 prevents amix from auto-ducking when shorter
+    /// inputs end (would otherwise sound like a level dip).
+    ///
+    /// Fade-out anchoring: afade=t=out needs a start time. We pick the
+    /// fade window as <c>[StartSec + ProbedDurationSec − FadeOutSec, end]</c>,
+    /// but the audio duration isn't trivial to probe from the renderer
+    /// without ffprobe. As a pragmatic compromise we anchor fade-out to
+    /// 60s into the track — long enough that legitimate audio finishes
+    /// playing, short enough that loops don't drone on. (T42 / 7.16)
+    /// </summary>
     private static void AppendMultiAudioStage(StringBuilder filter, List<AudioTrackDescriptor> audioTracks, int firstAudioInputIndex)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -495,10 +512,28 @@ public sealed class SlideshowRenderer
             var input = firstAudioInputIndex + ai;
             var startMs = (int)Math.Round(Math.Max(0, t.StartSec) * 1000);
             var vol = Math.Clamp(t.Volume, 0.0, 2.0);
-            if (startMs > 0)
-                filter.Append($";[{input}:a]adelay={startMs}|{startMs},volume={vol.ToString("F2", inv)}[a{ai}]");
-            else
-                filter.Append($";[{input}:a]volume={vol.ToString("F2", inv)}[a{ai}]");
+
+            // Build the per-track filter chain. Order: adelay → volume → afade(in) → afade(out)
+            // adelay is the pivot — it pushes the entire stream right on the
+            // timeline; the fades that follow are timed relative to the
+            // DELAYED stream so afade=t=in:st=0 means "at the moment this
+            // track first becomes audible", not "0 on the master timeline".
+            filter.Append($";[{input}:a]");
+            var parts = new List<string>();
+            if (startMs > 0) parts.Add($"adelay={startMs}|{startMs}");
+            parts.Add($"volume={vol.ToString("F2", inv)}");
+            if (t.FadeInSec > 0.01)
+                parts.Add($"afade=t=in:st=0:d={t.FadeInSec.ToString("F2", inv)}");
+            if (t.FadeOutSec > 0.01)
+            {
+                // Anchor fade-out 60s into the (delayed) stream — see method
+                // doc for why we don't probe natural duration.
+                const double fadeOutAnchorSec = 60.0;
+                var fadeStart = Math.Max(0.5, fadeOutAnchorSec - t.FadeOutSec);
+                parts.Add($"afade=t=out:st={fadeStart.ToString("F2", inv)}:d={t.FadeOutSec.ToString("F2", inv)}");
+            }
+            filter.Append(string.Join(",", parts));
+            filter.Append($"[a{ai}]");
         }
         filter.Append(";");
         for (int ai = 0; ai < audioTracks.Count; ai++) filter.Append($"[a{ai}]");

@@ -60,6 +60,8 @@ public static class NleProjectSerializer
         public string FilePath { get; set; } = "";
         public double StartSec { get; set; }
         public double Volume { get; set; } = 1.0;
+        public double FadeInSec { get; set; }
+        public double FadeOutSec { get; set; }
         public string Label { get; set; } = "";
     }
 
