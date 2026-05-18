@@ -417,6 +417,11 @@ public sealed class EditorViewModel : ObservableObject
     {
         _ctx = ctx;
 
+        // Wire the generic undo stack to this VM's capture/apply hooks.
+        // Done early so the RelayCommands below can reference _undo safely.
+        _undo = new Services.UndoStack<TimelineSnapshot>(CaptureSnapshot, ApplySnapshot);
+        _undo.Changed += OnUndoStackChanged;
+
         RefreshCommand = new RelayCommand(Refresh);
         AddClipCommand = new RelayCommand<Clip>(AddClip);
         RemoveSlotCommand = new RelayCommand<TimelineSlot>(RemoveSlot);
@@ -426,8 +431,8 @@ public sealed class EditorViewModel : ObservableObject
         SplitSlotCommand = new RelayCommand<TimelineSlot>(SplitSlot);
         DuplicateSlotCommand = new RelayCommand<TimelineSlot>(DuplicateSlot);
         RazorAtPlayheadCommand = new RelayCommand(RazorAtPlayhead);
-        UndoCommand = new RelayCommand(Undo, () => _undoStack.Count > 0);
-        RedoCommand = new RelayCommand(Redo, () => _redoStack.Count > 0);
+        UndoCommand = new RelayCommand(Undo, () => _undo.CanUndo);
+        RedoCommand = new RelayCommand(Redo, () => _undo.CanRedo);
         SaveProjectCommand = new RelayCommand(SaveProject);
         LoadProjectCommand = new RelayCommand(LoadProject);
         OpenRecentCommand = new RelayCommand<RecentProjectEntry>(e =>
@@ -915,251 +920,96 @@ public sealed class EditorViewModel : ObservableObject
             ShowToast("Nothing to save — timeline is empty.", "warn");
             return;
         }
-        var defaultDir = System.IO.Path.Combine(AppPaths.Root, "projects");
-        try { System.IO.Directory.CreateDirectory(defaultDir); } catch { }
-        var dlg = new Microsoft.Win32.SaveFileDialog
+        if (_ctx is null) return;
+        var path = _ctx.NleProjectFiles.PromptSavePath(_projectName);
+        if (path is null) return;
+        var result = _ctx.NleProjectFiles.Save(path, this);
+        if (result.IsOk)
         {
-            Title = "Save NLE project",
-            Filter = "Chanthra Studio project (*.chstudio)|*.chstudio|All files|*.*",
-            FileName = SafeFile(string.IsNullOrEmpty(_projectName) ? "project" : _projectName) + ".chstudio",
-            InitialDirectory = defaultDir,
-        };
-        if (dlg.ShowDialog() != true) return;
-        try
-        {
-            var file = new NleProjectSerializer.ProjectFile
-            {
-                Name = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName),
-                OutputName = OutputName,
-                Fps = Fps,
-                CrossfadeSec = CrossfadeSec,
-                RenderAspect = RenderAspect,
-                RenderQuality = RenderQuality,
-                AudioPath = string.IsNullOrEmpty(AudioPath) ? null : AudioPath,
-                AudioVolume = AudioVolume,
-                AudioTracks = AudioTracks.Select(a => new NleProjectSerializer.AudioEntry
-                {
-                    FilePath = a.FilePath,
-                    StartSec = a.StartSec,
-                    Volume = a.Volume,
-                    Label = a.Label,
-                }).ToList(),
-                Timeline = Timeline.Select(s => new NleProjectSerializer.SlotEntry
-                {
-                    ShotId = s.Clip.ShotId,
-                    FilePath = s.Clip.FilePath,
-                    DurationSec = s.DurationSec,
-                }).ToList(),
-                Overlay = OverlayTimeline.Select(o => new NleProjectSerializer.OverlayEntry
-                {
-                    ShotId = o.Clip.ShotId,
-                    FilePath = o.Clip.FilePath,
-                    StartSec = o.StartSec,
-                    DurationSec = o.DurationSec,
-                    Scale = o.Scale,
-                    Position = o.Position,
-                }).ToList(),
-                Titles = TitleTimeline.Select(t => new NleProjectSerializer.TitleEntry
-                {
-                    Text = t.Text,
-                    StartSec = t.StartSec,
-                    DurationSec = t.DurationSec,
-                    FontSize = t.FontSize,
-                    Color = t.Color,
-                    Position = t.Position,
-                }).ToList(),
-            };
-            NleProjectSerializer.Save(dlg.FileName, file);
-            ProjectName = file.Name;
-            _ctx?.RecentProjects.Promote(dlg.FileName);
+            ProjectName = result.ProjectName!;
             RefreshRecentProjects();
-            ShowToast($"Saved · {System.IO.Path.GetFileName(dlg.FileName)}", "ok");
+            ShowToast($"Saved · {System.IO.Path.GetFileName(path)}", "ok");
         }
-        catch (Exception ex)
+        else
         {
-            ActivityLog.Error("nle", $"SaveProject {dlg.FileName}", ex);
-            ShowToast($"Save failed: {ex.Message}", "err");
+            ShowToast($"Save failed: {result.Error}", "err");
         }
     }
 
     private void LoadProject()
     {
-        var defaultDir = System.IO.Path.Combine(AppPaths.Root, "projects");
-        var dlg = new Microsoft.Win32.OpenFileDialog
-        {
-            Title = "Open NLE project",
-            Filter = "Chanthra Studio project (*.chstudio)|*.chstudio|All files|*.*",
-            InitialDirectory = System.IO.Directory.Exists(defaultDir) ? defaultDir : AppPaths.Root,
-            CheckFileExists = true,
-        };
-        if (dlg.ShowDialog() != true) return;
-        LoadProjectAtPath(dlg.FileName);
+        if (_ctx is null) return;
+        var path = _ctx.NleProjectFiles.PromptOpenPath();
+        if (path is not null) LoadProjectAtPath(path);
     }
 
     /// <summary>Load a specific project path. Extracted so the MRU dropdown
-    /// can open recent entries directly without re-prompting the user.</summary>
+    /// can open recent entries directly without re-prompting the user.
+    /// Delegates to <see cref="Services.NleProjectFiles"/> — the heavy
+    /// lifting lives there in 7.14; this just translates the result into
+    /// a toast.</summary>
     private void LoadProjectAtPath(string path)
     {
-        try
+        if (_ctx is null) return;
+        var result = _ctx.NleProjectFiles.Load(path, this);
+        if (!result.IsOk)
         {
-            var file = NleProjectSerializer.Load(path);
-
-            // Rebuild slots — look the Clip up from the in-memory library by
-            // FilePath (most stable identifier across sessions). Missing clips
-            // are skipped with a warning so a half-loaded project beats none.
-            int missing = 0;
-            PushUndo();
-            foreach (var s in Timeline) s.PropertyChanged -= OnSlotChanged;
-            Timeline.Clear();
-            OverlayTimeline.Clear();
-            TitleTimeline.Clear();
-
-            foreach (var entry in file.Timeline)
-            {
-                var clip = ResolveClip(entry.FilePath, entry.ShotId);
-                if (clip is null) { missing++; continue; }
-                var slot = new TimelineSlot { Clip = clip, DurationSec = entry.DurationSec };
-                slot.PropertyChanged += OnSlotChanged;
-                Timeline.Add(slot);
-            }
-            foreach (var entry in file.Overlay)
-            {
-                var clip = ResolveClip(entry.FilePath, entry.ShotId);
-                if (clip is null) { missing++; continue; }
-                OverlayTimeline.Add(new OverlaySlot
-                {
-                    Clip = clip,
-                    StartSec = entry.StartSec,
-                    DurationSec = entry.DurationSec,
-                    Scale = entry.Scale,
-                    Position = entry.Position,
-                });
-            }
-            foreach (var entry in file.Titles ?? new System.Collections.Generic.List<NleProjectSerializer.TitleEntry>())
-            {
-                TitleTimeline.Add(new TitleSlot
-                {
-                    Text = entry.Text,
-                    StartSec = entry.StartSec,
-                    DurationSec = entry.DurationSec,
-                    FontSize = entry.FontSize,
-                    Color = entry.Color,
-                    Position = entry.Position,
-                });
-            }
-            AudioTracks.Clear();
-            foreach (var entry in file.AudioTracks ?? new System.Collections.Generic.List<NleProjectSerializer.AudioEntry>())
-            {
-                AudioTracks.Add(new AudioSlot
-                {
-                    FilePath = entry.FilePath,
-                    StartSec = entry.StartSec,
-                    Volume = entry.Volume,
-                    Label = entry.Label,
-                });
-            }
-
-            OutputName = file.OutputName;
-            Fps = file.Fps;
-            CrossfadeSec = file.CrossfadeSec;
-            RenderAspect = string.IsNullOrEmpty(file.RenderAspect) ? "16:9" : file.RenderAspect;
-            RenderQuality = string.IsNullOrEmpty(file.RenderQuality) ? "full" : file.RenderQuality;
-            AudioPath = file.AudioPath ?? "";
-            AudioVolume = file.AudioVolume;
-            ProjectName = file.Name;
-            Selected = Timeline.FirstOrDefault();
-            SelectedOverlay = OverlayTimeline.FirstOrDefault();
-            RecomputeTotal();
-
-            _ctx?.RecentProjects.Promote(path);
-            RefreshRecentProjects();
-
-            var note = missing == 0
-                ? $"Loaded · {Timeline.Count} slots · {OverlayTimeline.Count} overlays"
-                : $"Loaded · {Timeline.Count} slots ({missing} clip refs missing from Library — re-import)";
-            ShowToast(note, missing == 0 ? "ok" : "warn");
+            ShowToast($"Load failed: {result.Error}", "err");
+            return;
         }
-        catch (Exception ex)
-        {
-            ActivityLog.Error("nle", $"LoadProject {path}", ex);
-            ShowToast($"Load failed: {ex.Message}", "err");
-        }
+        RefreshRecentProjects();
+        var note = result.MissingRefs == 0
+            ? $"Loaded · {result.Slots} slots · {result.Overlays} overlays"
+            : $"Loaded · {result.Slots} slots ({result.MissingRefs} clip refs missing — re-import)";
+        ShowToast(note, result.MissingRefs == 0 ? "ok" : "warn");
     }
 
-    private Models.Clip? ResolveClip(string filePath, string shotId)
+    // ---------- Hooks called by NleProjectFiles during Load() ----------
+    // These let the IO service mutate the VM's collections without leaking
+    // the OnSlotChanged event subscription detail past the VM boundary.
+    internal void PushUndoForProjectLoad() => PushUndo();
+    internal void DetachAndClearTimeline()
     {
-        // Prefer exact file-path match — that's what the user actually pointed
-        // at when they built the project. Fall back to shotId so a renamed file
-        // can still hook up if the shot reference survived.
-        var byPath = LibraryClips.FirstOrDefault(c => string.Equals(c.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
-        if (byPath is not null) return byPath;
-        return LibraryClips.FirstOrDefault(c => c.ShotId == shotId);
+        foreach (var s in Timeline) s.PropertyChanged -= OnSlotChanged;
+        Timeline.Clear();
     }
-
-    private static string SafeFile(string raw)
+    internal void AppendRestoredSlot(Models.Clip clip, double durationSec)
     {
-        var invalid = System.IO.Path.GetInvalidFileNameChars();
-        var sb = new System.Text.StringBuilder(raw.Length);
-        foreach (var ch in raw) sb.Append(System.Array.IndexOf(invalid, ch) >= 0 ? '_' : ch);
-        return sb.ToString().Trim();
+        var slot = new TimelineSlot { Clip = clip, DurationSec = durationSec };
+        slot.PropertyChanged += OnSlotChanged;
+        Timeline.Add(slot);
+    }
+    internal void PromoteLoadedSelections()
+    {
+        Selected = Timeline.FirstOrDefault();
+        SelectedOverlay = OverlayTimeline.FirstOrDefault();
+        RecomputeTotal();
     }
 
-    // ---------- Undo / redo (T24) ----------
+    // ---------- Undo / redo (T24 · refactored 7.14 into UndoStack<T>) ----------
     private sealed record TimelineSnapshot(
         IReadOnlyList<(Clip Clip, double Dur)> Main,
         IReadOnlyList<(Clip Clip, double Start, double Dur, double Scale, string Pos)> Overlay);
 
-    private readonly System.Collections.Generic.Stack<TimelineSnapshot> _undoStack = new();
-    private readonly System.Collections.Generic.Stack<TimelineSnapshot> _redoStack = new();
-    private const int UndoLimit = 50;
+    private readonly Services.UndoStack<TimelineSnapshot> _undo;
 
     /// <summary>Capture current timeline state and push onto the undo stack.
     /// Call this BEFORE any topology mutation (add/remove/move/split/clear).
     /// Clears the redo stack — once you fork from a history point, the
     /// future you'd been holding is no longer reachable.</summary>
-    private void PushUndo()
-    {
-        var snap = new TimelineSnapshot(
-            Timeline.Select(s => (s.Clip, s.DurationSec)).ToList(),
-            OverlayTimeline.Select(o => (o.Clip, o.StartSec, o.DurationSec, o.Scale, o.Position)).ToList());
-        _undoStack.Push(snap);
-        if (_undoStack.Count > UndoLimit)
-        {
-            // Drop the OLDEST entry — Stack.ToArray returns top-to-bottom
-            // (newest first), so keep the first UndoLimit (newest), push
-            // them back oldest-first so the topmost remains the most-recent
-            // snapshot. The previous version reversed order which inverted
-            // undo direction once the user crossed the cap.
-            var topToBottom = _undoStack.ToArray();              // [newest..oldest]
-            var keepNewestFirst = topToBottom.Take(UndoLimit);    // drop the oldest
-            // Push oldest-first so top of stack ends up newest.
-            var pushOrder = keepNewestFirst.Reverse().ToList();
-            _undoStack.Clear();
-            foreach (var s in pushOrder) _undoStack.Push(s);
-        }
-        _redoStack.Clear();
-        RefreshUndoRedo();
-    }
+    private void PushUndo() => _undo.Push();
 
     private void Undo()
     {
-        if (_undoStack.Count == 0) return;
-        var current = CaptureSnapshot();
-        _redoStack.Push(current);
-        var restore = _undoStack.Pop();
-        ApplySnapshot(restore);
-        RefreshUndoRedo();
+        if (!_undo.CanUndo) return;
+        _undo.Undo();
         ShowToast("Undo", "info");
     }
 
     private void Redo()
     {
-        if (_redoStack.Count == 0) return;
-        var current = CaptureSnapshot();
-        _undoStack.Push(current);
-        var restore = _redoStack.Pop();
-        ApplySnapshot(restore);
-        RefreshUndoRedo();
+        if (!_undo.CanRedo) return;
+        _undo.Redo();
         ShowToast("Redo", "info");
     }
 
@@ -1213,6 +1063,10 @@ public sealed class EditorViewModel : ObservableObject
         UndoCommand.NotifyCanExecuteChanged();
         RedoCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>Invoked by <see cref="UndoStack{T}.Changed"/> after every
+    /// push / undo / redo — drives the toolbar button enable state.</summary>
+    private void OnUndoStackChanged() => RefreshUndoRedo();
 
     private async void ShowToast(string msg, string kind)
     {

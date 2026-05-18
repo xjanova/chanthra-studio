@@ -28,6 +28,7 @@ public sealed class StudioContext
     public UsageTracker Tracker { get; }
     public SearchBus Search { get; } = new();
     public RecentProjectsService RecentProjects { get; } = new();
+    public NleProjectFiles NleProjectFiles { get; }
 
     public StudioContext()
     {
@@ -53,5 +54,6 @@ public sealed class StudioContext
         ScheduleService = new ScheduleService(this);
         Usage = new UsageRepository(Db);
         Tracker = new UsageTracker(this);
+        NleProjectFiles = new NleProjectFiles(this);
     }
 }

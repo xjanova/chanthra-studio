@@ -287,167 +287,20 @@ public sealed class SlideshowRenderer
 
         // filter_complex value is a single argv slot — internal commas and
         // semicolons are fine, ffmpeg parses them inside the filter language.
-        var filter = new StringBuilder();
-        for (int i = 0; i < spec.Clips.Count; i++)
-        {
-            filter.Append($"[{i}:v]scale={spec.Width}:{spec.Height}:force_original_aspect_ratio=decrease,");
-            filter.Append($"pad={spec.Width}:{spec.Height}:(ow-iw)/2:(oh-ih)/2:color=#060409,setsar=1[v{i}];");
-        }
-
-        // Two render paths: hard-cut concat (default) vs. xfade chain when
-        // CrossfadeSec > 0. xfade composes pairwise so we walk left-to-right,
-        // computing the running offset = combined-stream length so far - xfade.
-        if (spec.CrossfadeSec > 0 && spec.Clips.Count >= 2)
-        {
-            double fade = spec.CrossfadeSec;
-            // Clamp fade to slightly less than the smallest clip duration so
-            // ffmpeg doesn't reject the filter with "offset must be non-negative".
-            double minDur = double.MaxValue;
-            for (int i = 0; i < spec.Clips.Count; i++)
-            {
-                var d = perClipOverride?[i] ?? spec.SecondsPerClip;
-                if (d < minDur) minDur = d;
-            }
-            if (fade >= minDur) fade = Math.Max(0.2, minDur - 0.1);
-
-            var inv = System.Globalization.CultureInfo.InvariantCulture;
-            string lastLabel = "v0";
-            double runLen = perClipOverride?[0] ?? spec.SecondsPerClip;
-            for (int i = 1; i < spec.Clips.Count; i++)
-            {
-                var nextDur = perClipOverride?[i] ?? spec.SecondsPerClip;
-                var offset = runLen - fade;
-                var outLabel = i == spec.Clips.Count - 1 ? "out" : $"x{i}";
-                filter.Append(
-                    $"[{lastLabel}][v{i}]xfade=transition=fade:" +
-                    $"duration={fade.ToString("F3", inv)}:" +
-                    $"offset={offset.ToString("F3", inv)}[{outLabel}];");
-                lastLabel = outLabel;
-                runLen = runLen + nextDur - fade;
-            }
-            // Strip trailing semicolon and audio mix below appends with its own ;
-            if (filter[^1] == ';') filter.Length -= 1;
-        }
-        else
-        {
-            for (int i = 0; i < spec.Clips.Count; i++) filter.Append($"[v{i}]");
-            filter.Append($"concat=n={spec.Clips.Count}:v=1:a=0[out]");
-        }
-
-        // Text titles via drawtext (T33). Each title is a separate filter
-        // stage chained onto whatever the current video label is — so titles
-        // sit ON TOP of any image overlays that ran before. No extra inputs;
-        // ffmpeg renders the text inline.
+        // Five stages chained on a shared StringBuilder; helper methods keep
+        // each stage's bookkeeping local so the section-by-section meaning
+        // stays readable. Refactored from a 200-line inline build in 7.14.
         var titles = spec.Titles.Where(t => !string.IsNullOrWhiteSpace(t.Text)).ToList();
         var hasTitles = titles.Count > 0;
-
-        // Multi-overlay picture-in-picture (T22). Each entry scales + format-
-        // converts its source into a labelled stream, then chains an overlay
-        // filter against the running compositor. Final label remaps so the
-        // downstream -map picks up [outpip].
-        if (hasOverlay)
-        {
-            var inv = System.Globalization.CultureInfo.InvariantCulture;
-            // Stage 1: prep each overlay input as [ovN].
-            for (int oi = 0; oi < overlays.Count; oi++)
-            {
-                var o = overlays[oi];
-                var inputIdx = firstOverlayIndex + oi;
-                var w = (int)(spec.Width * Math.Clamp(o.Scale, 0.1, 0.6));
-                filter.Append($";[{inputIdx}:v]scale={w}:-1,setsar=1,format=yuva420p[ov{oi}]");
-            }
-            // Stage 2: chain overlay filters. Each output [pipN] feeds the next.
-            string lastLabel = "out";
-            for (int oi = 0; oi < overlays.Count; oi++)
-            {
-                var o = overlays[oi];
-                var (xExpr, yExpr) = o.Position switch
-                {
-                    "TL" => ("20",          "20"),
-                    "BL" => ("20",          "H-h-20"),
-                    "BR" => ("W-w-20",      "H-h-20"),
-                    "C"  => ("(W-w)/2",     "(H-h)/2"),
-                    _    => ("W-w-20",      "20"),    // TR / default
-                };
-                var startStr = o.StartSec.ToString("F2", inv);
-                var endStr = (o.StartSec + o.DurationSec).ToString("F2", inv);
-                var lastStage = oi == overlays.Count - 1 && !hasTitles;
-                var outLabel = lastStage ? "outpip" : $"pip{oi}";
-                filter.Append($";[{lastLabel}][ov{oi}]overlay={xExpr}:{yExpr}:enable='between(t,{startStr},{endStr})'[{outLabel}]");
-                lastLabel = outLabel;
-            }
-        }
-
-        if (hasTitles)
-        {
-            var inv = System.Globalization.CultureInfo.InvariantCulture;
-            // Pick a starting label: the last overlay-chain output, or the
-            // raw [out] from the concat/xfade chain if no overlays ran.
-            string lastLabel = hasOverlay ? (overlays.Count - 1 + 0 >= 0 ? $"pip{overlays.Count - 1}" : "out") : "out";
-            // When the overlay chain's last stage is also the final, it was
-            // labelled outpip — but we just disabled that above when titles
-            // are present, so the last overlay actually labelled pip{N-1}.
-            // Either way the bookkeeping above produced `lastLabel` matching
-            // whatever we wrote.
-            var defaultFont = ResolveDefaultFontFile();
-            for (int ti = 0; ti < titles.Count; ti++)
-            {
-                var t = titles[ti];
-                var fontFile = string.IsNullOrEmpty(t.FontFile) ? defaultFont : t.FontFile;
-                var color = string.IsNullOrEmpty(t.Color) ? "0xD4A76A" : t.Color;
-                // Title positions follow the same TL/TR/BL/BR/C convention.
-                // drawtext uses `text_w`/`text_h` as `tw`/`th`. The X/Y
-                // expressions also reference `w`/`h` for the frame size.
-                var (xExpr, yExpr) = t.Position switch
-                {
-                    "TL" => ("40",                  "40"),
-                    "BL" => ("40",                  "h-th-40"),
-                    "BR" => ("w-tw-40",             "h-th-40"),
-                    "C"  => ("(w-tw)/2",            "(h-th)/2"),
-                    _    => ("w-tw-40",             "40"),  // TR / default
-                };
-                var startStr = t.StartSec.ToString("F2", inv);
-                var endStr = (t.StartSec + t.DurationSec).ToString("F2", inv);
-                var safeText = EscapeDrawtext(t.Text);
-                var fontArg = string.IsNullOrEmpty(fontFile) ? "" : $"fontfile='{EscapePathForFilter(fontFile)}':";
-                var lastStage = ti == titles.Count - 1;
-                var outLabel = lastStage ? "outpip" : $"tt{ti}";
-                filter.Append($";[{lastLabel}]drawtext={fontArg}text='{safeText}':fontsize={t.FontSize}:fontcolor={color}:x={xExpr}:y={yExpr}:enable='between(t,{startStr},{endStr})'[{outLabel}]");
-                lastLabel = outLabel;
-            }
-        }
+        var filter = new StringBuilder();
+        AppendScalePadStage(filter, spec);
+        AppendConcatOrXfadeStage(filter, spec, perClipOverride);
+        if (hasOverlay) AppendOverlayStage(filter, overlays, firstOverlayIndex, spec.Width, hasTitles);
+        if (hasTitles) AppendTitleStage(filter, titles, hasOverlay, overlays.Count);
         if (hasLegacyAudio)
-        {
-            var vol = Math.Clamp(spec.AudioVolume, 0.0, 2.0);
-            filter.Append($";[{audioIndex}:a]volume={vol.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}[a]");
-        }
+            AppendLegacyAudioStage(filter, audioIndex, spec.AudioVolume);
         else if (hasMultiAudio)
-        {
-            // Multi-track mixer (T34). For each track:
-            //   1. adelay={startMs}|{startMs}   — push the audio onto the timeline
-            //      at its StartSec. The double argument is "left|right" channels.
-            //   2. volume={vol}                  — per-track gain (0..2 clamped)
-            //   3. label as [aN]                 — feed into a single amix at the end
-            // Then amix=inputs=N:duration=longest:dropout_transition=0[a]
-            // (dropout_transition=0 prevents amix from auto-ducking when shorter
-            //  inputs end, which would otherwise sound like a level dip).
-            var inv = System.Globalization.CultureInfo.InvariantCulture;
-            for (int ai = 0; ai < audioTracks.Count; ai++)
-            {
-                var t = audioTracks[ai];
-                var input = audioIndex + ai;
-                var startMs = (int)Math.Round(Math.Max(0, t.StartSec) * 1000);
-                var vol = Math.Clamp(t.Volume, 0.0, 2.0);
-                if (startMs > 0)
-                    filter.Append($";[{input}:a]adelay={startMs}|{startMs},volume={vol.ToString("F2", inv)}[a{ai}]");
-                else
-                    filter.Append($";[{input}:a]volume={vol.ToString("F2", inv)}[a{ai}]");
-            }
-            // Mix all labelled streams.
-            filter.Append(";");
-            for (int ai = 0; ai < audioTracks.Count; ai++) filter.Append($"[a{ai}]");
-            filter.Append($"amix=inputs={audioTracks.Count}:duration=longest:dropout_transition=0[a]");
-        }
+            AppendMultiAudioStage(filter, audioTracks, audioIndex);
 
         args.Add("-filter_complex");
         args.Add(filter.ToString());
@@ -476,6 +329,173 @@ public sealed class SlideshowRenderer
         args.Add("-pix_fmt");       args.Add("yuv420p");
         args.Add(outputPath);
         return args;
+    }
+
+    // ============================================================
+    // Filter-chain stages — extracted in 7.14 from the inline build.
+    // Each method appends one logical stage to the shared filter
+    // StringBuilder and returns nothing; the chain's video label
+    // bookkeeping is fixed-name ([out] → [outpip]) so we don't need
+    // to thread it through return values.
+    // ============================================================
+
+    /// <summary>Stage 1: scale + letterbox-pad each main-track clip into
+    /// a uniform output frame. Emits <c>[i:v]scale=…pad=…[vN]</c> per clip.</summary>
+    private static void AppendScalePadStage(StringBuilder filter, Spec spec)
+    {
+        for (int i = 0; i < spec.Clips.Count; i++)
+        {
+            filter.Append($"[{i}:v]scale={spec.Width}:{spec.Height}:force_original_aspect_ratio=decrease,");
+            filter.Append($"pad={spec.Width}:{spec.Height}:(ow-iw)/2:(oh-ih)/2:color=#060409,setsar=1[v{i}];");
+        }
+    }
+
+    /// <summary>Stage 2: combine the [vN] clips into a single [out] video
+    /// stream. Hard-cut concat unless <see cref="Spec.CrossfadeSec"/> &gt; 0
+    /// and there are 2+ clips, in which case an xfade chain walks
+    /// pairwise with a running offset.</summary>
+    private static void AppendConcatOrXfadeStage(StringBuilder filter, Spec spec, IReadOnlyList<double>? perClipOverride)
+    {
+        if (spec.CrossfadeSec > 0 && spec.Clips.Count >= 2)
+        {
+            double fade = spec.CrossfadeSec;
+            // Clamp fade to slightly less than the smallest clip duration so
+            // ffmpeg doesn't reject the filter with "offset must be non-negative".
+            double minDur = double.MaxValue;
+            for (int i = 0; i < spec.Clips.Count; i++)
+            {
+                var d = perClipOverride?[i] ?? spec.SecondsPerClip;
+                if (d < minDur) minDur = d;
+            }
+            if (fade >= minDur) fade = Math.Max(0.2, minDur - 0.1);
+
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            string lastLabel = "v0";
+            double runLen = perClipOverride?[0] ?? spec.SecondsPerClip;
+            for (int i = 1; i < spec.Clips.Count; i++)
+            {
+                var nextDur = perClipOverride?[i] ?? spec.SecondsPerClip;
+                var offset = runLen - fade;
+                var outLabel = i == spec.Clips.Count - 1 ? "out" : $"x{i}";
+                filter.Append(
+                    $"[{lastLabel}][v{i}]xfade=transition=fade:" +
+                    $"duration={fade.ToString("F3", inv)}:" +
+                    $"offset={offset.ToString("F3", inv)}[{outLabel}];");
+                lastLabel = outLabel;
+                runLen = runLen + nextDur - fade;
+            }
+            // Strip the trailing semicolon — the next stage prepends its own.
+            if (filter[^1] == ';') filter.Length -= 1;
+        }
+        else
+        {
+            for (int i = 0; i < spec.Clips.Count; i++) filter.Append($"[v{i}]");
+            filter.Append($"concat=n={spec.Clips.Count}:v=1:a=0[out]");
+        }
+    }
+
+    /// <summary>Stage 3: chain N picture-in-picture overlays. Each input is
+    /// scaled and labelled <c>[ovN]</c>, then a chain of overlay filters
+    /// feeds <c>[pipN]</c> labels into each other. Final stage labels its
+    /// output [outpip] UNLESS a title stage will run after.</summary>
+    private static void AppendOverlayStage(StringBuilder filter, List<OverlayDescriptor> overlays, int firstOverlayInputIndex, int frameWidth, bool titlesWillFollow)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        // Prep each overlay input as a scaled labelled stream.
+        for (int oi = 0; oi < overlays.Count; oi++)
+        {
+            var o = overlays[oi];
+            var inputIdx = firstOverlayInputIndex + oi;
+            var w = (int)(frameWidth * Math.Clamp(o.Scale, 0.1, 0.6));
+            filter.Append($";[{inputIdx}:v]scale={w}:-1,setsar=1,format=yuva420p[ov{oi}]");
+        }
+        // Chain overlay filters; each output feeds the next.
+        string lastLabel = "out";
+        for (int oi = 0; oi < overlays.Count; oi++)
+        {
+            var o = overlays[oi];
+            var (xExpr, yExpr) = o.Position switch
+            {
+                "TL" => ("20",          "20"),
+                "BL" => ("20",          "H-h-20"),
+                "BR" => ("W-w-20",      "H-h-20"),
+                "C"  => ("(W-w)/2",     "(H-h)/2"),
+                _    => ("W-w-20",      "20"),    // TR / default
+            };
+            var startStr = o.StartSec.ToString("F2", inv);
+            var endStr = (o.StartSec + o.DurationSec).ToString("F2", inv);
+            // Last overlay labels itself [outpip] UNLESS titles will run
+            // after — then it labels [pip{N-1}] and the title stage takes
+            // over as the final stage.
+            var lastStage = oi == overlays.Count - 1 && !titlesWillFollow;
+            var outLabel = lastStage ? "outpip" : $"pip{oi}";
+            filter.Append($";[{lastLabel}][ov{oi}]overlay={xExpr}:{yExpr}:enable='between(t,{startStr},{endStr})'[{outLabel}]");
+            lastLabel = outLabel;
+        }
+    }
+
+    /// <summary>Stage 4: drawtext title cards. Each title becomes a filter
+    /// stage chained onto whatever the last video label was — so titles
+    /// always sit ON TOP of image overlays. The last title's output is
+    /// labelled [outpip].</summary>
+    private static void AppendTitleStage(StringBuilder filter, List<TitleDescriptor> titles, bool hadOverlay, int overlayCount)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        string lastLabel = hadOverlay && overlayCount > 0 ? $"pip{overlayCount - 1}" : "out";
+        var defaultFont = ResolveDefaultFontFile();
+        for (int ti = 0; ti < titles.Count; ti++)
+        {
+            var t = titles[ti];
+            var fontFile = string.IsNullOrEmpty(t.FontFile) ? defaultFont : t.FontFile;
+            var color = string.IsNullOrEmpty(t.Color) ? "0xD4A76A" : t.Color;
+            var (xExpr, yExpr) = t.Position switch
+            {
+                "TL" => ("40",                  "40"),
+                "BL" => ("40",                  "h-th-40"),
+                "BR" => ("w-tw-40",             "h-th-40"),
+                "C"  => ("(w-tw)/2",            "(h-th)/2"),
+                _    => ("w-tw-40",             "40"),  // TR / default
+            };
+            var startStr = t.StartSec.ToString("F2", inv);
+            var endStr = (t.StartSec + t.DurationSec).ToString("F2", inv);
+            var safeText = EscapeDrawtext(t.Text);
+            var fontArg = string.IsNullOrEmpty(fontFile) ? "" : $"fontfile='{EscapePathForFilter(fontFile)}':";
+            var lastStage = ti == titles.Count - 1;
+            var outLabel = lastStage ? "outpip" : $"tt{ti}";
+            filter.Append($";[{lastLabel}]drawtext={fontArg}text='{safeText}':fontsize={t.FontSize}:fontcolor={color}:x={xExpr}:y={yExpr}:enable='between(t,{startStr},{endStr})'[{outLabel}]");
+            lastLabel = outLabel;
+        }
+    }
+
+    /// <summary>Stage 5a: legacy single-track audio — just volume scale
+    /// the one input and label it [a].</summary>
+    private static void AppendLegacyAudioStage(StringBuilder filter, int audioInputIndex, double volume)
+    {
+        var vol = Math.Clamp(volume, 0.0, 2.0);
+        filter.Append($";[{audioInputIndex}:a]volume={vol.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}[a]");
+    }
+
+    /// <summary>Stage 5b: multi-track audio mixer. Per-track adelay + volume,
+    /// then a single amix that produces [a]. dropout_transition=0 prevents
+    /// amix from auto-ducking when shorter inputs end (would otherwise
+    /// sound like a level dip).</summary>
+    private static void AppendMultiAudioStage(StringBuilder filter, List<AudioTrackDescriptor> audioTracks, int firstAudioInputIndex)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        for (int ai = 0; ai < audioTracks.Count; ai++)
+        {
+            var t = audioTracks[ai];
+            var input = firstAudioInputIndex + ai;
+            var startMs = (int)Math.Round(Math.Max(0, t.StartSec) * 1000);
+            var vol = Math.Clamp(t.Volume, 0.0, 2.0);
+            if (startMs > 0)
+                filter.Append($";[{input}:a]adelay={startMs}|{startMs},volume={vol.ToString("F2", inv)}[a{ai}]");
+            else
+                filter.Append($";[{input}:a]volume={vol.ToString("F2", inv)}[a{ai}]");
+        }
+        filter.Append(";");
+        for (int ai = 0; ai < audioTracks.Count; ai++) filter.Append($"[a{ai}]");
+        filter.Append($"amix=inputs={audioTracks.Count}:duration=longest:dropout_transition=0[a]");
     }
 
     /// <summary>Parse ffmpeg's per-frame progress line into a "Rendering ·
