@@ -742,10 +742,15 @@
                     </Border>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Margin="0,0,8,0" Content="History" Style="{StaticResource ButtonPill}" />
-                    <Button Margin="0,0,8,0" Content="Share" Style="{StaticResource ButtonPill}" />
-                    <Button Margin="0,0,8,0" Content="Export" Style="{StaticResource ButtonPill}" />
-                    <Button Content="✦  Render film" Style="{StaticResource ButtonPillGold}" />
+                    <Button Margin="0,0,8,0" Padding="10,4"
+                            Command="{Binding CancelAllRunningCommand}"
+                            ToolTip="Cancel every running generation across all routes (ComfyUI · Replicate · Runway · …)"
+                            Style="{StaticResource ButtonPill}">
+                        <TextBlock>
+                            <Run Foreground="{StaticResource BrushCrimson}" Text="⏹" />
+                            <Run Text=" Cancel all" />
+                        </TextBlock>
+                    </Button>
                 </StackPanel>
             </Grid>
 

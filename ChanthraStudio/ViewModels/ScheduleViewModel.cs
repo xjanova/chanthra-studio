@@ -36,6 +36,7 @@ public sealed class ScheduleViewModel : ObservableObject
     public IRelayCommand<Schedule> SaveCommand { get; }
     public IRelayCommand<Schedule> DeleteCommand { get; }
     public IRelayCommand<Schedule> RunNowCommand { get; }
+    public IRelayCommand<Schedule> CloneCommand { get; private set; } = null!;
 
     public ScheduleViewModel() : this(null) { }
 
@@ -49,6 +50,7 @@ public sealed class ScheduleViewModel : ObservableObject
         SaveCommand = new RelayCommand<Schedule>(Save);
         DeleteCommand = new RelayCommand<Schedule>(Delete);
         RunNowCommand = new RelayCommand<Schedule>(RunNow);
+        CloneCommand = new RelayCommand<Schedule>(Clone);
 
         if (_ctx is not null)
         {
@@ -155,6 +157,37 @@ public sealed class ScheduleViewModel : ObservableObject
         ShowToast($"Firing {s.Name}…");
         try { await _ctx.ScheduleService.ForceTickAsync(); }
         catch { /* schedule service swallows per-row errors already */ }
+    }
+
+    /// <summary>Clone a schedule with " (copy)" appended to the name and
+    /// IsEnabled flipped off — the user almost always wants to tweak the
+    /// clone before letting it fire. (T55 · 7.21)</summary>
+    private void Clone(Schedule? src)
+    {
+        if (src is null || _ctx is null) return;
+        var copy = new Models.Schedule
+        {
+            Name = src.Name + " (copy)",
+            PromptTemplate = src.PromptTemplate,
+            NegativePrompt = src.NegativePrompt,
+            Workflow = src.Workflow,
+            Route = src.Route,
+            StyleId = src.StyleId,
+            Aspect = src.Aspect,
+            Camera = src.Camera,
+            DurationSec = src.DurationSec,
+            Motion = src.Motion,
+            Kind = src.Kind,
+            Spec = src.Spec,
+            AutoPost = src.AutoPost,
+            PostTarget = src.PostTarget,
+            IsEnabled = false,    // disabled so the clone doesn't fire on next tick
+        };
+        copy.NextFireAt = copy.ComputeNextFireAt(DateTimeOffset.UtcNow);
+        _ctx.Schedules.Insert(copy);
+        Schedules.Add(copy);
+        Selected = copy;
+        ShowToast($"Cloned · {copy.Name} (disabled — enable when ready)");
     }
 
     private void ShowToast(string msg)

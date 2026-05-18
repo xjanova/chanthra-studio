@@ -24,6 +24,23 @@ namespace ChanthraStudio.Services.Providers.Video;
 /// Auth: <c>Authorization: Bearer pk_…</c>
 ///
 /// <para>
+/// <b>⚠ SPECULATIVE ENDPOINT</b> — Pika hasn't published an OpenAPI spec
+/// publicly as of writing. The path/shape above is reconstructed from
+/// scattered dev-tier documentation and may not match what's live for
+/// every account tier. Untested against a real developer key.
+/// </para>
+///
+/// <para>
+/// If submits return 404 / wrong-shape errors, the actual endpoints
+/// likely live under a different subdomain (e.g. <c>api.pika.art</c>,
+/// <c>generate.pika.art</c>) or a different version (<c>/v2/</c>).
+/// To override without a code change: subclass and override
+/// <c>BaseUrl</c>, OR ask in the GitHub Issues thread for a pinned
+/// endpoint constant. Replicate's <c>flux-pika-1.5</c> Replicate-hosted
+/// model is a working fallback while Pika's dev tier stabilises.
+/// </para>
+///
+/// <para>
 /// Pika's API surface isn't fully open to all accounts — if the user's key
 /// belongs to the consumer tier, this will return 403. The provider
 /// surfaces the upstream error verbatim so users can tell the difference

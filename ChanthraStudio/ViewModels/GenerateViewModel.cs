@@ -254,6 +254,7 @@ public sealed class GenerateViewModel : ObservableObject
     public IRelayCommand<Shot> PlayShotCommand { get; }
     public IRelayCommand<Shot> CancelShotCommand { get; }
     public IRelayCommand<Shot> RemoveShotCommand { get; }
+    public IAsyncRelayCommand CancelAllRunningCommand { get; private set; } = null!;
 
     public GenerateViewModel() : this(null) { }
 
@@ -284,6 +285,17 @@ public sealed class GenerateViewModel : ObservableObject
             // every running job whose shotId matches — works for both
             // ComfyUI and Replicate routes.
             await _ctx.Generation.CancelByShotAsync(s.Id);
+        });
+        CancelAllRunningCommand = new AsyncRelayCommand(async () =>
+        {
+            // Fan-out cancel — kicks Generation.CancelAllAsync which
+            // calls Cancel() on every CTS in _running and fires a single
+            // /interrupt against ComfyUI. (T56 · 7.21)
+            if (_ctx is null) return;
+            var n = _ctx.Generation.RunningCount;
+            if (n == 0) { ShowToast("Nothing running to cancel.", "info"); return; }
+            await _ctx.Generation.CancelAllAsync();
+            ShowToast($"Cancelled {n} running job{(n == 1 ? "" : "s")}.", "warn");
         });
         RemoveShotCommand = new RelayCommand<Shot>(s =>
         {

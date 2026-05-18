@@ -151,6 +151,11 @@
                                                     Command="{Binding DataContext.RunNowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}"
                                                     Content="run now" Style="{StaticResource ButtonPill}" />
+                                            <Button Margin="0,0,6,0" Padding="10,4"
+                                                    Command="{Binding DataContext.CloneCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Content="clone" Style="{StaticResource ButtonPill}"
+                                                    ToolTip="Duplicate this schedule with the clone DISABLED so it doesn't fire before you tweak it" />
                                             <Button Padding="10,4"
                                                     Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}"

@@ -412,6 +412,38 @@ public sealed class GenerationService
     /// actually involved — interrupting always-on would stop unrelated
     /// queue work the user didn't ask to cancel.
     /// </summary>
+    /// <summary>
+    /// Cancel EVERY running generation. Used by the Composer's
+    /// "Cancel all" button when a fan-out batch is going sideways and
+    /// the user wants to bail out fast rather than click each shot's ×
+    /// button. (T56 · 7.21)
+    /// </summary>
+    public async Task CancelAllAsync()
+    {
+        var any = false;
+        foreach (var (promptId, _) in _promptToShot.ToArray())
+        {
+            if (_running.TryRemove(promptId, out var cts))
+            {
+                try { cts.Cancel(); any = true; } catch { }
+            }
+            _promptToShot.TryRemove(promptId, out _);
+        }
+        if (!any) return;
+        var url = _ctx.Settings.ComfyUiUrl;
+        if (string.IsNullOrWhiteSpace(url)) return;
+        try
+        {
+            using var c = new ComfyUiClient(url);
+            await c.InterruptAsync();
+        }
+        catch { /* best effort — local jobs already cancelled via CTS */ }
+    }
+
+    /// <summary>Snapshot count of currently-running prompt ids. Drives the
+    /// "Cancel all" button's enable state and a small "N running" badge.</summary>
+    public int RunningCount => _running.Count;
+
     public async Task CancelByShotAsync(string shotId)
     {
         bool comfySetupTouched = false;
