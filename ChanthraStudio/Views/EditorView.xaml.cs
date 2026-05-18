@@ -58,6 +58,11 @@ public partial class EditorView : UserControl
         {
             if (DataContext is INotifyPropertyChanged inpc)
                 inpc.PropertyChanged -= OnVmPropertyChanged;
+            // Tear down the VM's autosave DispatcherTimer too — otherwise
+            // navigating away from Edit leaves a 60s timer ticking on the
+            // orphaned VM, and every revisit stacks another one. (7.17
+            // fix · review LOGIC #1)
+            if (DataContext is EditorViewModel evm) evm.StopAutosaveTimer();
             StopPreviewTicker();
             StopTimelinePlay();
             try { PreviewMedia.Stop(); PreviewMedia.Close(); } catch { }

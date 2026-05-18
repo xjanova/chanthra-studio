@@ -82,6 +82,22 @@
                     <Button Margin="8,0,0,0" Command="{Binding RenderFilmCommand}" Content="✦  Render film" Style="{StaticResource ButtonPillGold}" />
                     <Border Width="14" />
                 </StackPanel>
+                <!--  Kind chips — image / video / all  -->
+                <StackPanel Margin="0,0,8,0" Orientation="Horizontal">
+                    <RadioButton GroupName="libKind" Margin="0,0,2,0" Content="all" Style="{StaticResource ChipRadio}"
+                                 Command="{Binding SetKindFilterCommand}" CommandParameter="all"
+                                 IsChecked="{Binding KindFilter, Converter={StaticResource StringEquals}, ConverterParameter=all, Mode=OneWay}"
+                                 ToolTip="Show both image and video clips" />
+                    <RadioButton GroupName="libKind" Margin="0,0,2,0" Content="🖼 images" Style="{StaticResource ChipRadio}"
+                                 Command="{Binding SetKindFilterCommand}" CommandParameter="image"
+                                 IsChecked="{Binding KindFilter, Converter={StaticResource StringEquals}, ConverterParameter=image, Mode=OneWay}"
+                                 ToolTip="Image clips only (PNG / JPG / WEBP …)" />
+                    <RadioButton GroupName="libKind" Content="▶ videos" Style="{StaticResource ChipRadio}"
+                                 Command="{Binding SetKindFilterCommand}" CommandParameter="video"
+                                 IsChecked="{Binding KindFilter, Converter={StaticResource StringEquals}, ConverterParameter=video, Mode=OneWay}"
+                                 ToolTip="Video clips only (MP4 / WEBM / MOV …)" />
+                </StackPanel>
+
                 <!--  Page-size chips — switch how many clips the next Refresh pulls  -->
                 <StackPanel Margin="0,0,8,0" Orientation="Horizontal">
                     <RadioButton GroupName="libLimit" Margin="0,0,2,0" Content="50" Style="{StaticResource ChipRadio}"

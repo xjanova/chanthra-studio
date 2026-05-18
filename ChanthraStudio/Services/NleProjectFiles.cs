@@ -70,7 +70,14 @@ public sealed class NleProjectFiles
         }
     }
 
+    /// <summary>Lock guarding write/clear of the autosave file so a 60s
+    /// autosave tick and a concurrent explicit Save → ClearAutosave can't
+    /// race and leave a half-written file. (7.17 fix · review SMELL #5)</summary>
+    private readonly object _autosaveGate = new();
+
     /// <summary>Write the current editor state to the autosave slot.
+    /// Atomic: writes to a sibling <c>.tmp</c> file and uses File.Move
+    /// (with overwrite) so a reader never sees a half-flushed file.
     /// Best-effort — failures (file locked, disk full) get logged but
     /// don't bubble up; the next tick will try again.</summary>
     public void Autosave(EditorViewModel vm)
@@ -86,7 +93,17 @@ public sealed class NleProjectFiles
                 return;
             }
             var file = BuildProjectFile(vm, name: "autosave");
-            NleProjectSerializer.Save(AutosaveFilePath, file);
+            lock (_autosaveGate)
+            {
+                // Write to a tmp sibling first; an in-progress write that
+                // crashes mid-flush leaves the tmp file behind without
+                // touching the live recovery file.
+                var tmpPath = AutosaveFilePath + ".tmp";
+                NleProjectSerializer.Save(tmpPath, file);
+                // File.Move on Windows handles overwrite when the
+                // destination exists if we pass overwrite=true (NET 8).
+                File.Move(tmpPath, AutosaveFilePath, overwrite: true);
+            }
         }
         catch (Exception ex)
         {
@@ -96,12 +113,19 @@ public sealed class NleProjectFiles
 
     /// <summary>Delete the autosave recovery file. Called after a
     /// successful explicit Save and on a clean exit so the banner
-    /// doesn't fire on the next launch.</summary>
+    /// doesn't fire on the next launch. Synchronised with <see cref="Autosave"/>
+    /// via the same gate so a write and a delete can't interleave.</summary>
     public void ClearAutosave()
     {
         try
         {
-            if (File.Exists(AutosaveFilePath)) File.Delete(AutosaveFilePath);
+            lock (_autosaveGate)
+            {
+                if (File.Exists(AutosaveFilePath)) File.Delete(AutosaveFilePath);
+                // Also drop any stray .tmp from a crashed Autosave.
+                var tmp = AutosaveFilePath + ".tmp";
+                if (File.Exists(tmp)) File.Delete(tmp);
+            }
         }
         catch (Exception ex)
         {

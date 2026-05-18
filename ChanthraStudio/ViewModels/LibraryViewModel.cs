@@ -56,6 +56,23 @@ public sealed class LibraryViewModel : ObservableObject
         "all" => 1000,
         _     => 200,
     };
+
+    /// <summary>"all" | "image" | "video" — what kinds of clips to display.
+    /// Filename extension is the source of truth; missing-on-disk clips
+    /// fall through to "all" so dead refs stay visible for cleanup.</summary>
+    private string _kindFilter = "all";
+    public string KindFilter
+    {
+        get => _kindFilter;
+        set { if (SetProperty(ref _kindFilter, value ?? "all")) ApplyFilter(); }
+    }
+
+    public IRelayCommand<string> SetKindFilterCommand { get; private set; } = null!;
+
+    private static readonly System.Collections.Generic.HashSet<string> _imageExts = new(System.StringComparer.OrdinalIgnoreCase)
+    { ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff" };
+    private static readonly System.Collections.Generic.HashSet<string> _videoExts = new(System.StringComparer.OrdinalIgnoreCase)
+    { ".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v" };
     public IRelayCommand<Clip> OpenClipCommand { get; }
     public IRelayCommand<Clip> RevealCommand { get; }
     public IRelayCommand<Clip> CopyPathCommand { get; }
@@ -94,6 +111,7 @@ public sealed class LibraryViewModel : ObservableObject
         });
         DeleteSelectedCommand = new RelayCommand(DeleteSelected);
         SetLimitCommand = new RelayCommand<string>(m => { if (!string.IsNullOrEmpty(m)) LimitMode = m!; });
+        SetKindFilterCommand = new RelayCommand<string>(k => { if (!string.IsNullOrEmpty(k)) KindFilter = k!; });
 
         // Auto-refresh whenever a generation completes — the ProgressChanged
         // event fires on the UI thread already (GenerationService dispatches).
@@ -132,17 +150,19 @@ public sealed class LibraryViewModel : ObservableObject
     }
 
     /// <summary>Project <see cref="_allClips"/> through the SearchBus query
-    /// into the visible <see cref="Clips"/> collection. Match is a case-
-    /// insensitive substring against the clip's file name — that's all we
-    /// have to filter on without a prompt-history table.</summary>
+    /// AND the KindFilter into the visible <see cref="Clips"/> collection.
+    /// Match is a case-insensitive substring against the clip's file name
+    /// (no prompt-history table). Kind is decided by extension.</summary>
     private void ApplyFilter()
     {
         var q = _ctx.Search.Query.Trim();
         Clips.Clear();
         foreach (var c in _allClips)
         {
-            if (string.IsNullOrEmpty(q) || c.FileName.Contains(q, StringComparison.OrdinalIgnoreCase))
-                Clips.Add(c);
+            if (!string.IsNullOrEmpty(q) && !c.FileName.Contains(q, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!MatchesKind(c.FileName)) continue;
+            Clips.Add(c);
         }
         HasClips = Clips.Count > 0;
         var suffix = _allClips.Count == Clips.Count
@@ -157,6 +177,18 @@ public sealed class LibraryViewModel : ObservableObject
     private void OnClipPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(Clip.IsSelected)) UpdateSelectionState();
+    }
+
+    private bool MatchesKind(string fileName)
+    {
+        if (_kindFilter == "all") return true;
+        var ext = System.IO.Path.GetExtension(fileName);
+        return _kindFilter switch
+        {
+            "image" => _imageExts.Contains(ext),
+            "video" => _videoExts.Contains(ext),
+            _       => true,
+        };
     }
 
     private void UpdateSelectionState()

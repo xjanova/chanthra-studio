@@ -59,12 +59,23 @@ public sealed class Schedule : ObservableObject
     public ScheduleKind Kind
     {
         get => _kind;
-        set { if (SetProperty(ref _kind, value)) OnPropertyChanged(nameof(KindLabel)); }
+        set
+        {
+            if (SetProperty(ref _kind, value))
+            {
+                OnPropertyChanged(nameof(KindLabel));
+                InvalidateNextFiresCache();
+            }
+        }
     }
 
     /// <summary>Either "08:00,12:00,18:00" (DailySlots) or "60" (Interval minutes).</summary>
     private string _spec = "08:00,18:00";
-    public string Spec { get => _spec; set => SetProperty(ref _spec, value); }
+    public string Spec
+    {
+        get => _spec;
+        set { if (SetProperty(ref _spec, value)) InvalidateNextFiresCache(); }
+    }
 
     private bool _autoPost;
     public bool AutoPost { get => _autoPost; set => SetProperty(ref _autoPost, value); }
@@ -95,7 +106,11 @@ public sealed class Schedule : ObservableObject
     }
 
     private bool _isEnabled = true;
-    public bool IsEnabled { get => _isEnabled; set => SetProperty(ref _isEnabled, value); }
+    public bool IsEnabled
+    {
+        get => _isEnabled;
+        set { if (SetProperty(ref _isEnabled, value)) InvalidateNextFiresCache(); }
+    }
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
@@ -139,17 +154,40 @@ public sealed class Schedule : ObservableObject
         return results;
     }
 
+    /// <summary>Cached "next 5 fires" label so an N-card ItemsControl
+    /// doesn't re-run ParseSlots × 5 per render pass. Invalidated when
+    /// Spec / Kind / IsEnabled change (set the cache to null below).
+    /// (7.17 fix · review SMELL #6)</summary>
+    private string? _nextFiresPreviewCache;
+
     /// <summary>Formatted preview of the next 5 fires, used by the Schedule
     /// card binding. Empty schedules return "—".</summary>
     public string NextFiresPreviewLabel
     {
         get
         {
-            if (!_isEnabled) return "disabled";
-            var fires = ComputeNextFires(DateTimeOffset.UtcNow, 5);
-            if (fires.Count == 0) return "—";
-            return string.Join(" · ", fires.Select(f => f.ToLocalTime().ToString("MMM d · HH:mm")));
+            if (_nextFiresPreviewCache is not null) return _nextFiresPreviewCache;
+            string label;
+            if (!_isEnabled)
+                label = "disabled";
+            else
+            {
+                var fires = ComputeNextFires(DateTimeOffset.UtcNow, 5);
+                label = fires.Count == 0
+                    ? "—"
+                    : string.Join(" · ", fires.Select(f => f.ToLocalTime().ToString("MMM d · HH:mm")));
+            }
+            _nextFiresPreviewCache = label;
+            return label;
         }
+    }
+
+    /// <summary>Reset the cached preview so the next binding read recomputes.
+    /// Called from the Spec / Kind / IsEnabled setters above.</summary>
+    private void InvalidateNextFiresCache()
+    {
+        _nextFiresPreviewCache = null;
+        OnPropertyChanged(nameof(NextFiresPreviewLabel));
     }
 
     /// <summary>Compute the next fire time AFTER <paramref name="reference"/>, based on Kind + Spec.</summary>

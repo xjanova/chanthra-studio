@@ -235,6 +235,22 @@ public sealed class GenerateViewModel : ObservableObject
 
     public IAsyncRelayCommand SummonSceneCommand { get; }
     public IAsyncRelayCommand EnhancePromptCommand { get; }
+    public IRelayCommand RandomPromptCommand { get; }
+
+    /// <summary>Brand-locked prompt starters surfaced by the 🎲 button.
+    /// All built around the lunar-atelier / Empress motif so the random
+    /// roll stays on-brand even when the user is just experimenting.</summary>
+    private static readonly string[] _promptStarters = new[]
+    {
+        "the empress in a moonlit lotus throne, gold halo above her crown, crimson silk veil flowing in slow motion, cinematic lighting",
+        "an oracle priestess reading tarot under a crescent moon, mauve incense smoke spiralling upward, sacred-geometry mandala behind her",
+        "veiled fortune teller at a candle-lit altar, golden coins on black silk, eyes closed in trance, soft chiaroscuro",
+        "a lunar deer with antlers wreathed in stars walking through misty bamboo forest, moonlight rimming the silhouette",
+        "high priestess between two pillars — one of polished obsidian, one of pearl marble — pomegranates at her feet, scroll in hand",
+        "moonchild with floor-length silver hair, lotus crown, hovering over a still pond reflecting the moon, particles of light drifting",
+        "celestial empress wrapped in crimson and gold brocade, palace columns receding into mauve fog, peacock feathers on the floor",
+        "starlit ceremonial dance in a temple courtyard, ribbons of gold light tracing the dancer's path, slow camera orbit",
+    };
     public IRelayCommand<Shot> PlayShotCommand { get; }
     public IRelayCommand<Shot> CancelShotCommand { get; }
     public IRelayCommand<Shot> RemoveShotCommand { get; }
@@ -246,6 +262,16 @@ public sealed class GenerateViewModel : ObservableObject
         _ctx = ctx;
         SummonSceneCommand = new AsyncRelayCommand(SummonSceneAsync);
         EnhancePromptCommand = new AsyncRelayCommand(EnhancePromptAsync);
+        RandomPromptCommand = new RelayCommand(() =>
+        {
+            // Roll a brand starter, avoid immediate-repeat by re-rolling once
+            // if it matches the current text.
+            var rng = new Random();
+            string next;
+            do { next = _promptStarters[rng.Next(_promptStarters.Length)]; }
+            while (next == Prompt && _promptStarters.Length > 1 && rng.Next(2) == 0);
+            Prompt = next;
+        });
         RefreshWorkflowsCommand = new RelayCommand(LoadWorkflows);
         BrowseReferenceImageCommand = new RelayCommand(BrowseReferenceImage);
         ClearReferenceImageCommand = new RelayCommand(() => ReferenceImagePath = null);

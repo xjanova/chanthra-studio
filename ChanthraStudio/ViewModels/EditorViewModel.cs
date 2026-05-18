@@ -437,6 +437,7 @@ public sealed class EditorViewModel : ObservableObject
         _undo.Changed += OnUndoStackChanged;
 
         StartAutosaveTimer();
+        InitAutosaveRecoveryCommands();
 
         RefreshCommand = new RelayCommand(Refresh);
         AddClipCommand = new RelayCommand<Clip>(AddClip);
@@ -1030,7 +1031,25 @@ public sealed class EditorViewModel : ObservableObject
         LoadProjectAtPath(path);
         // Clear so a relaunch after the recovery doesn't pop the banner.
         _ctx.NleProjectFiles.ClearAutosave();
+        // LoadProjectAtPath mutates the four timelines via the internal
+        // hooks, which fire the CollectionChanged listeners we attached
+        // in StartAutosaveTimer — that would flag _autosaveDirty=true and
+        // make the next tick re-write the file we just deleted. Force-
+        // clear the flag after the recover settles so the next tick is
+        // a no-op until the user actually edits something. (7.17 fix)
+        _autosaveDirty = false;
         ShowToast("Restored from autosave", "ok");
+    }
+
+    /// <summary>Stop the autosave timer + detach event handlers — called
+    /// from EditorView.Unloaded so a view-tab switch doesn't leave a
+    /// DispatcherTimer rooted by `this` rewriting the autosave file
+    /// from a stale VM. Without this, every visit to the Edit tab
+    /// stacked another timer firing in parallel. (7.17 fix · LOGIC #1)</summary>
+    public void StopAutosaveTimer()
+    {
+        try { _autosaveTimer?.Stop(); } catch { }
+        _autosaveTimer = null;
     }
 
     /// <summary>Dismiss the autosave recovery banner without restoring —
@@ -1053,19 +1072,28 @@ public sealed class EditorViewModel : ObservableObject
         }
     }
 
-    public IRelayCommand RecoverAutosaveCommand => new RelayCommand(() =>
-    {
-        _recoveryDismissed = true;
-        OnPropertyChanged(nameof(HasAutosaveRecovery));
-        RecoverFromAutosave();
-    });
+    public IRelayCommand RecoverAutosaveCommand { get; private set; } = null!;
+    public IRelayCommand DismissAutosaveCommand { get; private set; } = null!;
 
-    public IRelayCommand DismissAutosaveCommand => new RelayCommand(() =>
+    /// <summary>Initialise the recovery-banner commands once in the ctor —
+    /// the previous expression-bodied properties allocated a fresh
+    /// RelayCommand on every binding read which fan-out badly when the
+    /// banner re-renders. (7.17 fix · review SMELL #4)</summary>
+    private void InitAutosaveRecoveryCommands()
     {
-        _recoveryDismissed = true;
-        OnPropertyChanged(nameof(HasAutosaveRecovery));
-        DismissAutosaveRecovery();
-    });
+        RecoverAutosaveCommand = new RelayCommand(() =>
+        {
+            _recoveryDismissed = true;
+            OnPropertyChanged(nameof(HasAutosaveRecovery));
+            RecoverFromAutosave();
+        });
+        DismissAutosaveCommand = new RelayCommand(() =>
+        {
+            _recoveryDismissed = true;
+            OnPropertyChanged(nameof(HasAutosaveRecovery));
+            DismissAutosaveRecovery();
+        });
+    }
 
     // ---------- Hooks called by NleProjectFiles during Load() ----------
     // These let the IO service mutate the VM's collections without leaking

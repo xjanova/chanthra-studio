@@ -171,6 +171,14 @@
                                             <Button
                                                 Width="24"
                                                 Height="24"
+                                                Command="{Binding RandomPromptCommand}"
+                                                Style="{StaticResource ButtonIcon}"
+                                                ToolTip="🎲 Roll a brand starter prompt — for when you're stuck">
+                                                <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="⚂" />
+                                            </Button>
+                                            <Button
+                                                Width="24"
+                                                Height="24"
                                                 Command="{Binding EnhancePromptCommand}"
                                                 Style="{StaticResource ButtonIcon}"
                                                 ToolTip="✦ Enhance prompt via active LLM">
