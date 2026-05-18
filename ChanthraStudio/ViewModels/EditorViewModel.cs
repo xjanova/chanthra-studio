@@ -142,7 +142,7 @@ public sealed class TimelineSlot : ObservableObject
     /// edge so the user can preview where the drop will land.</summary>
     public bool IsDropTarget { get => _isDropTarget; set => SetProperty(ref _isDropTarget, value); }
 
-    // ---------- Ken Burns zoom (T47 · 7.18) ----------
+    // ---------- Ken Burns zoom + pan (T47 · 7.18 → T50 · 7.19) ----------
     /// <summary>Zoom level at the start of the slot, in percent. 100 = no
     /// zoom (frame fits). 100→100 = static; 100→120 = push-in 20%;
     /// 120→100 = pull-back. Clamped 100..200 — values outside that range
@@ -161,10 +161,25 @@ public sealed class TimelineSlot : ObservableObject
         set => SetProperty(ref _zoomEndPct, Math.Clamp(value, 100, 200));
     }
 
+    // Pan-target normalized coords (0..1, 0.5=center). When values stay at
+    // 0.5/0.5 on both ends, behaviour matches the 7.18 center-anchored zoom.
+    private double _panStartX = 0.5;
+    public double PanStartX { get => _panStartX; set => SetProperty(ref _panStartX, Math.Clamp(value, 0, 1)); }
+    private double _panStartY = 0.5;
+    public double PanStartY { get => _panStartY; set => SetProperty(ref _panStartY, Math.Clamp(value, 0, 1)); }
+    private double _panEndX = 0.5;
+    public double PanEndX { get => _panEndX; set => SetProperty(ref _panEndX, Math.Clamp(value, 0, 1)); }
+    private double _panEndY = 0.5;
+    public double PanEndY { get => _panEndY; set => SetProperty(ref _panEndY, Math.Clamp(value, 0, 1)); }
+
     /// <summary>True when the slot has a non-identity Ken Burns
-    /// (start ≠ end). The renderer skips zoompan emission when this is
-    /// false so the common static-slideshow case stays cheap.</summary>
-    public bool HasKenBurns => Math.Abs(_zoomStartPct - _zoomEndPct) > 0.5 || _zoomStartPct > 100.5;
+    /// (start ≠ end on zoom OR pan, or starting zoom > 100%). The renderer
+    /// skips zoompan emission when this is false so the common static-
+    /// slideshow case stays cheap.</summary>
+    public bool HasKenBurns =>
+        Math.Abs(_zoomStartPct - _zoomEndPct) > 0.5 || _zoomStartPct > 100.5 ||
+        Math.Abs(_panStartX - 0.5) > 0.001 || Math.Abs(_panEndX - 0.5) > 0.001 ||
+        Math.Abs(_panStartY - 0.5) > 0.001 || Math.Abs(_panEndY - 0.5) > 0.001;
 
     // ---------- Color grading (T48 · 7.18) ----------
     /// <summary>Linear brightness adjustment, -0.5 to +0.5. ffmpeg's eq
@@ -527,6 +542,8 @@ public sealed class EditorViewModel : ObservableObject
             if (_selected is null) return;
             _selected.ZoomStartPct = 100;
             _selected.ZoomEndPct = 100;
+            _selected.PanStartX = 0.5; _selected.PanStartY = 0.5;
+            _selected.PanEndX = 0.5;   _selected.PanEndY = 0.5;
         });
         ResetColorGradeCommand = new RelayCommand(() =>
         {
@@ -918,6 +935,10 @@ public sealed class EditorViewModel : ObservableObject
                 {
                     ZoomStartPct = s.ZoomStartPct,
                     ZoomEndPct = s.ZoomEndPct,
+                    PanStartX = s.PanStartX,
+                    PanStartY = s.PanStartY,
+                    PanEndX = s.PanEndX,
+                    PanEndY = s.PanEndY,
                     Brightness = s.Brightness,
                     Contrast = s.Contrast,
                     Saturation = s.Saturation,
@@ -1202,7 +1223,9 @@ public sealed class EditorViewModel : ObservableObject
     }
     internal void AppendRestoredSlot(Models.Clip clip, double durationSec,
         double zoomStartPct = 100, double zoomEndPct = 100,
-        double brightness = 0, double contrast = 1.0, double saturation = 1.0)
+        double brightness = 0, double contrast = 1.0, double saturation = 1.0,
+        double panStartX = 0.5, double panStartY = 0.5,
+        double panEndX = 0.5, double panEndY = 0.5)
     {
         var slot = new TimelineSlot
         {
@@ -1210,6 +1233,10 @@ public sealed class EditorViewModel : ObservableObject
             DurationSec = durationSec,
             ZoomStartPct = zoomStartPct,
             ZoomEndPct = zoomEndPct,
+            PanStartX = panStartX,
+            PanStartY = panStartY,
+            PanEndX = panEndX,
+            PanEndY = panEndY,
             Brightness = brightness,
             Contrast = contrast,
             Saturation = saturation,

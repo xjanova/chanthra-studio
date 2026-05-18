@@ -15,6 +15,14 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Apply theme override BEFORE the base call — base.OnStartup
+        // honours StartupUri which instantiates MainWindow, and any
+        // StaticResource lookups in MainWindow.xaml are resolved at
+        // construction. Adding the alternate dict to MergedDictionaries
+        // here ensures the override values are in scope when those
+        // lookups run. (T53 · 7.22)
+        ApplyThemeOverride(Studio.Settings.Theme);
+
         base.OnStartup(e);
 
         ActivityLog.Info("app", $"start · v{UpdateService.CurrentVersion()} · data={AppPaths.Root}");
@@ -83,6 +91,39 @@ public partial class App : Application
         catch
         {
             // No-op — update check is best effort.
+        }
+    }
+
+    /// <summary>
+    /// Merge a theme-override ResourceDictionary into
+    /// <see cref="Application.Resources"/>'s MergedDictionaries when the
+    /// user's saved Theme isn't the default "lunar". MergedDictionaries
+    /// resolve later entries first, so any keys defined in the override
+    /// shadow the canonical Colors.xaml values without modifying the
+    /// source file. (T53 · 7.22)
+    /// </summary>
+    private static void ApplyThemeOverride(string? theme)
+    {
+        if (string.IsNullOrEmpty(theme) || theme.Equals("lunar", StringComparison.OrdinalIgnoreCase))
+            return;
+        // Known alternate themes — extend this map when new variants ship.
+        var uri = theme.ToLowerInvariant() switch
+        {
+            "dawn" => new Uri("pack://application:,,,/Themes/Colors-Dawn.xaml", UriKind.Absolute),
+            _      => null,
+        };
+        if (uri is null) return;
+        try
+        {
+            var rd = new System.Windows.ResourceDictionary { Source = uri };
+            // Append (not insert at 0) so the override values beat the
+            // canonical ones for same-key lookups.
+            Application.Current.Resources.MergedDictionaries.Add(rd);
+            Services.ActivityLog.Info("app", $"theme override applied · {theme}");
+        }
+        catch (Exception ex)
+        {
+            Services.ActivityLog.Warn("app", $"theme override failed for '{theme}': {ex.Message}");
         }
     }
 

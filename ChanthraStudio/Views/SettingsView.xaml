@@ -478,6 +478,38 @@
                 </Border>
                 <ItemsControl ItemTemplate="{StaticResource ProviderRowTemplate}" ItemsSource="{Binding VideoProviders}" />
 
+                <!--  Theme selector — alternate palette loads on next launch  -->
+                <Border Margin="0,12,0,0" Padding="16,14" Style="{StaticResource SurfaceCard}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock
+                                FontFamily="{StaticResource FontDisplay}"
+                                FontSize="13"
+                                FontWeight="Medium"
+                                Foreground="{StaticResource BrushText1}"
+                                Text="Theme palette" />
+                            <TextBlock
+                                Margin="0,2,0,0"
+                                Style="{StaticResource TextSecondary}"
+                                FontSize="11"
+                                Text="Restart the app to apply — the brushes resolve at window construction." />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal">
+                            <RadioButton GroupName="theme" Margin="0,0,4,0" Content="☾ Lunar" Style="{StaticResource ChipRadio}"
+                                         Command="{Binding SetThemeCommand}" CommandParameter="lunar"
+                                         IsChecked="{Binding Theme, Converter={StaticResource StringEquals}, ConverterParameter=lunar, Mode=OneWay}" />
+                            <RadioButton GroupName="theme" Content="✦ Dawn" Style="{StaticResource ChipRadio}"
+                                         Command="{Binding SetThemeCommand}" CommandParameter="dawn"
+                                         IsChecked="{Binding Theme, Converter={StaticResource StringEquals}, ConverterParameter=dawn, Mode=OneWay}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
                 <!--  Monthly budget — drives the status-bar pill (warn @ 75%, err @ 100%)  -->
                 <Border Margin="0,12,0,0" Padding="16,14" Style="{StaticResource SurfaceCard}">
                     <Grid>

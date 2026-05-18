@@ -99,13 +99,18 @@ public sealed class SlideshowRenderer
 
     /// <summary>Per-clip Ken Burns + color grading. Defaults are identity
     /// (no zoom · no grade) so an unset descriptor produces a no-op
-    /// filter chain. (T47 + T48 / 7.18)</summary>
+    /// filter chain. (T47 + T48 / 7.18 · T50 / 7.19 added pan)</summary>
     public sealed class SlotDescriptor
     {
         /// <summary>Zoom percent at slot start (100 = no zoom).</summary>
         public double ZoomStartPct { get; init; } = 100;
         /// <summary>Zoom percent at slot end (100 = no zoom).</summary>
         public double ZoomEndPct { get; init; } = 100;
+        /// <summary>Pan target X at slot start (0..1, 0.5 = centre).</summary>
+        public double PanStartX { get; init; } = 0.5;
+        public double PanStartY { get; init; } = 0.5;
+        public double PanEndX { get; init; } = 0.5;
+        public double PanEndY { get; init; } = 0.5;
         /// <summary>ffmpeg eq.brightness — -0.5..+0.5, 0 = identity.</summary>
         public double Brightness { get; init; }
         /// <summary>ffmpeg eq.contrast — 0.5..2.0, 1.0 = identity.</summary>
@@ -114,7 +119,9 @@ public sealed class SlideshowRenderer
         public double Saturation { get; init; } = 1.0;
 
         public bool HasZoom =>
-            Math.Abs(ZoomStartPct - ZoomEndPct) > 0.5 || ZoomStartPct > 100.5;
+            Math.Abs(ZoomStartPct - ZoomEndPct) > 0.5 || ZoomStartPct > 100.5 ||
+            Math.Abs(PanStartX - 0.5) > 0.001 || Math.Abs(PanEndX - 0.5) > 0.001 ||
+            Math.Abs(PanStartY - 0.5) > 0.001 || Math.Abs(PanEndY - 0.5) > 0.001;
         public bool HasGrade =>
             Math.Abs(Brightness) > 0.001 ||
             Math.Abs(Contrast - 1.0) > 0.001 ||
@@ -133,11 +140,14 @@ public sealed class SlideshowRenderer
         /// 0 = hard onset. ffmpeg renders as <c>afade=t=in:st=0:d=N</c>.</summary>
         public double FadeInSec { get; init; }
         /// <summary>Linear fade-out length at the END of this track (sec).
-        /// The fade's start time is computed by probing the source's audio
-        /// duration at filter-build time; sources we can't probe fall back
-        /// to a fade-out anchored to <see cref="StartSec"/> + a default
-        /// 60s envelope (long enough to not chop legitimate audio).</summary>
+        /// The fade-out start time is anchored to <see cref="NaturalDurationSec"/>
+        /// when supplied — set by the renderer via ffprobe before filter-
+        /// build (T51 / 7.20). Falls back to a 60s anchor when probe fails.</summary>
         public double FadeOutSec { get; init; }
+        /// <summary>Probed natural duration of the source audio in seconds.
+        /// Null = couldn't probe; the renderer falls back to a 60s
+        /// fade-out anchor.</summary>
+        public double? NaturalDurationSec { get; set; }
     }
 
     /// <summary>One text title overlaid via ffmpeg's <c>drawtext</c> filter.
@@ -195,6 +205,17 @@ public sealed class SlideshowRenderer
             ? $"film_{DateTime.UtcNow:yyyyMMdd_HHmmss}"
             : spec.OutputName);
         var outputPath = Path.Combine(outDir, safeName + ".mp4");
+
+        // Probe natural duration of every audio track that has a fade-out
+        // configured — feeds AppendMultiAudioStage's afade=out anchor.
+        // (T51 / 7.20). Reuses the FFmpegService already constructed above.
+        foreach (var t in spec.AudioTracks)
+        {
+            if (t.FadeOutSec <= 0.01) continue;
+            if (t.NaturalDurationSec is not null) continue;
+            try { t.NaturalDurationSec = await ff.ProbeDurationSecAsync(t.FilePath, ct); }
+            catch { }
+        }
 
         var args = BuildArgList(spec, outputPath);
 
@@ -418,21 +439,29 @@ public sealed class SlideshowRenderer
 
             // Ken Burns (zoompan) — applied LAST so the zoom interp doesn't
             // re-letterbox. d= is total output frames, computed from this
-            // slot's duration × output fps. zoom centred via the standard
-            // iw/2-(iw/zoom/2) anchor — full pan support (start/end X/Y)
-            // is on the wishlist but kept out of v1 for UI complexity.
+            // slot's duration × output fps. Both zoom AND pan target
+            // interpolate linearly (T50 / 7.19) — pan stays at 0.5/0.5 on
+            // both ends for the legacy centre-anchored behaviour.
             if (meta is not null && meta.HasZoom)
             {
                 var dur = perClipOverride?[i] ?? spec.SecondsPerClip;
                 var frames = Math.Max(1, (int)System.Math.Round(dur * spec.Fps));
                 var z0 = (meta.ZoomStartPct / 100.0).ToString("F3", inv);
                 var z1 = (meta.ZoomEndPct / 100.0).ToString("F3", inv);
-                // Linear interp: z(t) = z0 + (z1 - z0) * on / (d - 1).
-                // Guard d=1 (one-frame slot) with a Max above so we don't
-                // divide by zero in the expression.
                 var dMinus1 = Math.Max(1, frames - 1);
+
+                // Pan interp: panNow = p0 + (p1−p0) × on / (d−1) for each axis.
+                // Visible-window CENTRE = iw × panNow, so the top-left corner
+                // ffmpeg actually wants is `iw × panNow − iw/zoom/2`.
+                var px0 = meta.PanStartX.ToString("F3", inv);
+                var px1 = meta.PanEndX.ToString("F3", inv);
+                var py0 = meta.PanStartY.ToString("F3", inv);
+                var py1 = meta.PanEndY.ToString("F3", inv);
+                var xExpr = $"iw*({px0}+({px1}-{px0})*on/{dMinus1})-iw/zoom/2";
+                var yExpr = $"ih*({py0}+({py1}-{py0})*on/{dMinus1})-ih/zoom/2";
+
                 filter.Append($",zoompan=z='{z0}+({z1}-{z0})*on/{dMinus1}'")
-                      .Append(":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'")
+                      .Append($":x='{xExpr}':y='{yExpr}'")
                       .Append($":d={frames}:s={spec.Width}x{spec.Height}:fps={spec.Fps}");
             }
 
@@ -600,10 +629,12 @@ public sealed class SlideshowRenderer
                 parts.Add($"afade=t=in:st=0:d={t.FadeInSec.ToString("F2", inv)}");
             if (t.FadeOutSec > 0.01)
             {
-                // Anchor fade-out 60s into the (delayed) stream — see method
-                // doc for why we don't probe natural duration.
-                const double fadeOutAnchorSec = 60.0;
-                var fadeStart = Math.Max(0.5, fadeOutAnchorSec - t.FadeOutSec);
+                // Anchor fade-out at natural duration when ffprobe could
+                // resolve it (T51 / 7.20); otherwise fall back to the
+                // legacy 60s constant. The start time is RELATIVE to the
+                // delayed stream so adelay doesn't shift it.
+                var anchorSec = t.NaturalDurationSec ?? 60.0;
+                var fadeStart = Math.Max(0.5, anchorSec - t.FadeOutSec);
                 parts.Add($"afade=t=out:st={fadeStart.ToString("F2", inv)}:d={t.FadeOutSec.ToString("F2", inv)}");
             }
             filter.Append(string.Join(",", parts));

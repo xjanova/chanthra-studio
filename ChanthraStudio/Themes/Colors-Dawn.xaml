@@ -1,0 +1,47 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--  ============================================================
+          Chanthra Studio · "Dawn" Alternate Theme
+          A softer, warmer lunar palette — same brand language, the
+          backdrop drops to a desaturated plum-grey instead of black,
+          gold accents lift slightly. Loaded BEFORE MainWindow opens
+          via App.OnStartup when Settings.Theme == "dawn". Override
+          philosophy: only re-declare keys that change. Anything not
+          listed below falls through to the canonical Colors.xaml.
+          (T53 · 7.22)
+          ============================================================  -->
+
+    <!--  Warmer dark surfaces  -->
+    <Color x:Key="ColorVoid">#FF14101A</Color>
+    <Color x:Key="ColorBgBase">#FF1B1428</Color>
+    <Color x:Key="ColorBgMica">#FF221A30</Color>
+    <Color x:Key="ColorBgSurface">#FF2A2138</Color>
+    <Color x:Key="ColorBgElevated">#FF332946</Color>
+    <Color x:Key="ColorBgInset">#FF14101A</Color>
+
+    <!--  Gold lifted slightly for higher contrast on the lighter bg  -->
+    <Color x:Key="ColorGold">#FFE0B673</Color>
+    <Color x:Key="ColorGoldHi">#FFFFDE96</Color>
+
+    <!--  Text  -->
+    <Color x:Key="ColorText1">#FFF7EFE0</Color>
+    <Color x:Key="ColorText2">#FFC8BEDA</Color>
+    <Color x:Key="ColorText3">#FF9089A0</Color>
+
+    <!--  Brushes — re-materialise the keys that changed so StaticResource
+          lookups in already-defined consumers pick up the new colours.
+          Anything not listed here keeps the canonical Lunar value.  -->
+    <SolidColorBrush x:Key="BrushVoid" Color="{StaticResource ColorVoid}" />
+    <SolidColorBrush x:Key="BrushBgBase" Color="{StaticResource ColorBgBase}" />
+    <SolidColorBrush x:Key="BrushBgMica" Color="{StaticResource ColorBgMica}" />
+    <SolidColorBrush x:Key="BrushBgSurface" Color="{StaticResource ColorBgSurface}" />
+    <SolidColorBrush x:Key="BrushBgElevated" Color="{StaticResource ColorBgElevated}" />
+    <SolidColorBrush x:Key="BrushBgInset" Color="{StaticResource ColorBgInset}" />
+    <SolidColorBrush x:Key="BrushGold" Color="{StaticResource ColorGold}" />
+    <SolidColorBrush x:Key="BrushGoldHi" Color="{StaticResource ColorGoldHi}" />
+    <SolidColorBrush x:Key="BrushText1" Color="{StaticResource ColorText1}" />
+    <SolidColorBrush x:Key="BrushText2" Color="{StaticResource ColorText2}" />
+    <SolidColorBrush x:Key="BrushText3" Color="{StaticResource ColorText3}" />
+</ResourceDictionary>

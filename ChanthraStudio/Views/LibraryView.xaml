@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="clr-namespace:ChanthraStudio.ViewModels"
+    xmlns:controls="clr-namespace:ChanthraStudio.Controls"
     Background="{StaticResource BrushBgBase}"
     d:DataContext="{d:DesignInstance vm:LibraryViewModel}"
     d:DesignHeight="900"
@@ -152,16 +153,21 @@
                     Text="Generated images and videos will appear here. Hit ✦ Summon Scene in the Generate workspace to begin." />
             </StackPanel>
 
-            <!--  Clip grid  -->
+            <!--  Clip grid — masonry via WrapPanel. ListBox container + a
+                  custom VirtualizingWrapPanel that the items panel uses give
+                  us real row-band virtualisation (only the visible rows of
+                  cards get realised; off-screen cards never instantiate
+                  their BitmapImage). T52 · 7.21.  -->
             <ScrollViewer
                 Padding="32,8,32,32"
                 HorizontalScrollBarVisibility="Disabled"
                 VerticalScrollBarVisibility="Auto"
+                CanContentScroll="True"
                 Visibility="{Binding HasClips, Converter={StaticResource BoolToVis}}">
                 <ItemsControl ItemsSource="{Binding Clips}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <WrapPanel ItemHeight="220" ItemWidth="280" />
+                            <controls:VirtualizingWrapPanel ItemHeight="220" ItemWidth="280" />
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>

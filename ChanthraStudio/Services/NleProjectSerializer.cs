@@ -83,6 +83,11 @@ public static class NleProjectSerializer
         /// <summary>Ken Burns zoom (7.18). Default 100/100 = static.</summary>
         public double ZoomStartPct { get; set; } = 100;
         public double ZoomEndPct { get; set; } = 100;
+        /// <summary>Ken Burns pan target (7.19). Default 0.5/0.5 = centre.</summary>
+        public double PanStartX { get; set; } = 0.5;
+        public double PanStartY { get; set; } = 0.5;
+        public double PanEndX { get; set; } = 0.5;
+        public double PanEndY { get; set; } = 0.5;
         /// <summary>Color grade (7.18). Defaults are eq-identity.</summary>
         public double Brightness { get; set; }
         public double Contrast { get; set; } = 1.0;

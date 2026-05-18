@@ -555,6 +555,42 @@
                                     <Button Padding="8,3" Command="{Binding KenBurnsPullBackCommand}" Content="↙ pull-back" Style="{StaticResource ButtonPill}"
                                             ToolTip="Set zoom 115 → 100% — slow camera pull-back" />
                                 </StackPanel>
+
+                                <!--  Pan target (T50 / 7.19) — start / end normalized 0..1 with 0.5 = centre  -->
+                                <TextBlock Margin="0,12,0,0" Style="{StaticResource TextMonoUpper}" Text="PAN · START X / Y" />
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider Grid.Column="0" Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.1" Style="{StaticResource GoldSlider}" Value="{Binding Selected.PanStartX, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Selected.PanStartX, StringFormat={}X {0:F2}}" />
+                                </Grid>
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider Grid.Column="0" Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.1" Style="{StaticResource GoldSlider}" Value="{Binding Selected.PanStartY, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Selected.PanStartY, StringFormat={}Y {0:F2}}" />
+                                </Grid>
+                                <TextBlock Margin="0,8,0,0" Style="{StaticResource TextMonoUpper}" Text="PAN · END X / Y" />
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider Grid.Column="0" Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.1" Style="{StaticResource GoldSlider}" Value="{Binding Selected.PanEndX, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Selected.PanEndX, StringFormat={}X {0:F2}}" />
+                                </Grid>
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider Grid.Column="0" Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.1" Style="{StaticResource GoldSlider}" Value="{Binding Selected.PanEndY, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Selected.PanEndY, StringFormat={}Y {0:F2}}" />
+                                </Grid>
                             </StackPanel>
                         </Border>
 

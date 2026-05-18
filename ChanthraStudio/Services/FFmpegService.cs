@@ -70,6 +70,68 @@ public sealed class FFmpegService
     /// <summary>Forces a re-detection on next <see cref="TryResolve"/>.</summary>
     public void InvalidateCache() => _resolved = null;
 
+    /// <summary>
+    /// Resolve the path to <c>ffprobe.exe</c>, the sister binary to ffmpeg.
+    /// Lives next to ffmpeg.exe in every standard install (Gyan, BtbN,
+    /// scoop, winget), so we just swap the basename. Returns null if
+    /// ffmpeg itself isn't installed.
+    /// </summary>
+    public string? TryResolveFFprobe()
+    {
+        var ffmpegPath = TryResolve();
+        if (ffmpegPath is null) return null;
+        var dir = Path.GetDirectoryName(ffmpegPath) ?? "";
+        var probe = Path.Combine(dir, "ffprobe.exe");
+        return File.Exists(probe) ? probe : null;
+    }
+
+    /// <summary>
+    /// Probe the duration (in seconds) of an audio or video file by
+    /// shelling out to ffprobe. Returns null on any failure — caller
+    /// should fall back to a sensible default rather than tank the
+    /// pipeline.
+    /// </summary>
+    /// <remarks>
+    /// Implementation uses the <c>format=duration</c> field via
+    /// <c>-show_entries</c> + <c>-of csv=p=0</c> for a single-token output.
+    /// Adds a 5-second timeout — ffprobe is normally sub-second but a
+    /// network-mounted file can hang. Result is cached per process so
+    /// repeat probes of the same file (e.g. multiple renders during one
+    /// session) don't re-spawn the process.
+    /// </remarks>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, double?> _durationCache = new();
+    public async Task<double?> ProbeDurationSecAsync(string filePath, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) return null;
+        if (_durationCache.TryGetValue(filePath, out var cached)) return cached;
+        var probe = TryResolveFFprobe();
+        if (probe is null) { _durationCache[filePath] = null; return null; }
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            var (stdout, _, exit) = await RunAsync(probe,
+                new[] { "-v", "error", "-show_entries", "format=duration",
+                        "-of", "default=noprint_wrappers=1:nokey=1", filePath },
+                capture: true, ct: cts.Token);
+            if (exit != 0) { _durationCache[filePath] = null; return null; }
+            var trimmed = stdout.Trim();
+            if (double.TryParse(trimmed,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var sec))
+            {
+                _durationCache[filePath] = sec;
+                return sec;
+            }
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn("ffprobe", $"duration probe failed for {Path.GetFileName(filePath)}: {ex.Message}");
+        }
+        _durationCache[filePath] = null;
+        return null;
+    }
+
     /// <summary>Returns ffmpeg's reported version string, or null.</summary>
     public async Task<string?> GetVersionAsync(CancellationToken ct = default)
     {
