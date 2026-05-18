@@ -98,6 +98,10 @@ public partial class App : Application
         }
         try { Studio.GpuTelemetry.Dispose(); } catch { /* dispose is best effort */ }
         try { Studio.ScheduleService.Dispose(); } catch { /* dispose is best effort */ }
+        // Drain the activity log buffer before the process exits — the
+        // AppDomain.ProcessExit hook fires too late for some shutdown
+        // flows (e.g. Application.Current.Shutdown from a menu item).
+        try { ActivityLog.Shutdown(); } catch { }
         base.OnExit(e);
     }
 }

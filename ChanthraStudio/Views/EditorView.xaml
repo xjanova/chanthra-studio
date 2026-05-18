@@ -278,7 +278,7 @@
                                     Padding="0"
                                     Click="PreviewPlayPause_Click"
                                     Style="{StaticResource ButtonSummonCta}"
-                                    ToolTip="Play / pause (space)">
+                                    ToolTip="Play this slot with audio (space)">
                                     <TextBlock x:Name="PreviewPlayGlyph" FontFamily="{StaticResource FontMono}" FontSize="14" Foreground="#FF1A0D05" Text="▶" />
                                 </Button>
                                 <Button
@@ -325,7 +325,18 @@
                                 <TextBlock Grid.Column="0" Style="{StaticResource TextSectionDivider}" Text="TIMELINE · VIDEO TRACK" />
                                 <TextBlock Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}"
                                            Text="{Binding Timeline.Count, StringFormat={}{0} slots}" />
-                                <Button Grid.Column="2" Padding="10,4" Command="{Binding RazorAtPlayheadCommand}"
+                                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                    <Button x:Name="TimelinePlayBtn"
+                                            Margin="0,0,6,0" Padding="10,4"
+                                            Click="TimelinePlay_Click"
+                                            Style="{StaticResource ButtonPillGold}"
+                                            ToolTip="Play the whole timeline · silent preview · advances slots automatically (shift-space)">
+                                        <TextBlock>
+                                            <Run x:Name="TimelinePlayGlyph" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="#FF1A0D05" Text="▶▶" />
+                                            <Run Foreground="#FF1A0D05" Text=" Timeline" />
+                                        </TextBlock>
+                                    </Button>
+                                <Button Padding="10,4" Command="{Binding RazorAtPlayheadCommand}"
                                         Style="{StaticResource ButtonPill}"
                                         ToolTip="Razor split at the playhead position (instead of the slot midpoint)">
                                     <TextBlock>
@@ -333,6 +344,7 @@
                                         <Run Text="razor @ " /><Run FontFamily="{StaticResource FontMono}" Foreground="{StaticResource BrushGoldHi}" Text="{Binding PlayheadLabel, Mode=OneWay}" />
                                     </TextBlock>
                                 </Button>
+                                </StackPanel>
                             </Grid>
                             <!--  Scrubber — drag to move playhead; the slot under the head becomes Selected automatically  -->
                             <Grid Margin="0,6,0,0">

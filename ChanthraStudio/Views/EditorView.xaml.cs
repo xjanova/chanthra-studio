@@ -29,6 +29,14 @@ public partial class EditorView : UserControl
     private DispatcherTimer? _previewTick;
     private bool _previewLoaded;
 
+    // Timeline-play bookkeeping (T36). When _isTimelinePlaying is true, a
+    // DispatcherTimer drives PlayheadSec forward at 1× wall-clock; the
+    // MediaElement is paused and its Position follows the playhead via the
+    // T35 scrub-sync handler. The existing per-slot ▶ keeps audio playback.
+    private DispatcherTimer? _timelineTick;
+    private bool _isTimelinePlaying;
+    private DateTime _timelineLastTickAt;
+
     public EditorView()
     {
         InitializeComponent();
@@ -51,6 +59,7 @@ public partial class EditorView : UserControl
             if (DataContext is INotifyPropertyChanged inpc)
                 inpc.PropertyChanged -= OnVmPropertyChanged;
             StopPreviewTicker();
+            StopTimelinePlay();
             try { PreviewMedia.Stop(); PreviewMedia.Close(); } catch { }
         };
     }
@@ -59,6 +68,36 @@ public partial class EditorView : UserControl
     {
         if (e.PropertyName == nameof(EditorViewModel.Selected))
             LoadPreviewFromSelected();
+        else if (e.PropertyName == nameof(EditorViewModel.PlayheadSec))
+            SyncMediaElementToPlayhead();
+    }
+
+    /// <summary>
+    /// Scrubber → MediaElement frame. When the user moves the playhead AND
+    /// the per-slot play button is paused (so we're not fighting active
+    /// playback), seek the MediaElement to the corresponding offset within
+    /// the current slot. ScrubbingEnabled=True on the element means a
+    /// frame is decoded for the new position even while paused.
+    /// </summary>
+    private void SyncMediaElementToPlayhead()
+    {
+        if (DataContext is not EditorViewModel vm) return;
+        if (!_previewLoaded) return;
+        // Don't fight per-slot ▶ playback — its audio cadence drives Position
+        // already. We only seek when paused, which is the scrub case or the
+        // timeline-play case (where we explicitly pause the element first).
+        if (PreviewPlayGlyph.Text == "⏸") return;
+        try
+        {
+            var offset = TimeSpan.FromSeconds(System.Math.Max(0, vm.PlayheadOffsetWithinSlot));
+            // Clamp to NaturalDuration if it's known — past-end seeks render
+            // a blank frame on some codecs.
+            if (PreviewMedia.NaturalDuration.HasTimeSpan
+                && offset > PreviewMedia.NaturalDuration.TimeSpan)
+                offset = PreviewMedia.NaturalDuration.TimeSpan;
+            PreviewMedia.Position = offset;
+        }
+        catch { }
     }
 
     /// <summary>
@@ -158,6 +197,18 @@ public partial class EditorView : UserControl
     private void PreviewMedia_Opened(object sender, RoutedEventArgs e)
     {
         StartPreviewTicker();
+        // After the source loads, jump to wherever the playhead sits so
+        // scrubbing across a slot boundary lands on the right frame
+        // instead of always at 0:00 of the next slot.
+        if (DataContext is EditorViewModel vm)
+        {
+            try
+            {
+                var offset = TimeSpan.FromSeconds(System.Math.Max(0, vm.PlayheadOffsetWithinSlot));
+                PreviewMedia.Position = offset;
+            }
+            catch { }
+        }
     }
 
     private void PreviewMedia_Failed(object sender, ExceptionRoutedEventArgs e)
@@ -196,7 +247,8 @@ public partial class EditorView : UserControl
     /// <summary>
     /// Editor-wide preview hotkeys that need code-behind plumbing rather
     /// than VM commands (because the MediaElement instance lives in XAML
-    /// and isn't exposed through the VM). Space toggles play/pause.
+    /// and isn't exposed through the VM). Space toggles per-slot play/pause
+    /// (with audio); Shift+Space toggles timeline-play (silent, sequential).
     /// Skipped when the focused element is a TextBox so typing into the
     /// output-name / brief / prompt fields keeps working normally.
     /// </summary>
@@ -205,9 +257,87 @@ public partial class EditorView : UserControl
         if (e.OriginalSource is TextBox) return;
         if (e.Key == Key.Space)
         {
-            PreviewPlayPause_Click(this, new RoutedEventArgs());
+            if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                ToggleTimelinePlay();
+            else
+                PreviewPlayPause_Click(this, new RoutedEventArgs());
             e.Handled = true;
         }
+    }
+
+    // --------- T36: Timeline play mode ---------
+
+    private void TimelinePlay_Click(object sender, RoutedEventArgs e) => ToggleTimelinePlay();
+
+    /// <summary>
+    /// Toggle silent timeline preview. While active, a DispatcherTimer
+    /// advances <see cref="EditorViewModel.PlayheadSec"/> at wall-clock
+    /// speed. The scrub-sync handler (T35) seeks MediaElement to the right
+    /// frame on each tick; when the playhead crosses a slot boundary the
+    /// VM's SlotAtPlayhead → Selected promotion auto-reloads the source.
+    /// </summary>
+    private void ToggleTimelinePlay()
+    {
+        if (DataContext is not EditorViewModel vm) return;
+
+        if (_isTimelinePlaying)
+        {
+            StopTimelinePlay();
+            return;
+        }
+        if (vm.Timeline.Count == 0)
+        {
+            ActivityLog.Info("nle", "timeline play ignored — no slots");
+            return;
+        }
+        // Pause the per-slot MediaElement so we're not double-driving Position.
+        try { PreviewMedia.Pause(); } catch { }
+        PreviewPlayGlyph.Text = "▶";
+
+        // If the playhead is already at end-of-timeline, restart from 0 so
+        // hitting ▶▶ Timeline feels intuitive.
+        if (vm.PlayheadSec >= vm.TotalDuration - 0.05) vm.PlayheadSec = 0;
+
+        _isTimelinePlaying = true;
+        _timelineLastTickAt = DateTime.UtcNow;
+        if (_timelineTick is null)
+        {
+            _timelineTick = new DispatcherTimer(DispatcherPriority.Render, Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(33),  // ~30 fps preview cadence
+            };
+            _timelineTick.Tick += TimelineTick_Tick;
+        }
+        _timelineTick.Start();
+        TimelinePlayGlyph.Text = "⏸";
+    }
+
+    private void StopTimelinePlay()
+    {
+        _isTimelinePlaying = false;
+        _timelineTick?.Stop();
+        try { TimelinePlayGlyph.Text = "▶▶"; } catch { }
+    }
+
+    private void TimelineTick_Tick(object? sender, EventArgs e)
+    {
+        if (DataContext is not EditorViewModel vm) { StopTimelinePlay(); return; }
+        var now = DateTime.UtcNow;
+        var delta = (now - _timelineLastTickAt).TotalSeconds;
+        _timelineLastTickAt = now;
+        // Defensive clamp: a paused-then-resumed Dispatcher can deliver a
+        // huge delta on first tick; cap to one frame so the playhead
+        // doesn't leap past five slots after a context-switch.
+        if (delta > 0.5) delta = 0.033;
+
+        var next = vm.PlayheadSec + delta;
+        if (next >= vm.TotalDuration)
+        {
+            vm.PlayheadSec = vm.TotalDuration;
+            StopTimelinePlay();
+            return;
+        }
+        vm.PlayheadSec = next;
     }
 
     private void Recent_Click(object sender, RoutedEventArgs e)
