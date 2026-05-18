@@ -46,6 +46,69 @@ public sealed class OverlaySlot : ObservableObject
     public string EndLabel => $"{StartSec:F1}s → {(StartSec + DurationSec):F1}s · {Position} · {Scale:P0}";
 }
 
+/// <summary>
+/// Title-card slot — a text overlay rendered via ffmpeg's drawtext filter
+/// (no PNG required). Smaller than OverlaySlot: just text + timing +
+/// position + colour. Brand-locked palette for now (gold/crimson/mauve)
+/// to keep the lunar-atelier aesthetic consistent across renders.
+/// </summary>
+public sealed class TitleSlot : ObservableObject
+{
+    private string _text = "";
+    public string Text { get => _text; set => SetProperty(ref _text, value ?? ""); }
+
+    private double _startSec;
+    public double StartSec { get => _startSec; set => SetProperty(ref _startSec, Math.Max(0, value)); }
+
+    private double _durationSec = 3.0;
+    public double DurationSec { get => _durationSec; set => SetProperty(ref _durationSec, Math.Max(0.5, value)); }
+
+    private int _fontSize = 64;
+    public int FontSize { get => _fontSize; set => SetProperty(ref _fontSize, Math.Clamp(value, 16, 240)); }
+
+    /// <summary>ffmpeg colour spec — brand palette only for now.</summary>
+    private string _color = "0xD4A76A";
+    public string Color { get => _color; set => SetProperty(ref _color, value ?? "0xD4A76A"); }
+
+    private string _position = "C";
+    public string Position { get => _position; set => SetProperty(ref _position, value ?? "C"); }
+
+    private bool _isSelected;
+    public bool IsSelected { get => _isSelected; set => SetProperty(ref _isSelected, value); }
+
+    public string Summary => $"{StartSec:F1}s · {Text}";
+}
+
+/// <summary>
+/// One audio track on the multi-audio mixer. Path can be a voice take,
+/// music take, or arbitrary mp3/wav. StartSec offsets when the track
+/// starts within the master timeline; Volume scales the input before
+/// mixing. ffmpeg renders these via per-track <c>adelay</c> + <c>amix</c>.
+/// </summary>
+public sealed class AudioSlot : ObservableObject
+{
+    private string _filePath = "";
+    public string FilePath { get => _filePath; set => SetProperty(ref _filePath, value ?? ""); }
+
+    private double _startSec;
+    public double StartSec { get => _startSec; set => SetProperty(ref _startSec, Math.Max(0, value)); }
+
+    private double _volume = 1.0;
+    public double Volume { get => _volume; set => SetProperty(ref _volume, Math.Clamp(value, 0, 2)); }
+
+    private string _label = "";
+    /// <summary>Human-readable label (defaults to file name). Lets the
+    /// user rename a track like "VO take 2" without renaming the file.</summary>
+    public string Label { get => _label; set => SetProperty(ref _label, value ?? ""); }
+
+    private bool _isSelected;
+    public bool IsSelected { get => _isSelected; set => SetProperty(ref _isSelected, value); }
+
+    public string FileName => System.IO.Path.GetFileName(FilePath);
+    public string DisplayName => string.IsNullOrEmpty(Label) ? FileName : Label;
+    public string Summary => $"{StartSec:F1}s · {Volume:F2}×";
+}
+
 public sealed class TimelineSlot : ObservableObject
 {
     public Clip Clip { get; init; } = null!;
@@ -243,6 +306,65 @@ public sealed class EditorViewModel : ObservableObject
     public IRelayCommand<OverlaySlot> SelectOverlayCommand { get; private set; } = null!;
     public IRelayCommand<string> SetSelectedOverlayPositionCommand { get; private set; } = null!;
 
+    // ---------- Title card track (T33) ----------
+    /// <summary>Text-only overlay slots (drawtext-based, no extra ffmpeg input).</summary>
+    public ObservableCollection<TitleSlot> TitleTimeline { get; } = new();
+
+    private TitleSlot? _selectedTitle;
+    public TitleSlot? SelectedTitle
+    {
+        get => _selectedTitle;
+        set
+        {
+            var prev = _selectedTitle;
+            if (SetProperty(ref _selectedTitle, value))
+            {
+                if (prev is not null) prev.IsSelected = false;
+                if (_selectedTitle is not null) _selectedTitle.IsSelected = true;
+                OnPropertyChanged(nameof(HasSelectedTitle));
+            }
+        }
+    }
+
+    public bool HasTitles => TitleTimeline.Count > 0;
+    public bool HasSelectedTitle => _selectedTitle is not null;
+
+    public IRelayCommand AddTitleCommand { get; private set; } = null!;
+    public IRelayCommand<TitleSlot> RemoveTitleCommand { get; private set; } = null!;
+    public IRelayCommand<TitleSlot> SelectTitleCommand { get; private set; } = null!;
+    public IRelayCommand<string> SetSelectedTitlePositionCommand { get; private set; } = null!;
+    public IRelayCommand<string> SetSelectedTitleColorCommand { get; private set; } = null!;
+
+    // ---------- Multi-audio (T34) ----------
+    /// <summary>Multi-track audio mixer. Empty = fall back to the legacy
+    /// single-track AudioPath + AudioVolume for back-compat with old
+    /// projects. When this has 1+ entries, the single-track fields are
+    /// ignored during render.</summary>
+    public ObservableCollection<AudioSlot> AudioTracks { get; } = new();
+
+    private AudioSlot? _selectedAudio;
+    public AudioSlot? SelectedAudio
+    {
+        get => _selectedAudio;
+        set
+        {
+            var prev = _selectedAudio;
+            if (SetProperty(ref _selectedAudio, value))
+            {
+                if (prev is not null) prev.IsSelected = false;
+                if (_selectedAudio is not null) _selectedAudio.IsSelected = true;
+                OnPropertyChanged(nameof(HasSelectedAudio));
+            }
+        }
+    }
+    public bool HasAudioTracks => AudioTracks.Count > 0;
+    public bool HasSelectedAudio => _selectedAudio is not null;
+
+    public IRelayCommand AddAudioTrackCommand { get; private set; } = null!;
+    public IRelayCommand<VoiceTake> AddAudioTakeCommand { get; private set; } = null!;
+    public IRelayCommand<AudioSlot> RemoveAudioCommand { get; private set; } = null!;
+    public IRelayCommand<AudioSlot> SelectAudioCommand { get; private set; } = null!;
+
     private double _totalDuration;
     /// <summary>Sum of all slot durations — drives the "0:32 total" stamp.</summary>
     public double TotalDuration { get => _totalDuration; set => SetProperty(ref _totalDuration, value); }
@@ -331,6 +453,25 @@ public sealed class EditorViewModel : ObservableObject
             if (!string.IsNullOrEmpty(p) && _selectedOverlay is not null) _selectedOverlay.Position = p!;
         });
         OverlayTimeline.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasOverlay));
+
+        AddTitleCommand = new RelayCommand(AddTitle);
+        RemoveTitleCommand = new RelayCommand<TitleSlot>(RemoveTitle);
+        SelectTitleCommand = new RelayCommand<TitleSlot>(t => SelectedTitle = t);
+
+        AddAudioTrackCommand = new RelayCommand(AddAudioTrackFromBrowse);
+        AddAudioTakeCommand = new RelayCommand<VoiceTake>(AddAudioFromTake);
+        RemoveAudioCommand = new RelayCommand<AudioSlot>(RemoveAudio);
+        SelectAudioCommand = new RelayCommand<AudioSlot>(a => SelectedAudio = a);
+        AudioTracks.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasAudioTracks));
+        SetSelectedTitlePositionCommand = new RelayCommand<string>(p =>
+        {
+            if (!string.IsNullOrEmpty(p) && _selectedTitle is not null) _selectedTitle.Position = p!;
+        });
+        SetSelectedTitleColorCommand = new RelayCommand<string>(c =>
+        {
+            if (!string.IsNullOrEmpty(c) && _selectedTitle is not null) _selectedTitle.Color = c!;
+        });
+        TitleTimeline.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasTitles));
         ClearTimelineCommand = new RelayCommand(() =>
         {
             if (Timeline.Count == 0 && OverlayTimeline.Count == 0) return;
@@ -459,6 +600,74 @@ public sealed class EditorViewModel : ObservableObject
         PushUndo();
         OverlayTimeline.Remove(slot);
         if (ReferenceEquals(SelectedOverlay, slot)) SelectedOverlay = OverlayTimeline.LastOrDefault();
+    }
+
+    private void AddTitle()
+    {
+        var defaultStart = TotalDuration > 0.5 ? TotalDuration / 2 : 0;
+        var slot = new TitleSlot
+        {
+            Text = "Chanthra",
+            StartSec = defaultStart,
+            DurationSec = 3.0,
+            FontSize = 64,
+            Color = "0xD4A76A",
+            Position = "C",
+        };
+        TitleTimeline.Add(slot);
+        SelectedTitle = slot;
+        ShowToast($"Title added @ {defaultStart:F1}s — edit text in inspector", "ok");
+    }
+
+    private void RemoveTitle(TitleSlot? slot)
+    {
+        if (slot is null) return;
+        TitleTimeline.Remove(slot);
+        if (ReferenceEquals(SelectedTitle, slot)) SelectedTitle = TitleTimeline.LastOrDefault();
+    }
+
+    private void AddAudioTrackFromBrowse()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Add audio track",
+            Filter = "Audio files|*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac|All files|*.*",
+            CheckFileExists = true,
+            Multiselect = true,
+        };
+        if (dlg.ShowDialog() != true) return;
+        foreach (var path in dlg.FileNames)
+            AddAudioFromPath(path, 1.0);
+        ShowToast($"Added {dlg.FileNames.Length} audio track{(dlg.FileNames.Length == 1 ? "" : "s")}", "ok");
+    }
+
+    private void AddAudioFromTake(VoiceTake? take)
+    {
+        if (take is null) return;
+        AddAudioFromPath(take.FilePath, 1.0);
+        ShowToast($"Added · {take.FileName}", "ok");
+    }
+
+    private void AddAudioFromPath(string path, double volume)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        var slot = new AudioSlot
+        {
+            FilePath = path,
+            // Stagger new tracks so back-to-back adds don't all stack at 0.
+            StartSec = AudioTracks.Count > 0 ? AudioTracks.Max(a => a.StartSec) + 1 : 0,
+            Volume = volume,
+            Label = System.IO.Path.GetFileNameWithoutExtension(path),
+        };
+        AudioTracks.Add(slot);
+        SelectedAudio = slot;
+    }
+
+    private void RemoveAudio(AudioSlot? slot)
+    {
+        if (slot is null) return;
+        AudioTracks.Remove(slot);
+        if (ReferenceEquals(SelectedAudio, slot)) SelectedAudio = AudioTracks.LastOrDefault();
     }
 
     /// <summary>Razor split at the current playhead position. Cuts whichever
@@ -604,6 +813,12 @@ public sealed class EditorViewModel : ObservableObject
                 OutputName = OutputName,
                 AudioPath = string.IsNullOrEmpty(AudioPath) ? null : AudioPath,
                 AudioVolume = AudioVolume,
+                AudioTracks = AudioTracks.Select(a => new SlideshowRenderer.AudioTrackDescriptor
+                {
+                    FilePath = a.FilePath,
+                    StartSec = a.StartSec,
+                    Volume = a.Volume,
+                }).ToList(),
                 OverlayTimeline = OverlayTimeline.Select(o => new SlideshowRenderer.OverlayDescriptor
                 {
                     FilePath = o.FilePath,
@@ -611,6 +826,15 @@ public sealed class EditorViewModel : ObservableObject
                     DurationSec = o.DurationSec,
                     Scale = o.Scale,
                     Position = o.Position,
+                }).ToList(),
+                Titles = TitleTimeline.Select(t => new SlideshowRenderer.TitleDescriptor
+                {
+                    Text = t.Text,
+                    StartSec = t.StartSec,
+                    DurationSec = t.DurationSec,
+                    FontSize = t.FontSize,
+                    Color = t.Color,
+                    Position = t.Position,
                 }).ToList(),
             };
             var progress = new Progress<string>(line =>
@@ -713,6 +937,13 @@ public sealed class EditorViewModel : ObservableObject
                 RenderQuality = RenderQuality,
                 AudioPath = string.IsNullOrEmpty(AudioPath) ? null : AudioPath,
                 AudioVolume = AudioVolume,
+                AudioTracks = AudioTracks.Select(a => new NleProjectSerializer.AudioEntry
+                {
+                    FilePath = a.FilePath,
+                    StartSec = a.StartSec,
+                    Volume = a.Volume,
+                    Label = a.Label,
+                }).ToList(),
                 Timeline = Timeline.Select(s => new NleProjectSerializer.SlotEntry
                 {
                     ShotId = s.Clip.ShotId,
@@ -727,6 +958,15 @@ public sealed class EditorViewModel : ObservableObject
                     DurationSec = o.DurationSec,
                     Scale = o.Scale,
                     Position = o.Position,
+                }).ToList(),
+                Titles = TitleTimeline.Select(t => new NleProjectSerializer.TitleEntry
+                {
+                    Text = t.Text,
+                    StartSec = t.StartSec,
+                    DurationSec = t.DurationSec,
+                    FontSize = t.FontSize,
+                    Color = t.Color,
+                    Position = t.Position,
                 }).ToList(),
             };
             NleProjectSerializer.Save(dlg.FileName, file);
@@ -772,6 +1012,7 @@ public sealed class EditorViewModel : ObservableObject
             foreach (var s in Timeline) s.PropertyChanged -= OnSlotChanged;
             Timeline.Clear();
             OverlayTimeline.Clear();
+            TitleTimeline.Clear();
 
             foreach (var entry in file.Timeline)
             {
@@ -792,6 +1033,29 @@ public sealed class EditorViewModel : ObservableObject
                     DurationSec = entry.DurationSec,
                     Scale = entry.Scale,
                     Position = entry.Position,
+                });
+            }
+            foreach (var entry in file.Titles ?? new System.Collections.Generic.List<NleProjectSerializer.TitleEntry>())
+            {
+                TitleTimeline.Add(new TitleSlot
+                {
+                    Text = entry.Text,
+                    StartSec = entry.StartSec,
+                    DurationSec = entry.DurationSec,
+                    FontSize = entry.FontSize,
+                    Color = entry.Color,
+                    Position = entry.Position,
+                });
+            }
+            AudioTracks.Clear();
+            foreach (var entry in file.AudioTracks ?? new System.Collections.Generic.List<NleProjectSerializer.AudioEntry>())
+            {
+                AudioTracks.Add(new AudioSlot
+                {
+                    FilePath = entry.FilePath,
+                    StartSec = entry.StartSec,
+                    Volume = entry.Volume,
+                    Label = entry.Label,
                 });
             }
 

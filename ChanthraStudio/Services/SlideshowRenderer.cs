@@ -40,11 +40,20 @@ public sealed class SlideshowRenderer
         /// renders (crf 18, slow).</summary>
         public string Quality { get; init; } = "full";
 
-        /// <summary>Optional audio track. Empty / missing file → silent video.</summary>
+        /// <summary>Optional single audio track (legacy single-track API).
+        /// Empty / missing file → silent video. Ignored when
+        /// <see cref="AudioTracks"/> has entries — the multi-track mixer
+        /// takes precedence.</summary>
         public string? AudioPath { get; init; }
 
-        /// <summary>0.0 – 1.0 multiplier. Mapped to ffmpeg's volume filter.</summary>
+        /// <summary>0.0 – 1.0 multiplier for the legacy single-track. Mapped
+        /// to ffmpeg's volume filter.</summary>
         public double AudioVolume { get; init; } = 1.0;
+
+        /// <summary>Multi-track audio mixer (T34). Each track plays from its
+        /// own StartSec, scaled by Volume, then mixed via amix. Empty =
+        /// fall back to the legacy single-track AudioPath/AudioVolume above.</summary>
+        public IReadOnlyList<AudioTrackDescriptor> AudioTracks { get; init; } = Array.Empty<AudioTrackDescriptor>();
 
         /// <summary>
         /// Per-clip duration overrides. When supplied (and the same length as
@@ -71,6 +80,45 @@ public sealed class SlideshowRenderer
         /// <c>enable='between(t,start,start+dur)'</c>. Empty = no overlay.
         /// </summary>
         public IReadOnlyList<OverlayDescriptor> OverlayTimeline { get; init; } = Array.Empty<OverlayDescriptor>();
+
+        /// <summary>
+        /// Text title cards layered via ffmpeg's <c>drawtext</c> filter. No
+        /// extra inputs — each title becomes a filter chain stage. Gated by
+        /// the same between(t,start,end) expression as image overlays.
+        /// </summary>
+        public IReadOnlyList<TitleDescriptor> Titles { get; init; } = Array.Empty<TitleDescriptor>();
+    }
+
+    /// <summary>One audio track on the multi-audio mixer. ffmpeg renders
+    /// these via per-input <c>adelay</c> (to honour StartSec) + <c>volume</c>
+    /// + a single <c>amix</c> sum. Missing files are silently skipped.</summary>
+    public sealed class AudioTrackDescriptor
+    {
+        public string FilePath { get; init; } = "";
+        public double StartSec { get; init; }
+        public double Volume { get; init; } = 1.0;
+    }
+
+    /// <summary>One text title overlaid via ffmpeg's <c>drawtext</c> filter.
+    /// drawtext needs a fontfile path on Windows builds — we default to
+    /// Segoe UI Black which ships with Windows; users can drop a custom
+    /// font into the Settings later.</summary>
+    public sealed class TitleDescriptor
+    {
+        public string Text { get; init; } = "";
+        public double StartSec { get; init; }
+        public double DurationSec { get; init; } = 3.0;
+        /// <summary>"TL" | "TR" | "BL" | "BR" | "C".</summary>
+        public string Position { get; init; } = "C";
+        /// <summary>Font size in output pixels. Defaults to 64 (large but
+        /// readable on 1080p output).</summary>
+        public int FontSize { get; init; } = 64;
+        /// <summary>ffmpeg colour spec — name ("gold") or hex ("0xD4A76A").
+        /// Empty falls back to gold.</summary>
+        public string Color { get; init; } = "0xD4A76A";
+        /// <summary>Absolute path to a font file. Empty = use the built-in
+        /// fallback (Windows Segoe UI Black).</summary>
+        public string? FontFile { get; init; }
     }
 
     /// <summary>One picture-in-picture overlay layered on the master video.
@@ -184,7 +232,16 @@ public sealed class SlideshowRenderer
     /// </summary>
     private static List<string> BuildArgList(Spec spec, string outputPath)
     {
-        var hasAudio = !string.IsNullOrWhiteSpace(spec.AudioPath) && File.Exists(spec.AudioPath);
+        // Multi-track audio takes precedence over the legacy single-track.
+        // Filter both lists down to entries that still exist on disk.
+        var audioTracks = spec.AudioTracks
+            .Where(a => !string.IsNullOrEmpty(a.FilePath) && File.Exists(a.FilePath))
+            .ToList();
+        var hasMultiAudio = audioTracks.Count > 0;
+        var hasLegacyAudio = !hasMultiAudio
+            && !string.IsNullOrWhiteSpace(spec.AudioPath)
+            && File.Exists(spec.AudioPath);
+        var hasAudio = hasMultiAudio || hasLegacyAudio;
         // Filter the overlay descriptors down to those whose file still exists
         // on disk — a clip deleted from Library while sitting on the overlay
         // track shouldn't tank the whole render.
@@ -213,10 +270,19 @@ public sealed class SlideshowRenderer
             args.Add("-i");         args.Add(o.FilePath);
         }
         var audioIndex = spec.Clips.Count + overlays.Count;
-        if (hasAudio)
+        if (hasLegacyAudio)
         {
             args.Add("-i");
             args.Add(spec.AudioPath!);
+        }
+        else if (hasMultiAudio)
+        {
+            // One -i per track. Indices start at audioIndex, in track order.
+            foreach (var t in audioTracks)
+            {
+                args.Add("-i");
+                args.Add(t.FilePath);
+            }
         }
 
         // filter_complex value is a single argv slot — internal commas and
@@ -268,6 +334,13 @@ public sealed class SlideshowRenderer
             filter.Append($"concat=n={spec.Clips.Count}:v=1:a=0[out]");
         }
 
+        // Text titles via drawtext (T33). Each title is a separate filter
+        // stage chained onto whatever the current video label is — so titles
+        // sit ON TOP of any image overlays that ran before. No extra inputs;
+        // ffmpeg renders the text inline.
+        var titles = spec.Titles.Where(t => !string.IsNullOrWhiteSpace(t.Text)).ToList();
+        var hasTitles = titles.Count > 0;
+
         // Multi-overlay picture-in-picture (T22). Each entry scales + format-
         // converts its source into a labelled stream, then chains an overlay
         // filter against the running compositor. Final label remaps so the
@@ -298,22 +371,89 @@ public sealed class SlideshowRenderer
                 };
                 var startStr = o.StartSec.ToString("F2", inv);
                 var endStr = (o.StartSec + o.DurationSec).ToString("F2", inv);
-                var outLabel = oi == overlays.Count - 1 ? "outpip" : $"pip{oi}";
+                var lastStage = oi == overlays.Count - 1 && !hasTitles;
+                var outLabel = lastStage ? "outpip" : $"pip{oi}";
                 filter.Append($";[{lastLabel}][ov{oi}]overlay={xExpr}:{yExpr}:enable='between(t,{startStr},{endStr})'[{outLabel}]");
                 lastLabel = outLabel;
             }
         }
-        if (hasAudio)
+
+        if (hasTitles)
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            // Pick a starting label: the last overlay-chain output, or the
+            // raw [out] from the concat/xfade chain if no overlays ran.
+            string lastLabel = hasOverlay ? (overlays.Count - 1 + 0 >= 0 ? $"pip{overlays.Count - 1}" : "out") : "out";
+            // When the overlay chain's last stage is also the final, it was
+            // labelled outpip — but we just disabled that above when titles
+            // are present, so the last overlay actually labelled pip{N-1}.
+            // Either way the bookkeeping above produced `lastLabel` matching
+            // whatever we wrote.
+            var defaultFont = ResolveDefaultFontFile();
+            for (int ti = 0; ti < titles.Count; ti++)
+            {
+                var t = titles[ti];
+                var fontFile = string.IsNullOrEmpty(t.FontFile) ? defaultFont : t.FontFile;
+                var color = string.IsNullOrEmpty(t.Color) ? "0xD4A76A" : t.Color;
+                // Title positions follow the same TL/TR/BL/BR/C convention.
+                // drawtext uses `text_w`/`text_h` as `tw`/`th`. The X/Y
+                // expressions also reference `w`/`h` for the frame size.
+                var (xExpr, yExpr) = t.Position switch
+                {
+                    "TL" => ("40",                  "40"),
+                    "BL" => ("40",                  "h-th-40"),
+                    "BR" => ("w-tw-40",             "h-th-40"),
+                    "C"  => ("(w-tw)/2",            "(h-th)/2"),
+                    _    => ("w-tw-40",             "40"),  // TR / default
+                };
+                var startStr = t.StartSec.ToString("F2", inv);
+                var endStr = (t.StartSec + t.DurationSec).ToString("F2", inv);
+                var safeText = EscapeDrawtext(t.Text);
+                var fontArg = string.IsNullOrEmpty(fontFile) ? "" : $"fontfile='{EscapePathForFilter(fontFile)}':";
+                var lastStage = ti == titles.Count - 1;
+                var outLabel = lastStage ? "outpip" : $"tt{ti}";
+                filter.Append($";[{lastLabel}]drawtext={fontArg}text='{safeText}':fontsize={t.FontSize}:fontcolor={color}:x={xExpr}:y={yExpr}:enable='between(t,{startStr},{endStr})'[{outLabel}]");
+                lastLabel = outLabel;
+            }
+        }
+        if (hasLegacyAudio)
         {
             var vol = Math.Clamp(spec.AudioVolume, 0.0, 2.0);
             filter.Append($";[{audioIndex}:a]volume={vol.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}[a]");
+        }
+        else if (hasMultiAudio)
+        {
+            // Multi-track mixer (T34). For each track:
+            //   1. adelay={startMs}|{startMs}   — push the audio onto the timeline
+            //      at its StartSec. The double argument is "left|right" channels.
+            //   2. volume={vol}                  — per-track gain (0..2 clamped)
+            //   3. label as [aN]                 — feed into a single amix at the end
+            // Then amix=inputs=N:duration=longest:dropout_transition=0[a]
+            // (dropout_transition=0 prevents amix from auto-ducking when shorter
+            //  inputs end, which would otherwise sound like a level dip).
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            for (int ai = 0; ai < audioTracks.Count; ai++)
+            {
+                var t = audioTracks[ai];
+                var input = audioIndex + ai;
+                var startMs = (int)Math.Round(Math.Max(0, t.StartSec) * 1000);
+                var vol = Math.Clamp(t.Volume, 0.0, 2.0);
+                if (startMs > 0)
+                    filter.Append($";[{input}:a]adelay={startMs}|{startMs},volume={vol.ToString("F2", inv)}[a{ai}]");
+                else
+                    filter.Append($";[{input}:a]volume={vol.ToString("F2", inv)}[a{ai}]");
+            }
+            // Mix all labelled streams.
+            filter.Append(";");
+            for (int ai = 0; ai < audioTracks.Count; ai++) filter.Append($"[a{ai}]");
+            filter.Append($"amix=inputs={audioTracks.Count}:duration=longest:dropout_transition=0[a]");
         }
 
         args.Add("-filter_complex");
         args.Add(filter.ToString());
 
         // When the overlay filter ran, the final video label is [outpip], not [out].
-        args.Add("-map");           args.Add(hasOverlay ? "[outpip]" : "[out]");
+        args.Add("-map");           args.Add((hasOverlay || hasTitles) ? "[outpip]" : "[out]");
         if (hasAudio)
         {
             args.Add("-map");       args.Add("[a]");
@@ -382,6 +522,58 @@ public sealed class SlideshowRenderer
         var sb = new StringBuilder(raw.Length);
         foreach (var ch in raw) sb.Append(Array.IndexOf(invalid, ch) >= 0 ? '_' : ch);
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Escape a string for inclusion in an ffmpeg <c>drawtext=text='X'</c>
+    /// argument. ffmpeg's filter grammar uses single quotes as the
+    /// delimiter and backslash-escapes a small set of meta characters.
+    /// Newlines become explicit <c>\n</c> so multi-line titles render
+    /// correctly.
+    /// </summary>
+    private static string EscapeDrawtext(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "";
+        var sb = new StringBuilder(raw.Length + 8);
+        foreach (var ch in raw)
+        {
+            switch (ch)
+            {
+                // ffmpeg filter language: ' \ : , % \n need escaping inside text=''.
+                case '\'': sb.Append(@"\'"); break;
+                case '\\': sb.Append(@"\\"); break;
+                case ':':  sb.Append(@"\:"); break;
+                case ',':  sb.Append(@"\,"); break;
+                case '%':  sb.Append(@"\%"); break;
+                case '\n': sb.Append(@"\n"); break;
+                default:   sb.Append(ch); break;
+            }
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Escape a Windows path for use inside a filter argument —
+    /// turns the drive colon into a doubled backslash form ffmpeg's
+    /// fontfile= recognises.</summary>
+    private static string EscapePathForFilter(string path)
+        => path.Replace(@"\", "/").Replace(":", @"\:");
+
+    private static string ResolveDefaultFontFile()
+    {
+        // Windows ships Segoe UI Black in System32\Fonts. Cormorant Garamond
+        // (the brand display font) isn't a system font, so we don't try it
+        // — users wanting Cormorant titles should drop the .ttf path in
+        // TitleDescriptor.FontFile explicitly.
+        var win = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var candidates = new[]
+        {
+            Path.Combine(win, "Fonts", "seguibl.ttf"),  // Segoe UI Black
+            Path.Combine(win, "Fonts", "segoeuib.ttf"), // Segoe UI Bold
+            Path.Combine(win, "Fonts", "arialbd.ttf"),  // Arial Bold
+            Path.Combine(win, "Fonts", "arial.ttf"),    // last resort
+        };
+        foreach (var c in candidates) if (File.Exists(c)) return c;
+        return "";  // drawtext will error gracefully; ActivityLog catches it.
     }
 }
 

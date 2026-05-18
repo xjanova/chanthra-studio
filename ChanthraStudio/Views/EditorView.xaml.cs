@@ -1,7 +1,11 @@
+using System;
+using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using ChanthraStudio.Models;
 using ChanthraStudio.Services;
 using ChanthraStudio.ViewModels;
@@ -17,6 +21,14 @@ public partial class EditorView : UserControl
     private Point? _dragOrigin;
     private TimelineSlot? _dragSlot;
 
+    // Preview-playback bookkeeping.
+    private static readonly System.Collections.Generic.HashSet<string> _videoExt = new(System.StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v",
+    };
+    private DispatcherTimer? _previewTick;
+    private bool _previewLoaded;
+
     public EditorView()
     {
         InitializeComponent();
@@ -24,7 +36,178 @@ public partial class EditorView : UserControl
         {
             if (DataContext is null)
                 DataContext = new EditorViewModel(App.Current.Studio);
+
+            // Subscribe to VM.Selected changes so the MediaElement reloads its
+            // source whenever the user clicks a different timeline slot.
+            if (DataContext is INotifyPropertyChanged inpc)
+            {
+                inpc.PropertyChanged += OnVmPropertyChanged;
+                // Initial load — apply whatever slot is selected at first paint.
+                LoadPreviewFromSelected();
+            }
         };
+        Unloaded += (_, _) =>
+        {
+            if (DataContext is INotifyPropertyChanged inpc)
+                inpc.PropertyChanged -= OnVmPropertyChanged;
+            StopPreviewTicker();
+            try { PreviewMedia.Stop(); PreviewMedia.Close(); } catch { }
+        };
+    }
+
+    private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(EditorViewModel.Selected))
+            LoadPreviewFromSelected();
+    }
+
+    /// <summary>
+    /// Inspect <see cref="EditorViewModel.Selected"/>, load its file path into
+    /// the MediaElement if the clip is a video, hide the transport bar
+    /// otherwise. Called on every Selected change so the preview always
+    /// matches the inspector's focus.
+    /// </summary>
+    private void LoadPreviewFromSelected()
+    {
+        if (DataContext is not EditorViewModel vm) return;
+        StopPreviewTicker();
+        try { PreviewMedia.Stop(); } catch { }
+
+        if (vm.Selected is null)
+        {
+            PreviewMedia.Source = null;
+            TransportBar.Visibility = Visibility.Collapsed;
+            _previewLoaded = false;
+            return;
+        }
+
+        var path = vm.Selected.FilePath ?? "";
+        var ext = Path.GetExtension(path);
+        if (!_videoExt.Contains(ext) || !File.Exists(path))
+        {
+            // Image or missing-on-disk → MediaElement stays blank, Image
+            // converter handles the still preview behind it.
+            PreviewMedia.Source = null;
+            TransportBar.Visibility = Visibility.Collapsed;
+            _previewLoaded = false;
+            return;
+        }
+
+        try
+        {
+            PreviewMedia.Source = new Uri(path, UriKind.Absolute);
+            TransportBar.Visibility = Visibility.Visible;
+            PreviewPlayGlyph.Text = "▶";
+            _previewLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn("preview", $"failed to load {Path.GetFileName(path)}: {ex.Message}");
+            PreviewMedia.Source = null;
+            TransportBar.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void PreviewPlayPause_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_previewLoaded) return;
+        if (PreviewPlayGlyph.Text == "▶")
+        {
+            try { PreviewMedia.Play(); } catch { return; }
+            PreviewPlayGlyph.Text = "⏸";
+            StartPreviewTicker();
+        }
+        else
+        {
+            try { PreviewMedia.Pause(); } catch { }
+            PreviewPlayGlyph.Text = "▶";
+            StopPreviewTicker();
+        }
+    }
+
+    private void PreviewRewind_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_previewLoaded) return;
+        try
+        {
+            PreviewMedia.Position = TimeSpan.Zero;
+            PreviewTimecode.Text = "0:00";
+        }
+        catch { }
+    }
+
+    private void PreviewMute_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_previewLoaded) return;
+        PreviewMedia.IsMuted = !PreviewMedia.IsMuted;
+        PreviewMuteGlyph.Text = PreviewMedia.IsMuted ? "🔇" : "🔊";
+    }
+
+    private void PreviewMedia_Ended(object sender, RoutedEventArgs e)
+    {
+        // Loop back to start so the user can re-watch without clicking
+        // rewind — most NLE preview panes do this by default.
+        try
+        {
+            PreviewMedia.Position = TimeSpan.Zero;
+            PreviewMedia.Play();
+        }
+        catch { }
+    }
+
+    private void PreviewMedia_Opened(object sender, RoutedEventArgs e)
+    {
+        StartPreviewTicker();
+    }
+
+    private void PreviewMedia_Failed(object sender, ExceptionRoutedEventArgs e)
+    {
+        ActivityLog.Warn("preview", $"MediaFailed: {e.ErrorException?.Message ?? "unknown"}");
+        TransportBar.Visibility = Visibility.Collapsed;
+        _previewLoaded = false;
+        StopPreviewTicker();
+    }
+
+    private void StartPreviewTicker()
+    {
+        if (_previewTick is not null) return;
+        _previewTick = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(250),
+        };
+        _previewTick.Tick += (_, _) =>
+        {
+            try
+            {
+                var p = PreviewMedia.Position;
+                PreviewTimecode.Text = $"{(int)p.TotalMinutes}:{p.Seconds:D2}";
+            }
+            catch { }
+        };
+        _previewTick.Start();
+    }
+
+    private void StopPreviewTicker()
+    {
+        _previewTick?.Stop();
+        _previewTick = null;
+    }
+
+    /// <summary>
+    /// Editor-wide preview hotkeys that need code-behind plumbing rather
+    /// than VM commands (because the MediaElement instance lives in XAML
+    /// and isn't exposed through the VM). Space toggles play/pause.
+    /// Skipped when the focused element is a TextBox so typing into the
+    /// output-name / brief / prompt fields keeps working normally.
+    /// </summary>
+    private void Editor_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.OriginalSource is TextBox) return;
+        if (e.Key == Key.Space)
+        {
+            PreviewPlayPause_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
     }
 
     private void Recent_Click(object sender, RoutedEventArgs e)

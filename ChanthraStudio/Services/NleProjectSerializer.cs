@@ -48,9 +48,29 @@ public static class NleProjectSerializer
 
         public string? AudioPath { get; set; }
         public double AudioVolume { get; set; } = 1.0;
+        public List<AudioEntry> AudioTracks { get; set; } = new();
 
         public List<SlotEntry> Timeline { get; set; } = new();
         public List<OverlayEntry> Overlay { get; set; } = new();
+        public List<TitleEntry> Titles { get; set; } = new();
+    }
+
+    public sealed class AudioEntry
+    {
+        public string FilePath { get; set; } = "";
+        public double StartSec { get; set; }
+        public double Volume { get; set; } = 1.0;
+        public string Label { get; set; } = "";
+    }
+
+    public sealed class TitleEntry
+    {
+        public string Text { get; set; } = "";
+        public double StartSec { get; set; }
+        public double DurationSec { get; set; } = 3.0;
+        public int FontSize { get; set; } = 64;
+        public string Color { get; set; } = "0xD4A76A";
+        public string Position { get; set; } = "C";
     }
 
     public sealed class SlotEntry

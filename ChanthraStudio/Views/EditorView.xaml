@@ -9,7 +9,9 @@
     d:DataContext="{d:DesignInstance vm:EditorViewModel}"
     d:DesignHeight="900"
     d:DesignWidth="1500"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    PreviewKeyDown="Editor_PreviewKeyDown"
+    Focusable="True">
 
     <UserControl.Resources>
         <Style BasedOn="{StaticResource ThinScrollBar}" TargetType="ScrollBar" />
@@ -204,13 +206,25 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!--  Preview pane — shows the selected slot's thumbnail  -->
+                <!--  Preview pane — image OR live MediaElement for the selected slot's clip.  -->
                 <Border Grid.Row="0" Margin="22" CornerRadius="10" ClipToBounds="True" Effect="{StaticResource ShadowCanvas}">
                     <Grid>
                         <Border Background="{StaticResource BrushBgInset}" />
+                        <!--  Image layer for still clips (PNG/JPG/etc.).  -->
                         <Image
                             Source="{Binding Selected.FilePath, Converter={StaticResource ClipPathToImage}}"
                             Stretch="Uniform" />
+                        <!--  MediaElement layer for video clips. Source is set imperatively in code-behind
+                              so we can detect file-extension-based playability cleanly.  -->
+                        <MediaElement
+                            x:Name="PreviewMedia"
+                            LoadedBehavior="Manual"
+                            UnloadedBehavior="Stop"
+                            ScrubbingEnabled="True"
+                            Stretch="Uniform"
+                            MediaEnded="PreviewMedia_Ended"
+                            MediaOpened="PreviewMedia_Opened"
+                            MediaFailed="PreviewMedia_Failed" />
                         <TextBlock
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
@@ -231,6 +245,60 @@
                             <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}">
                                 <Run Text="SLOT · " /><Run Text="{Binding Selected.FileName, Mode=OneWay}" />
                             </TextBlock>
+                        </Border>
+                        <!--  Playback transport bar — visible only when a video slot is loaded.  -->
+                        <Border
+                            x:Name="TransportBar"
+                            Margin="14"
+                            Padding="12,6"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            Background="{StaticResource BrushBlackOverlay65}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="22"
+                            Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal">
+                                <Button
+                                    x:Name="PreviewRewindBtn"
+                                    Width="28"
+                                    Height="28"
+                                    Margin="0,0,4,0"
+                                    Padding="0"
+                                    Click="PreviewRewind_Click"
+                                    Style="{StaticResource ButtonIcon}"
+                                    ToolTip="Restart from 0:00">
+                                    <TextBlock FontFamily="{StaticResource FontMono}" FontSize="13" Foreground="{StaticResource BrushText2}" Text="⟲" />
+                                </Button>
+                                <Button
+                                    x:Name="PreviewPlayBtn"
+                                    Width="36"
+                                    Height="32"
+                                    Margin="0,0,4,0"
+                                    Padding="0"
+                                    Click="PreviewPlayPause_Click"
+                                    Style="{StaticResource ButtonSummonCta}"
+                                    ToolTip="Play / pause (space)">
+                                    <TextBlock x:Name="PreviewPlayGlyph" FontFamily="{StaticResource FontMono}" FontSize="14" Foreground="#FF1A0D05" Text="▶" />
+                                </Button>
+                                <Button
+                                    x:Name="PreviewMuteBtn"
+                                    Width="28"
+                                    Height="28"
+                                    Padding="0"
+                                    Click="PreviewMute_Click"
+                                    Style="{StaticResource ButtonIcon}"
+                                    ToolTip="Mute / unmute">
+                                    <TextBlock x:Name="PreviewMuteGlyph" FontFamily="{StaticResource FontMono}" FontSize="13" Foreground="{StaticResource BrushText2}" Text="🔊" />
+                                </Button>
+                                <TextBlock
+                                    x:Name="PreviewTimecode"
+                                    Margin="10,0,4,0"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource TextMonoGold}"
+                                    FontSize="10.5"
+                                    Text="0:00" />
+                            </StackPanel>
                         </Border>
                     </Grid>
                 </Border>
@@ -477,6 +545,135 @@
                             </StackPanel>
                         </Border>
 
+                        <!--  Title cards (T33) — text-only overlays via ffmpeg drawtext.  -->
+                        <Border Margin="0,12,0,0" Padding="14,10" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource TextMonoUpper}" Text="TITLE CARDS · TEXT" />
+                                    <Button Grid.Column="1" Padding="8,3" Command="{Binding AddTitleCommand}" Content="+ Title" Style="{StaticResource ButtonPill}" />
+                                </Grid>
+                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="9.5" Foreground="{StaticResource BrushText4}" Text="Layered via ffmpeg drawtext — no PNG required. Brand-locked palette." />
+
+                                <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding TitleTimeline}"
+                                              Visibility="{Binding HasTitles, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Margin="0,0,0,4" Padding="8,6" Background="{StaticResource BrushSurface02}" BorderThickness="1" CornerRadius="6" Cursor="Hand">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="BorderBrush" Value="{StaticResource BrushLineHairline}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                <Setter Property="BorderBrush" Value="{StaticResource BrushGoldHi}" />
+                                                                <Setter Property="Effect" Value="{StaticResource ShadowGoldGlowSoft}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <Border.InputBindings>
+                                                    <MouseBinding MouseAction="LeftClick"
+                                                                  Command="{Binding DataContext.SelectTitleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  CommandParameter="{Binding}" />
+                                                </Border.InputBindings>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="9" Foreground="{StaticResource BrushText4}" Text="{Binding Summary}" />
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1" Width="22" Height="22" Padding="0"
+                                                            Command="{Binding DataContext.RemoveTitleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            Style="{StaticResource ButtonIcon}">
+                                                        <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushCrimson}" Text="×" />
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!--  Inspector for the selected title  -->
+                                <StackPanel Visibility="{Binding HasSelectedTitle, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="TEXT" />
+                                    <Border Margin="0,4,0,0" Padding="8,5" Background="{StaticResource BrushSurface03}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="4">
+                                        <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="14" Foreground="{StaticResource BrushText1}" AcceptsReturn="True" TextWrapping="Wrap" MaxLines="3" Text="{Binding SelectedTitle.Text, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Border>
+
+                                    <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="START · DURATION" />
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider Grid.Column="0" Minimum="0" Maximum="120" SmallChange="0.5" LargeChange="2" Style="{StaticResource GoldSlider}" Value="{Binding SelectedTitle.StartSec, Mode=TwoWay}" />
+                                        <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding SelectedTitle.StartSec, StringFormat={}{0:F1}s}" />
+                                    </Grid>
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider Grid.Column="0" Minimum="0.5" Maximum="15" SmallChange="0.5" LargeChange="2" Style="{StaticResource GoldSlider}" Value="{Binding SelectedTitle.DurationSec, Mode=TwoWay}" />
+                                        <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding SelectedTitle.DurationSec, StringFormat={}{0:F1}s}" />
+                                    </Grid>
+
+                                    <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="FONT SIZE" />
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider Grid.Column="0" Minimum="24" Maximum="200" SmallChange="2" LargeChange="20" Style="{StaticResource GoldSlider}" Value="{Binding SelectedTitle.FontSize, Mode=TwoWay}" />
+                                        <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding SelectedTitle.FontSize, StringFormat={}{0}px}" />
+                                    </Grid>
+
+                                    <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="COLOUR" />
+                                    <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                                        <RadioButton GroupName="tcol" Margin="0,0,4,0" Content="Gold" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetSelectedTitleColorCommand}" CommandParameter="0xD4A76A"
+                                                     IsChecked="{Binding SelectedTitle.Color, Converter={StaticResource StringEquals}, ConverterParameter=0xD4A76A, Mode=OneWay}" />
+                                        <RadioButton GroupName="tcol" Margin="0,0,4,0" Content="Crimson" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetSelectedTitleColorCommand}" CommandParameter="0xB03346"
+                                                     IsChecked="{Binding SelectedTitle.Color, Converter={StaticResource StringEquals}, ConverterParameter=0xB03346, Mode=OneWay}" />
+                                        <RadioButton GroupName="tcol" Margin="0,0,4,0" Content="Mauve" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetSelectedTitleColorCommand}" CommandParameter="0xB8A5D0"
+                                                     IsChecked="{Binding SelectedTitle.Color, Converter={StaticResource StringEquals}, ConverterParameter=0xB8A5D0, Mode=OneWay}" />
+                                        <RadioButton GroupName="tcol" Content="White" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetSelectedTitleColorCommand}" CommandParameter="0xFFFFFF"
+                                                     IsChecked="{Binding SelectedTitle.Color, Converter={StaticResource StringEquals}, ConverterParameter=0xFFFFFF, Mode=OneWay}" />
+                                    </StackPanel>
+
+                                    <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="POSITION" />
+                                    <UniformGrid Margin="0,4,0,0" Columns="3" Rows="2">
+                                        <RadioButton GroupName="tpos" Margin="0,0,2,2" Content="↖ TL" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetSelectedTitlePositionCommand}" CommandParameter="TL"
+                                                     IsChecked="{Binding SelectedTitle.Position, Converter={StaticResource StringEquals}, ConverterParameter=TL, Mode=OneWay}" />
+                                        <RadioButton GroupName="tpos" Margin="0,0,2,2" Content="● C" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetSelectedTitlePositionCommand}" CommandParameter="C"
+                                                     IsChecked="{Binding SelectedTitle.Position, Converter={StaticResource StringEquals}, ConverterParameter=C, Mode=OneWay}" />
+                                        <RadioButton GroupName="tpos" Margin="0,0,0,2" Content="↗ TR" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetSelectedTitlePositionCommand}" CommandParameter="TR"
+                                                     IsChecked="{Binding SelectedTitle.Position, Converter={StaticResource StringEquals}, ConverterParameter=TR, Mode=OneWay}" />
+                                        <RadioButton GroupName="tpos" Margin="0,0,2,0" Content="↙ BL" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetSelectedTitlePositionCommand}" CommandParameter="BL"
+                                                     IsChecked="{Binding SelectedTitle.Position, Converter={StaticResource StringEquals}, ConverterParameter=BL, Mode=OneWay}" />
+                                        <Border />
+                                        <RadioButton GroupName="tpos" Content="↘ BR" Style="{StaticResource ChipRadio}"
+                                                     Command="{Binding SetSelectedTitlePositionCommand}" CommandParameter="BR"
+                                                     IsChecked="{Binding SelectedTitle.Position, Converter={StaticResource StringEquals}, ConverterParameter=BR, Mode=OneWay}" />
+                                    </UniformGrid>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
                         <!--  Overlay track (multi-slot, T22)  -->
                         <Border Margin="0,12,0,0" Padding="14,10" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
                             <StackPanel>
@@ -592,7 +789,85 @@
                             </StackPanel>
                         </Border>
 
-                        <!--  Audio track  -->
+                        <!--  Multi-audio mixer (T34). Active when AudioTracks has 1+ rows;
+                              the legacy single-track fields below stay as a back-compat fallback.  -->
+                        <Border Margin="0,12,0,0" Padding="14,10" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource TextMonoUpper}" Text="AUDIO MIXER · MULTI-TRACK" />
+                                    <Button Grid.Column="1" Padding="8,3" Command="{Binding AddAudioTrackCommand}" Content="+ Track" Style="{StaticResource ButtonPill}" />
+                                </Grid>
+                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="9.5" Foreground="{StaticResource BrushText4}" Text="Each track plays from its own start time, mixed via amix." />
+
+                                <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding AudioTracks}"
+                                              Visibility="{Binding HasAudioTracks, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Margin="0,0,0,4" Padding="8,6" Background="{StaticResource BrushSurface02}" BorderThickness="1" CornerRadius="6" Cursor="Hand">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="BorderBrush" Value="{StaticResource BrushLineHairline}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                <Setter Property="BorderBrush" Value="{StaticResource BrushGoldHi}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <Border.InputBindings>
+                                                    <MouseBinding MouseAction="LeftClick"
+                                                                  Command="{Binding DataContext.SelectAudioCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  CommandParameter="{Binding}" />
+                                                </Border.InputBindings>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock FontFamily="{StaticResource FontUI}" FontSize="11" Foreground="{StaticResource BrushText1}" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="9" Foreground="{StaticResource BrushText4}" Text="{Binding Summary}" />
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1" Width="22" Height="22" Padding="0"
+                                                            Command="{Binding DataContext.RemoveAudioCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            Style="{StaticResource ButtonIcon}">
+                                                        <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushCrimson}" Text="×" />
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!--  Inspector for the selected audio track  -->
+                                <StackPanel Visibility="{Binding HasSelectedAudio, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="START · VOLUME" />
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider Grid.Column="0" Minimum="0" Maximum="120" SmallChange="0.5" LargeChange="2" Style="{StaticResource GoldSlider}" Value="{Binding SelectedAudio.StartSec, Mode=TwoWay}" />
+                                        <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding SelectedAudio.StartSec, StringFormat={}{0:F1}s}" />
+                                    </Grid>
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider Grid.Column="0" Minimum="0" Maximum="2" SmallChange="0.1" LargeChange="0.5" Style="{StaticResource GoldSlider}" Value="{Binding SelectedAudio.Volume, Mode=TwoWay}" />
+                                        <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding SelectedAudio.Volume, StringFormat={}{0:F2}×}" />
+                                    </Grid>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!--  Audio track (legacy single-track fallback — used when AudioTracks is empty)  -->
                         <Border Margin="0,12,0,0" Padding="14,10" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
                             <StackPanel>
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Text="AUDIO · OPTIONAL" />
