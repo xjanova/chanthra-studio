@@ -95,11 +95,12 @@ public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var children = InternalChildren;  // touch to wire up the generator
+        // Touch InternalChildren to wire up the generator before we query it.
+        var _ = InternalChildren;
         var generator = ItemContainerGenerator;
+        var concreteGen = generator as ItemContainerGenerator;
         var itemsOwner = ItemsControl.GetItemsOwner(this);
 
-        // Columns per row = how many ItemWidth fit in availableWidth.
         var cols = Math.Max(1, (int)Math.Floor(availableSize.Width / ItemWidth));
         var itemCount = itemsOwner?.Items.Count ?? 0;
         var rows = (int)Math.Ceiling((double)itemCount / cols);
@@ -116,20 +117,46 @@ public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
         var lastVisibleRow  = (int)Math.Floor((_offset.Y + _viewport.Height) / ItemHeight);
         // 1-row cache band above + below to keep scrolling smooth.
         var firstRow = Math.Max(0, firstVisibleRow - 1);
-        var lastRow  = Math.Min(rows - 1, lastVisibleRow + 1);
-        var firstItem = firstRow * cols;
-        var lastItem  = Math.Min(itemCount - 1, (lastRow + 1) * cols - 1);
+        var lastRow  = Math.Min(Math.Max(0, rows - 1), lastVisibleRow + 1);
+        var firstItem = itemCount == 0 ? 0 : firstRow * cols;
+        var lastItem  = itemCount == 0 ? -1 : Math.Min(itemCount - 1, (lastRow + 1) * cols - 1);
+
+        // ============================================================
+        // Step 1: recycle out-of-range realised children FIRST. Walking
+        // backwards so removals don't shift unvisited indices. After this
+        // pass, InternalChildren contains only containers whose item
+        // index sits in [firstItem..lastItem] (or 0 of them when the
+        // collection went empty). (7.20 fix — review CRIT #1 + #2)
+        // ============================================================
+        if (concreteGen is not null)
+        {
+            for (int childIdx = InternalChildren.Count - 1; childIdx >= 0; childIdx--)
+            {
+                var child = InternalChildren[childIdx];
+                var itemIdx = concreteGen.IndexFromContainer(child);
+                if (itemIdx < firstItem || itemIdx > lastItem)
+                {
+                    var pos = new GeneratorPosition(childIdx, 0);
+                    generator.Remove(pos, 1);
+                    RemoveInternalChildRange(childIdx, 1);
+                }
+            }
+        }
 
         if (itemCount == 0)
         {
-            // Nothing to realise — clean up any leftover containers.
-            CleanUpItems(0, -1, generator);
             ScrollOwner?.InvalidateScrollInfo();
             return availableSize;
         }
 
-        // Realise the visible band; recycle items outside it.
-        if (generator is not null && itemCount > 0)
+        // ============================================================
+        // Step 2: generate any IN-range items that don't have a realised
+        // container yet. New containers are appended to the END of
+        // InternalChildren — ArrangeOverride does NOT rely on the child
+        // order matching item order; it asks the generator for each
+        // child's item index and computes col/row from that.
+        // ============================================================
+        if (generator is not null)
         {
             var startPos = generator.GeneratorPositionFromIndex(firstItem);
             using (generator.StartAt(startPos, GeneratorDirection.Forward, true))
@@ -140,14 +167,12 @@ public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
                     if (child is null) continue;
                     if (isNew)
                     {
-                        if (i < Children.Count) InsertInternalChild(i, child);
-                        else AddInternalChild(child);
+                        AddInternalChild(child);
                         generator.PrepareItemContainer(child);
                     }
                     child.Measure(new Size(ItemWidth, ItemHeight));
                 }
             }
-            CleanUpItems(firstItem, lastItem, generator);
         }
 
         ScrollOwner?.InvalidateScrollInfo();
@@ -176,23 +201,7 @@ public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
         return finalSize;
     }
 
-    /// <summary>
-    /// Recycle every realised container outside <c>[firstActive..lastActive]</c>.
-    /// Uses <see cref="ItemContainerGenerator.Remove"/> + <see cref="VirtualizingPanel.RemoveInternalChildRange"/>
-    /// which together let WPF reuse containers via the recycling strategy.
-    /// </summary>
-    private void CleanUpItems(int firstActive, int lastActive, IItemContainerGenerator? generator)
-    {
-        if (generator is null) return;
-        for (int i = InternalChildren.Count - 1; i >= 0; i--)
-        {
-            var pos = new GeneratorPosition(i, 0);
-            var index = generator.IndexFromGeneratorPosition(pos);
-            if (index < firstActive || index > lastActive)
-            {
-                generator.Remove(pos, 1);
-                RemoveInternalChildRange(i, 1);
-            }
-        }
-    }
+    // CleanUpItems removed in the 7.20 fix — MeasureOverride now handles
+    // recycle-first, generate-second inline so the index conventions stay
+    // unambiguous (review CRIT #1 + #2).
 }

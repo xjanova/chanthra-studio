@@ -172,14 +172,13 @@ public sealed class TimelineSlot : ObservableObject
     private double _panEndY = 0.5;
     public double PanEndY { get => _panEndY; set => SetProperty(ref _panEndY, Math.Clamp(value, 0, 1)); }
 
-    /// <summary>True when the slot has a non-identity Ken Burns
-    /// (start ≠ end on zoom OR pan, or starting zoom > 100%). The renderer
-    /// skips zoompan emission when this is false so the common static-
-    /// slideshow case stays cheap.</summary>
+    /// <summary>True when the slot has a non-identity Ken Burns zoom.
+    /// Pan WITHOUT a zoom > 100% is a no-op (zoompan's visible window
+    /// equals the frame so there's nothing to pan TO), so we gate on
+    /// zoom motion only — the UI tells the user pan needs zoom > 100%.
+    /// (7.20 fix — review LOGIC #4)</summary>
     public bool HasKenBurns =>
-        Math.Abs(_zoomStartPct - _zoomEndPct) > 0.5 || _zoomStartPct > 100.5 ||
-        Math.Abs(_panStartX - 0.5) > 0.001 || Math.Abs(_panEndX - 0.5) > 0.001 ||
-        Math.Abs(_panStartY - 0.5) > 0.001 || Math.Abs(_panEndY - 0.5) > 0.001;
+        Math.Abs(_zoomStartPct - _zoomEndPct) > 0.5 || _zoomStartPct > 100.5;
 
     // ---------- Color grading (T48 · 7.18) ----------
     /// <summary>Linear brightness adjustment, -0.5 to +0.5. ffmpeg's eq

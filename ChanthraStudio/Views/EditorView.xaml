@@ -556,8 +556,12 @@
                                             ToolTip="Set zoom 115 → 100% — slow camera pull-back" />
                                 </StackPanel>
 
-                                <!--  Pan target (T50 / 7.19) — start / end normalized 0..1 with 0.5 = centre  -->
-                                <TextBlock Margin="0,12,0,0" Style="{StaticResource TextMonoUpper}" Text="PAN · START X / Y" />
+                                <!--  Pan target (T50 / 7.19) — start / end normalized 0..1 with 0.5 = centre.
+                                      Note: pan only takes effect when zoom > 100%. (7.20 / review LOGIC #4)  -->
+                                <TextBlock Margin="0,12,0,0" Style="{StaticResource TextMonoUpper}" Text="PAN · NEEDS ZOOM &gt; 100%" />
+                                <TextBlock Margin="0,2,0,4" FontFamily="{StaticResource FontMono}" FontSize="9" Foreground="{StaticResource BrushText4}"
+                                           Text="Sliders are inactive until zoom is greater than 100% on at least one end" />
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextMonoUpper}" Text="START X / Y" />
                                 <Grid Margin="0,4,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />

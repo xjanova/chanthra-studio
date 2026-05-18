@@ -333,6 +333,36 @@
                                TextWrapping="Wrap"
                                Text="No takes yet. Generated audio appears here, sorted newest first." />
 
+                    <!--  Inline take playback transport (T54 · 7.20) — visible when a take is loaded  -->
+                    <Border DockPanel.Dock="Top" Margin="0,0,0,12" Padding="10,8"
+                            Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}"
+                            BorderThickness="1" CornerRadius="6"
+                            Visibility="{Binding HasCurrentlyPlaying, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Width="22" Height="22" Padding="0"
+                                    Command="{Binding StopPlaybackCommand}"
+                                    Style="{StaticResource ButtonIcon}"
+                                    ToolTip="Stop and unload the take from the inline player">
+                                <Path Width="9" Height="9" Data="{StaticResource IcoClose}" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
+                            </Button>
+                            <MediaElement x:Name="TakePlayer"
+                                          LoadedBehavior="Manual"
+                                          UnloadedBehavior="Stop"
+                                          MediaEnded="TakePlayer_Ended"
+                                          MediaFailed="TakePlayer_Failed"
+                                          Width="0" Height="0" />
+                            <Button Width="26" Height="22" Padding="0" Margin="0,0,8,0"
+                                    Click="TakePlayer_PlayPause"
+                                    Style="{StaticResource ButtonSummonCta}">
+                                <TextBlock x:Name="TakePlayGlyph" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="#FF1A0D05" Text="▶" />
+                            </Button>
+                            <StackPanel>
+                                <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText1}" Text="{Binding CurrentlyPlaying.FileName}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="9" Foreground="{StaticResource BrushText4}" Text="{Binding CurrentlyPlaying.SizeLabel}" />
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <Grid>
                             <ItemsControl ItemsSource="{Binding Takes}"

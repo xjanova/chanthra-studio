@@ -118,10 +118,12 @@ public sealed class SlideshowRenderer
         /// <summary>ffmpeg eq.saturation — 0..3, 1.0 = identity.</summary>
         public double Saturation { get; init; } = 1.0;
 
+        // Pan WITHOUT a zoom > 100% is a visual no-op because zoompan's
+        // visible window equals the source frame, so pan can't shift
+        // anything. Gate on actual zoom motion only — UI tells the user
+        // "pan needs zoom > 100%". (7.20 fix — review LOGIC #4)
         public bool HasZoom =>
-            Math.Abs(ZoomStartPct - ZoomEndPct) > 0.5 || ZoomStartPct > 100.5 ||
-            Math.Abs(PanStartX - 0.5) > 0.001 || Math.Abs(PanEndX - 0.5) > 0.001 ||
-            Math.Abs(PanStartY - 0.5) > 0.001 || Math.Abs(PanEndY - 0.5) > 0.001;
+            Math.Abs(ZoomStartPct - ZoomEndPct) > 0.5 || ZoomStartPct > 100.5;
         public bool HasGrade =>
             Math.Abs(Brightness) > 0.001 ||
             Math.Abs(Contrast - 1.0) > 0.001 ||
@@ -209,12 +211,18 @@ public sealed class SlideshowRenderer
         // Probe natural duration of every audio track that has a fade-out
         // configured — feeds AppendMultiAudioStage's afade=out anchor.
         // (T51 / 7.20). Reuses the FFmpegService already constructed above.
+        // OperationCanceledException is re-thrown so a user cancel during
+        // probe doesn't silently complete the render (7.20 fix · review SMELL #10).
         foreach (var t in spec.AudioTracks)
         {
             if (t.FadeOutSec <= 0.01) continue;
             if (t.NaturalDurationSec is not null) continue;
             try { t.NaturalDurationSec = await ff.ProbeDurationSecAsync(t.FilePath, ct); }
-            catch { }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                ActivityLog.Warn("renderer", $"probe failed for {System.IO.Path.GetFileName(t.FilePath)}: {ex.Message}");
+            }
         }
 
         var args = BuildArgList(spec, outputPath);

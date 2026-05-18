@@ -193,6 +193,24 @@ public sealed class VoiceViewModel : ObservableObject
     public IRelayCommand RefreshTakesCommand { get; }
     public IRelayCommand<VoiceTake> PlayTakeCommand { get; }
     public IRelayCommand<VoiceTake> RevealTakeCommand { get; }
+
+    private VoiceTake? _currentlyPlaying;
+    /// <summary>The take currently loaded in the inline MediaElement
+    /// transport above the takes list. Setting this property is the
+    /// signal to VoiceView.xaml.cs to swap the MediaElement source and
+    /// start playback. Null = transport hidden. (T54 · 7.20)</summary>
+    public VoiceTake? CurrentlyPlaying
+    {
+        get => _currentlyPlaying;
+        set
+        {
+            if (SetProperty(ref _currentlyPlaying, value))
+                OnPropertyChanged(nameof(HasCurrentlyPlaying));
+        }
+    }
+    public bool HasCurrentlyPlaying => _currentlyPlaying is not null;
+
+    public IRelayCommand StopPlaybackCommand { get; private set; } = null!;
     public IRelayCommand<VoiceTake> CopyPathCommand { get; }
     public IRelayCommand<VoiceTake> DeleteTakeCommand { get; }
     public IRelayCommand SwitchToTtsCommand { get; }
@@ -221,6 +239,7 @@ public sealed class VoiceViewModel : ObservableObject
         RefreshTakesCommand = new RelayCommand(RefreshTakes);
         PlayTakeCommand = new RelayCommand<VoiceTake>(PlayTake);
         RevealTakeCommand = new RelayCommand<VoiceTake>(RevealTake);
+        StopPlaybackCommand = new RelayCommand(() => CurrentlyPlaying = null);
         CopyPathCommand = new RelayCommand<VoiceTake>(CopyPath);
         DeleteTakeCommand = new RelayCommand<VoiceTake>(DeleteTake);
         SwitchToTtsCommand = new RelayCommand(() => Mode = VoiceMode.Tts);
@@ -356,11 +375,16 @@ public sealed class VoiceViewModel : ObservableObject
     private void PlayTake(VoiceTake? take)
     {
         if (take is null) return;
-        try
+        if (!System.IO.File.Exists(take.FilePath))
         {
-            Process.Start(new ProcessStartInfo { FileName = take.FilePath, UseShellExecute = true });
+            ShowToast("Take file is missing on disk.", "err");
+            return;
         }
-        catch (Exception ex) { ShowToast($"Open failed: {ex.Message}", "err"); }
+        // In-place inline playback (T54 / 7.20) — code-behind picks up the
+        // CurrentlyPlaying change and swaps the MediaElement source. Fall
+        // back to shell-open only if the file's extension isn't one that
+        // WPF's MediaElement decodes (rare for mp3/wav from the providers).
+        CurrentlyPlaying = take;
     }
 
     private void RevealTake(VoiceTake? take)
