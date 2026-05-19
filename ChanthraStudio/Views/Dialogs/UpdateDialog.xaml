@@ -252,6 +252,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Button
                             Grid.Column="0"
@@ -259,15 +260,26 @@
                             Command="{Binding OpenReleasePageCommand}"
                             Content="เปิดหน้า GitHub Releases"
                             Style="{StaticResource ButtonPill}" />
+                        <!--  Skip this version: persists info.LatestVersion to settings so
+                             the periodic poller stops re-popping until a higher version ships.  -->
                         <Button
                             Grid.Column="2"
+                            Margin="0,0,8,0"
+                            Padding="12,8"
+                            Click="Close_Click"
+                            Command="{Binding SkipVersionCommand}"
+                            Content="ข้ามเวอร์ชันนี้"
+                            ToolTip="Don't ask again until a newer release ships"
+                            Style="{StaticResource ButtonPill}" />
+                        <Button
+                            Grid.Column="3"
                             Margin="0,0,8,0"
                             Padding="14,8"
                             Click="Close_Click"
                             Content="ภายหลัง"
                             Style="{StaticResource ButtonPill}" />
                         <Button
-                            Grid.Column="3"
+                            Grid.Column="4"
                             MinWidth="160"
                             Command="{Binding DownloadAndApplyCommand}"
                             Content="✦ INSTALL UPDATE"

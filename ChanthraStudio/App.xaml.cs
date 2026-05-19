@@ -71,27 +71,74 @@ public partial class App : Application
             // License resolution must never block the app from starting.
         }
 
-        // Update prompt — only when licensed, on a fresh launch, after a small delay.
-        try
+        // Initial update check + start the recurring poller (T65 / 7.23).
+        // The recurring loop respects Settings.AutoCheckUpdates so a user
+        // who opted out gets a clean app — no background HTTP, no banner.
+        _ = RunUpdatePollerAsync();
+    }
+
+    /// <summary>
+    /// Background loop that re-checks GitHub Releases every
+    /// <see cref="AppSettings.UpdateCheckIntervalHours"/>. First poll is
+    /// 3s out so license validate settles first; subsequent polls fire on
+    /// the configured cadence (clamped 1..168 hrs by AppSettings).
+    /// </summary>
+    private async Task RunUpdatePollerAsync()
+    {
+        // Initial 3s delay matches the previous BootAsync behaviour.
+        try { await Task.Delay(TimeSpan.FromSeconds(3)); } catch { return; }
+
+        while (true)
         {
-            await Task.Delay(TimeSpan.FromSeconds(3));
-            if (!LicenseGuard.Instance.IsLicensed) return;
-
-            var info = await UpdateService.CheckAsync();
-            if (info is null || !info.HasUpdate) return;
-
-            await Dispatcher.InvokeAsync(() =>
+            try
             {
-                var vm = new UpdateViewModel { Info = info };
-                vm.Status = $"new version {info.LatestVersion} available · current {info.CurrentVersion}";
-                var dlg = new UpdateDialog(vm) { Owner = MainWindow };
-                dlg.ShowDialog();
-            });
+                await PollForUpdateOnceAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Warn("update", "poller iteration failed: " + ex.Message);
+            }
+
+            // Re-read interval each tick so changing it in Settings takes
+            // effect on the NEXT cycle (no restart needed).
+            var hours = Math.Clamp(Studio.Settings.UpdateCheckIntervalHours, 1, 168);
+            try { await Task.Delay(TimeSpan.FromHours(hours)); }
+            catch { return; }
         }
-        catch
+    }
+
+    /// <summary>One poll iteration. Skips when unlicensed, when the user
+    /// opted out, when GitHub returns nothing, or when the latest version
+    /// matches <see cref="AppSettings.SkippedUpdateVersion"/>.</summary>
+    private async Task PollForUpdateOnceAsync()
+    {
+        if (!LicenseGuard.Instance.IsLicensed) return;
+        if (!Studio.Settings.AutoCheckUpdates) return;
+
+        var info = await UpdateService.CheckAsync();
+        if (info is null || !info.HasUpdate) return;
+
+        // If the user already declined this exact version, stay quiet.
+        // A higher version released later supersedes the skip.
+        var skipped = Studio.Settings.SkippedUpdateVersion ?? "";
+        if (!string.IsNullOrEmpty(skipped)
+            && UpdateService.CompareSemver(info.LatestVersion, skipped) <= 0)
         {
-            // No-op — update check is best effort.
+            return;
         }
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            // Don't stack dialogs — if one is already open from a previous
+            // poll, leave the user with the existing prompt.
+            foreach (Window w in Windows)
+                if (w is UpdateDialog) return;
+
+            var vm = new UpdateViewModel { Info = info };
+            vm.Status = $"new version {info.LatestVersion} available · current {info.CurrentVersion}";
+            var dlg = new UpdateDialog(vm) { Owner = MainWindow };
+            dlg.ShowDialog();
+        });
     }
 
     /// <summary>

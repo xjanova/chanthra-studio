@@ -322,6 +322,44 @@ public sealed class SettingsViewModel : ObservableObject
         try { System.Windows.Application.Current?.Shutdown(); } catch { }
     }
 
+    /// <summary>Toggle for the background update poller (T64 · 7.23).
+    /// When false the app still ships <see cref="UpdateService"/> for
+    /// manual checks but the 6-hourly tick stops calling GitHub.</summary>
+    public bool AutoCheckUpdates
+    {
+        get => _settings.AutoCheckUpdates;
+        set
+        {
+            if (_settings.AutoCheckUpdates == value) return;
+            _settings.AutoCheckUpdates = value;
+            OnPropertyChanged();
+            TryPersist();
+        }
+    }
+
+    /// <summary>Hours between background update polls (T65 · 7.23).
+    /// Clamped 1..168 (one week). The setter persists immediately; the
+    /// running poller re-reads the value at the start of each iteration,
+    /// so a change takes effect on the NEXT tick.</summary>
+    public int UpdateCheckIntervalHours
+    {
+        get => _settings.UpdateCheckIntervalHours;
+        set
+        {
+            var clamped = Math.Clamp(value, 1, 168);
+            if (_settings.UpdateCheckIntervalHours == clamped) return;
+            _settings.UpdateCheckIntervalHours = clamped;
+            OnPropertyChanged();
+            TryPersist();
+        }
+    }
+
+    /// <summary>Read-only mirror — Settings UI shows what version is
+    /// currently being skipped (if any) with a "Clear" affordance.</summary>
+    public string SkippedUpdateVersion => string.IsNullOrEmpty(_settings.SkippedUpdateVersion) ? "—" : _settings.SkippedUpdateVersion;
+    public bool HasSkippedVersion => !string.IsNullOrEmpty(_settings.SkippedUpdateVersion);
+    public IRelayCommand ClearSkippedVersionCommand { get; private set; } = null!;
+
     /// <summary>Monthly spending cap in THB. 0 disables the alert pill in
     /// the status bar. Drives a warn pill at 75% and an err pill at 100%
     /// of the cap so the user notices before the credit card does.</summary>
@@ -376,6 +414,14 @@ public sealed class SettingsViewModel : ObservableObject
         TestAllCommand = new AsyncRelayCommand(TestAllAsync, () => !IsProbingAll);
         SetThemeCommand = new RelayCommand<string>(t => { if (!string.IsNullOrEmpty(t)) Theme = t!; });
         RestartAppCommand = new RelayCommand(DoRestart);
+        ClearSkippedVersionCommand = new RelayCommand(() =>
+        {
+            _settings.SkippedUpdateVersion = "";
+            TryPersist();
+            OnPropertyChanged(nameof(SkippedUpdateVersion));
+            OnPropertyChanged(nameof(HasSkippedVersion));
+            ShowToast("Skipped version cleared — next poll will prompt again", "ok");
+        });
 
         RevealDataFolderCommand = new RelayCommand(() => RevealFolder(AppPaths.Root));
         RevealWorkflowsFolderCommand = new RelayCommand(() =>

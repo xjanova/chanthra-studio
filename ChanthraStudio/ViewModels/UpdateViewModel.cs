@@ -37,6 +37,7 @@ public sealed class UpdateViewModel : ObservableObject
     public IRelayCommand DownloadAndApplyCommand { get; }
     public IRelayCommand OpenReleasePageCommand { get; }
     public IRelayCommand CancelCommand { get; }
+    public IRelayCommand SkipVersionCommand { get; }
 
     public UpdateViewModel()
     {
@@ -44,6 +45,29 @@ public sealed class UpdateViewModel : ObservableObject
         DownloadAndApplyCommand = new RelayCommand(async () => await DownloadAsync(), () => HasUpdate && !_isDownloading && LicenseGuard.Instance.IsLicensed);
         OpenReleasePageCommand = new RelayCommand(UpdateService.OpenReleasePage);
         CancelCommand = new RelayCommand(() => _cts?.Cancel());
+        SkipVersionCommand = new RelayCommand(SkipVersion, () => HasUpdate);
+    }
+
+    /// <summary>Stash the currently-offered version in
+    /// <see cref="AppSettings.SkippedUpdateVersion"/> so the periodic
+    /// poller stops re-popping the same dialog. A later release
+    /// (higher CompareSemver) supersedes the skip automatically.</summary>
+    private void SkipVersion()
+    {
+        if (_info is null || !_info.HasUpdate) return;
+        try
+        {
+            var settings = ((App)System.Windows.Application.Current).Studio.Settings;
+            settings.SkippedUpdateVersion = _info.LatestVersion;
+            settings.Save();
+            ActivityLog.Info("update", $"user skipped version {_info.LatestVersion}");
+            Status = $"skipped · we won't ask again until a newer release ships";
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn("update", "skip-version persist failed: " + ex.Message);
+            Status = "skip failed — check Settings storage";
+        }
     }
 
     public async Task CheckAsync()

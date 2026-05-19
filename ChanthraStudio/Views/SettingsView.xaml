@@ -532,6 +532,75 @@
                     </Grid>
                 </Border>
 
+                <!--  Update preferences (T64+T65+T66 · 7.23) — auto-check toggle,
+                     interval picker, skipped-version mirror with clear button.  -->
+                <Border Margin="0,12,0,0" Padding="16,14" Style="{StaticResource SurfaceCard}">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock
+                                    FontFamily="{StaticResource FontDisplay}"
+                                    FontSize="13"
+                                    FontWeight="Medium"
+                                    Foreground="{StaticResource BrushText1}"
+                                    Text="Auto-check for updates" />
+                                <TextBlock
+                                    Margin="0,2,0,0"
+                                    Style="{StaticResource TextSecondary}"
+                                    FontSize="11"
+                                    Text="Polls GitHub Releases in the background. Requires a valid license to auto-install." />
+                            </StackPanel>
+                            <CheckBox Grid.Column="1" VerticalAlignment="Center" IsChecked="{Binding AutoCheckUpdates, Mode=TwoWay}" />
+                        </Grid>
+
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Text="POLL INTERVAL" />
+                                <TextBlock Style="{StaticResource TextSecondary}" FontSize="11" Text="1..168 hours · default 6" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Width="80" Padding="10,6" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                <TextBox
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    FontFamily="{StaticResource FontMono}"
+                                    FontSize="12"
+                                    Foreground="{StaticResource BrushGoldHi}"
+                                    TextAlignment="Right"
+                                    Text="{Binding UpdateCheckIntervalHours, UpdateSourceTrigger=PropertyChanged}" />
+                            </Border>
+                            <TextBlock
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                VerticalAlignment="Center"
+                                FontFamily="{StaticResource FontMono}"
+                                FontSize="11"
+                                Foreground="{StaticResource BrushText3}"
+                                Text="hours" />
+                        </Grid>
+
+                        <Grid Margin="0,10,0,0" Visibility="{Binding HasSkippedVersion, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Text="SKIPPED VERSION" />
+                                <TextBlock Style="{StaticResource TextMonoGold}" Text="{Binding SkippedUpdateVersion}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Padding="10,4" Command="{Binding ClearSkippedVersionCommand}" Content="clear" Style="{StaticResource ButtonPill}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
                 <!--  Monthly budget — drives the status-bar pill (warn @ 75%, err @ 100%)  -->
                 <Border Margin="0,12,0,0" Padding="16,14" Style="{StaticResource SurfaceCard}">
                     <Grid>

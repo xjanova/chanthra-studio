@@ -45,6 +45,24 @@ public sealed class AppSettings
     /// <summary>Optional manual override. Empty = auto-detect from PATH.</summary>
     public string FfmpegPath { get; set; } = "";
 
+    /// <summary>Master switch for periodic update polling. When false the
+    /// background timer in App.OnStartup stays armed but skips the
+    /// CheckAsync call — the user can still trigger a manual check from
+    /// Settings.</summary>
+    public bool AutoCheckUpdates { get; set; } = true;
+
+    /// <summary>Hours between background update polls. Clamped 1..168
+    /// (one week). The default of 6 mirrors what most editor-class
+    /// apps do — frequent enough to surface day-one fixes, rare enough
+    /// to never compete for bandwidth with a generation burst.</summary>
+    public int UpdateCheckIntervalHours { get; set; } = 6;
+
+    /// <summary>If the user clicked "Skip this version" in the update
+    /// dialog, the latest version they declined is stashed here so we
+    /// don't re-pop the same banner every 6 hours. Cleared automatically
+    /// when GitHub reports a higher version.</summary>
+    public string SkippedUpdateVersion { get; set; } = "";
+
     public DateTime? LastSavedAt { get; private set; }
 
     public AppSettings(Database db) { _db = db; }
@@ -137,6 +155,9 @@ public sealed class AppSettings
         Upsert(c, tx, "postWebhookUrl", PostWebhookUrl, false, now);
         Upsert(c, tx, "autosaveSeconds", AutosaveSeconds.ToString(), false, now);
         Upsert(c, tx, "monthlyBudgetThb", MonthlyBudgetThb.ToString(System.Globalization.CultureInfo.InvariantCulture), false, now);
+        Upsert(c, tx, "autoCheckUpdates", AutoCheckUpdates ? "1" : "0", false, now);
+        Upsert(c, tx, "updateCheckIntervalHours", UpdateCheckIntervalHours.ToString(System.Globalization.CultureInfo.InvariantCulture), false, now);
+        Upsert(c, tx, "skippedUpdateVersion", SkippedUpdateVersion ?? "", false, now);
         Upsert(c, tx, "theme", Theme, false, now);
         Upsert(c, tx, "ffmpegPath", FfmpegPath, false, now);
 
@@ -198,6 +219,11 @@ public sealed class AppSettings
             case "postWebhookUrl":     s.PostWebhookUrl = r.Value; break;
             case "autosaveSeconds":    if (int.TryParse(r.Value, out var n)) s.AutosaveSeconds = n; break;
             case "monthlyBudgetThb":   if (double.TryParse(r.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var b)) s.MonthlyBudgetThb = b; break;
+            case "autoCheckUpdates":   s.AutoCheckUpdates = r.Value != "0"; break;
+            case "updateCheckIntervalHours":
+                if (int.TryParse(r.Value, out var hrs)) s.UpdateCheckIntervalHours = Math.Clamp(hrs, 1, 168);
+                break;
+            case "skippedUpdateVersion": s.SkippedUpdateVersion = r.Value ?? ""; break;
             case "theme":              s.Theme = r.Value; break;
             case "ffmpegPath":         s.FfmpegPath = r.Value; break;
             default:
