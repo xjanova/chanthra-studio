@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using ChanthraStudio.Services;
 
 namespace ChanthraStudio.Controls;
 
@@ -95,6 +96,39 @@ public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
 
     protected override Size MeasureOverride(Size availableSize)
     {
+        // Defensive: zero/negative ItemWidth or ItemHeight (e.g. design-time
+        // mistakes) would divide-by-zero or loop forever below. Bail
+        // gracefully with zero extent so the surrounding ScrollViewer
+        // doesn't render junk and the user gets a working app instead of
+        // a hang. (T59 / 7.22 hardening)
+        if (ItemWidth <= 0 || ItemHeight <= 0)
+        {
+            _viewport = availableSize;
+            _extent = new Size(0, 0);
+            ScrollOwner?.InvalidateScrollInfo();
+            return availableSize;
+        }
+        // Wrap the whole measure pass — virtualisation panels are a known
+        // source of "WPF eats your stack trace" crashes when the
+        // ItemContainerGenerator misbehaves (collection-changed mid-paint,
+        // etc.). Fall back to a zero-extent return so the panel disappears
+        // gracefully rather than tearing down the window.
+        try
+        {
+            return MeasureImpl(availableSize);
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn("vwp", "measure failed: " + ex.Message);
+            _viewport = availableSize;
+            _extent = new Size(0, 0);
+            ScrollOwner?.InvalidateScrollInfo();
+            return availableSize;
+        }
+    }
+
+    private Size MeasureImpl(Size availableSize)
+    {
         // Touch InternalChildren to wire up the generator before we query it.
         var _ = InternalChildren;
         var generator = ItemContainerGenerator;
@@ -181,24 +215,35 @@ public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        var generator = ItemContainerGenerator;
-        if (generator is null) return finalSize;
-        var cols = Math.Max(1, (int)Math.Floor(finalSize.Width / ItemWidth));
-
-        for (int i = 0; i < InternalChildren.Count; i++)
+        if (ItemWidth <= 0 || ItemHeight <= 0) return finalSize;
+        try
         {
-            var child = InternalChildren[i];
-            // The IItemContainerGenerator interface doesn't expose
-            // IndexFromContainer; the concrete ItemContainerGenerator does.
-            var index = (generator as ItemContainerGenerator)?.IndexFromContainer(child) ?? -1;
-            if (index < 0) continue;
-            var col = index % cols;
-            var row = index / cols;
-            var x = col * ItemWidth;
-            var y = row * ItemHeight - _offset.Y;
-            child.Arrange(new Rect(x, y, ItemWidth, ItemHeight));
+            var generator = ItemContainerGenerator;
+            if (generator is null) return finalSize;
+            var cols = Math.Max(1, (int)Math.Floor(finalSize.Width / ItemWidth));
+
+            for (int i = 0; i < InternalChildren.Count; i++)
+            {
+                var child = InternalChildren[i];
+                // The IItemContainerGenerator interface doesn't expose
+                // IndexFromContainer; the concrete ItemContainerGenerator does.
+                var index = (generator as ItemContainerGenerator)?.IndexFromContainer(child) ?? -1;
+                if (index < 0) continue;
+                var col = index % cols;
+                var row = index / cols;
+                var x = col * ItemWidth;
+                var y = row * ItemHeight - _offset.Y;
+                child.Arrange(new Rect(x, y, ItemWidth, ItemHeight));
+            }
+            return finalSize;
         }
-        return finalSize;
+        catch (Exception ex)
+        {
+            // Same defensive guard as MeasureOverride — Arrange is a known
+            // crash site under collection-changed-during-layout races.
+            ActivityLog.Warn("vwp", "arrange failed: " + ex.Message);
+            return finalSize;
+        }
     }
 
     // CleanUpItems removed in the 7.20 fix — MeasureOverride now handles

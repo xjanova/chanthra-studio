@@ -241,7 +241,9 @@ public sealed class SettingsViewModel : ObservableObject
     /// <summary>UI palette identifier — "lunar" (default) or "dawn".
     /// Changing requires an app restart since StaticResource lookups
     /// resolve at construction; the setter persists immediately so the
-    /// next launch picks up the choice. (T53 · 7.22)</summary>
+    /// next launch picks up the choice. The Theme toast spawned by
+    /// <see cref="SetThemeCommand"/> includes a "Restart now" action
+    /// that re-execs the app cleanly. (T53 · 7.22 · restart UX 7.22)</summary>
     public string Theme
     {
         get => string.IsNullOrEmpty(_settings.Theme) ? "lunar" : _settings.Theme;
@@ -251,11 +253,74 @@ public sealed class SettingsViewModel : ObservableObject
             _settings.Theme = value;
             OnPropertyChanged();
             TryPersist();
-            ShowToast($"Theme · {value} — restart to apply", "info");
+            ShowRestartToast($"Theme · {value}");
         }
     }
 
     public IRelayCommand<string> SetThemeCommand { get; private set; } = null!;
+    /// <summary>Re-launch the app to make the theme switch fully apply.
+    /// Bound to the toast's "Restart now" action when a theme change
+    /// would otherwise need a manual restart to pick up StaticResource
+    /// values baked at parse time. Bound after the ctor so callers can
+    /// drive it from view markup directly.</summary>
+    public IRelayCommand RestartAppCommand { get; private set; } = null!;
+
+    /// <summary>True while the restart toast is visible — the view binds
+    /// it to a small banner with a clickable Restart link.</summary>
+    private bool _restartPending;
+    public bool RestartPending { get => _restartPending; set => SetProperty(ref _restartPending, value); }
+
+    private string _restartReason = "";
+    public string RestartReason { get => _restartReason; set => SetProperty(ref _restartReason, value); }
+
+    private void ShowRestartToast(string reason)
+    {
+        RestartReason = reason + " — restart to apply.";
+        RestartPending = true;
+    }
+
+    /// <summary>Persist any in-flight settings, then spawn a fresh process
+    /// of the current executable and shut the current one down. Honors
+    /// any pending bindings (TextBoxes still being typed in) by calling
+    /// CommitFocus first so the value lands in the model before save.
+    /// </summary>
+    private void DoRestart()
+    {
+        try
+        {
+            // Coerce focused input so a TextBox the user just typed into
+            // commits its binding before we shut down.
+            var fe = System.Windows.Input.Keyboard.FocusedElement as System.Windows.FrameworkElement;
+            var be = fe?.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty);
+            be?.UpdateSource();
+
+            try { _settings.Save(); } catch { }
+            try { ActivityLog.Info("settings", $"restarting · {RestartReason}"); } catch { }
+            try { ActivityLog.Shutdown(); } catch { }
+
+            // Use the process's MainModule path — works for both single-file
+            // publish (where Assembly.Location is empty) and the dev dotnet
+            // run flow (where it's the .dll, which Process.Start can't exec
+            // directly). MainModule.FileName is the actual launching exe.
+            var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+            if (!string.IsNullOrEmpty(exe))
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe)
+                {
+                    UseShellExecute = true,
+                    WorkingDirectory = System.IO.Path.GetDirectoryName(exe) ?? "",
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            try { ActivityLog.Error("settings", "restart spawn failed", ex); } catch { }
+        }
+        // Shut down regardless — even if the spawn failed, the user can
+        // re-open the app manually and the new Theme value is already
+        // persisted in SQLite.
+        try { System.Windows.Application.Current?.Shutdown(); } catch { }
+    }
 
     /// <summary>Monthly spending cap in THB. 0 disables the alert pill in
     /// the status bar. Drives a warn pill at 75% and an err pill at 100%
@@ -310,6 +375,7 @@ public sealed class SettingsViewModel : ObservableObject
         SaveAllCommand = new RelayCommand(SaveAll);
         TestAllCommand = new AsyncRelayCommand(TestAllAsync, () => !IsProbingAll);
         SetThemeCommand = new RelayCommand<string>(t => { if (!string.IsNullOrEmpty(t)) Theme = t!; });
+        RestartAppCommand = new RelayCommand(DoRestart);
 
         RevealDataFolderCommand = new RelayCommand(() => RevealFolder(AppPaths.Root));
         RevealWorkflowsFolderCommand = new RelayCommand(() =>

@@ -510,6 +510,28 @@
                     </Grid>
                 </Border>
 
+                <!--  Restart-required banner (theme toggle) — collapsed unless RestartPending.
+                      The toast at the bottom of SettingsView already handles other
+                      "saved" events; the restart needs its own affordance because the
+                      action is destructive (closes the app). T22 close · 7.22 polish.  -->
+                <Border Margin="0,8,0,0" Padding="14,10" Background="#1FE0B056" BorderBrush="#66E0B056" BorderThickness="1" CornerRadius="8"
+                        Visibility="{Binding RestartPending, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" FontFamily="{StaticResource FontUI}" FontSize="12" Foreground="{StaticResource BrushText1}">
+                            <Run Foreground="{StaticResource BrushGoldHi}" Text="✦ " /><Run Text="{Binding RestartReason, Mode=OneWay}" />
+                        </TextBlock>
+                        <Button Grid.Column="1" Padding="14,4"
+                                Command="{Binding RestartAppCommand}"
+                                Content="Restart now"
+                                Style="{StaticResource ButtonPillGold}"
+                                ToolTip="Save settings, spawn a fresh process, and exit. Any unsaved work in the editor will go through autosave first." />
+                    </Grid>
+                </Border>
+
                 <!--  Monthly budget — drives the status-bar pill (warn @ 75%, err @ 100%)  -->
                 <Border Margin="0,12,0,0" Padding="16,14" Style="{StaticResource SurfaceCard}">
                     <Grid>
