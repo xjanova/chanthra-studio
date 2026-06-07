@@ -199,6 +199,35 @@ public static class ProviderCatalog
             },
             FreeTierNote: "Free models · 20 req/min, 50-200 req/day"),
 
+        new ProviderInfo(
+            Id: "grok",
+            DisplayName: "xAI Grok",
+            KeyPageUrl: "https://console.x.ai",
+            DashboardUrl: "https://console.x.ai",
+            SetupSteps: new[]
+            {
+                "เข้า console.x.ai → Sign in ด้วยบัญชี X (Twitter) หรืออีเมล",
+                "สร้าง team/workspace ถ้าระบบถาม แล้วไปที่เมนู API Keys",
+                "กด \"Create API Key\" → ตั้งชื่อ → ก๊อปปี้ (ขึ้นต้น xai-)",
+                "วาง + Save ที่นี่ · ต้องเติมเครดิตก่อนใช้งานจริง",
+            },
+            Models: new[]
+            {
+                new ModelOption("grok-4", "Grok 4", "best", "$3 / $15 per 1M tok",
+                    "Flagship · reasoning ดี · 256K context",
+                    InputUsdPer1M: 3, OutputUsdPer1M: 15),
+                new ModelOption("grok-4-fast", "Grok 4 Fast", "fast", null,
+                    "เร็ว ถูก · context ยาวมาก",
+                    InputUsdPer1M: 0.20, OutputUsdPer1M: 0.50),
+                new ModelOption("grok-3", "Grok 3", null, "$3 / $15",
+                    "default · เสถียร ใช้ได้ทุกบัญชี",
+                    InputUsdPer1M: 3, OutputUsdPer1M: 15),
+                new ModelOption("grok-3-mini", "Grok 3 Mini", "cheap", null,
+                    "เล็ก เร็ว ราคาประหยัด",
+                    InputUsdPer1M: 0.30, OutputUsdPer1M: 0.50),
+            },
+            FreeTierNote: "ไม่มี free tier ถาวร · ต้องเติมเครดิต"),
+
         // ───────────────────── Voice (TTS) providers ─────────────────────
 
         new ProviderInfo(
@@ -314,6 +343,114 @@ public static class ProviderCatalog
                     UsdPerSecond: 0.005),
             },
             FreeTierNote: "ต้องเติมเครดิตขั้นต่ำ $1 · จากนั้นจ่ายตามใช้"),
+
+        new ProviderInfo(
+            Id: "kling",
+            DisplayName: "Kling AI",
+            KeyPageUrl: "https://app.klingai.com",
+            DashboardUrl: "https://app.klingai.com",
+            SetupSteps: new[]
+            {
+                "เข้า klingai.com → Sign up แล้วไปที่ API / Developer console",
+                "สมัคร API plan แล้วสร้าง Access Key + Secret Key",
+                "วางในรูปแบบ AccessKey:SecretKey (คั่นด้วย : ตัวเดียว) ในช่อง key",
+                "Save + Probe · แล้วเลือก route \"Kling AI\" ใน Composer ก่อนกด Summon",
+            },
+            Models: new[]
+            {
+                new ModelOption("kling-v2-master", "Kling 2.0 Master", "best", "~$0.28 / s",
+                    "คุณภาพสูงสุด · motion สมจริง · cinematic",
+                    UsdPerSecond: 0.28),
+                new ModelOption("kling-v1-6", "Kling 1.6", null, null,
+                    "default · เสถียร · text+image → video",
+                    UsdPerSecond: 0.14),
+                new ModelOption("kling-v1-5", "Kling 1.5", null, null, "รุ่นก่อน",
+                    UsdPerSecond: 0.14),
+                new ModelOption("kling-v1", "Kling 1.0", "legacy", null, "รุ่นแรก",
+                    UsdPerSecond: 0.10),
+            },
+            FreeTierNote: "API key แยกจากการใช้งานบนเว็บ · จ่ายตามวินาที · 5s หรือ 10s"),
+
+        new ProviderInfo(
+            Id: "seedance",
+            DisplayName: "Seedance 2.0 (ByteDance)",
+            KeyPageUrl: "https://console.byteplus.com/ark",
+            DashboardUrl: "https://console.byteplus.com/ark",
+            SetupSteps: new[]
+            {
+                "เข้า console.byteplus.com → เปิดบริการ ModelArk (BytePlus international)",
+                "เปิดใช้โมเดล Seedance 2.0 ในหน้า Model · แล้วไปที่ API Keys",
+                "สร้าง API Key → ก๊อปปี้ → วาง + Save ที่นี่ (กด Probe เพื่อทดสอบ)",
+                "เลือก route \"Seedance 2.0\" ใน Composer ก่อนกด Summon",
+            },
+            Models: new[]
+            {
+                new ModelOption("dreamina-seedance-2-0-260128", "Seedance 2.0", "best", "~$0.05-0.10 / s",
+                    "ByteDance flagship · text+image+audio · 4-15s · สูงสุด 2K",
+                    UsdPerSecond: 0.08),
+                new ModelOption("dreamina-seedance-2-0-fast-260128", "Seedance 2.0 Fast", "fast", null,
+                    "เร็วกว่า ถูกกว่า · เหมาะกับ iterate",
+                    UsdPerSecond: 0.03),
+            },
+            FreeTierNote: "BytePlus ModelArk · จ่ายตามวินาที · ขึ้นกับ resolution"),
+
+        new ProviderInfo(
+            Id: "veo",
+            DisplayName: "Google Veo 3.1 (omni)",
+            KeyPageUrl: "https://aistudio.google.com/apikey",
+            DashboardUrl: "https://aistudio.google.com",
+            SetupSteps: new[]
+            {
+                "ใช้ Gemini API key ตัวเดียวกับ Google Gemini ด้านบน (AIzaSy…) — ไม่ต้องสมัครใหม่",
+                "เปิดใช้ Veo ในบัญชี (ต้องเป็น paid tier · เช็คที่ aistudio.google.com)",
+                "วาง key ที่นี่ หรือเว้นว่างไว้ — ระบบจะใช้ key ของ Gemini ให้อัตโนมัติ",
+                "เลือก route \"Veo 3.1\" ใน Composer/Storyboard ก่อนกด Summon · รองรับเสียงพูด+lip-sync",
+            },
+            Models: new[]
+            {
+                new ModelOption("veo-3.1-fast-generate-preview", "Veo 3.1 Fast", "fast", "~$0.15 / s",
+                    "ใหม่ล่าสุด · เร็ว+ถูก · native audio+dialogue · เหมาะกับ iterate",
+                    UsdPerSecond: 0.15),
+                new ModelOption("veo-3.1-generate-preview", "Veo 3.1", "best", "~$0.40 / s",
+                    "คุณภาพสูงสุด · native audio · lip-sync แม่น · 4/6/8s · สูงสุด 1080p",
+                    UsdPerSecond: 0.40),
+                new ModelOption("veo-3.0-generate-001", "Veo 3.0 (stable)", null, null,
+                    "GA · เสถียร · มีเสียง · ใช้ได้ทุกบัญชีที่เปิด Veo",
+                    UsdPerSecond: 0.40),
+                new ModelOption("veo-3.0-fast-generate-001", "Veo 3.0 Fast (stable)", "fast", null,
+                    "GA fast variant · ถูกกว่า",
+                    UsdPerSecond: 0.15),
+                new ModelOption("veo-2.0-generate-001", "Veo 2.0", "legacy", null,
+                    "รุ่นก่อน · ไม่มีเสียง (silent)",
+                    UsdPerSecond: 0.35),
+            },
+            FreeTierNote: "ใช้ Gemini key · ต้อง paid tier · จ่ายตามวินาที · 9:16 หรือ 16:9 · 4/6/8s"),
+
+        new ProviderInfo(
+            Id: "minimax",
+            DisplayName: "MiniMax · Hailuo",
+            KeyPageUrl: "https://platform.minimax.io",
+            DashboardUrl: "https://platform.minimax.io/user-center/basic-information",
+            SetupSteps: new[]
+            {
+                "เข้า platform.minimax.io → Sign up (เวอร์ชัน international .io)",
+                "ไปที่ API Keys → Create new key → ก๊อปปี้",
+                "วาง + Save ที่นี่ · เช็ค balance ก่อนใช้ · กด Probe",
+                "เลือก route \"MiniMax\" ใน Composer ก่อนกด Summon",
+            },
+            Models: new[]
+            {
+                new ModelOption("MiniMax-Hailuo-2.3", "Hailuo 2.3", "best", "~$0.04-0.08 / s",
+                    "ใหม่ล่าสุด · physics engine · 1080P · 6/10s",
+                    UsdPerSecond: 0.06),
+                new ModelOption("MiniMax-Hailuo-02", "Hailuo 02", null, null,
+                    "เสถียร · text+image → video",
+                    UsdPerSecond: 0.045),
+                new ModelOption("S2V-01", "S2V-01", null, null,
+                    "subject reference → video (เก็บหน้าตัวละคร)",
+                    UsdPerSecond: 0.045),
+            },
+            FreeTierNote: "จ่ายตามวินาที · คลิป 6 หรือ 10 วินาที"),
     };
 
     /// <summary>Convenience: filter the catalog to providers whose Id is in the given set.</summary>

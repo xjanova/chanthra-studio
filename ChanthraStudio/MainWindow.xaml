@@ -38,6 +38,20 @@
                         </Setter.Value>
                     </Setter>
                 </DataTrigger>
+                <DataTrigger Binding="{Binding ActiveView}" Value="Seedance">
+                    <Setter Property="Content">
+                        <Setter.Value>
+                            <views:SeedanceWizardView />
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActiveView}" Value="Storyboard">
+                    <Setter Property="Content">
+                        <Setter.Value>
+                            <views:StoryboardView DataContext="{Binding Board}" />
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding ActiveView}" Value="Edit">
                     <Setter Property="Content">
                         <Setter.Value>

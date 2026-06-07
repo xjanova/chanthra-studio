@@ -26,7 +26,9 @@ namespace ChanthraStudio.Services.Providers.Posting;
 /// </summary>
 internal sealed class FacebookPostingProvider : IPostingProvider
 {
-    private const string GraphBase = "https://graph.facebook.com/v19.0/";
+    // v19/v20 are being retired in 2026 (v19 on 2026-05-21). Pinned to a
+    // current, long-support version per the 2026-06 provider audit.
+    private const string GraphBase = "https://graph.facebook.com/v24.0/";
 
     // Single shared HttpClient — per-call construction was leaking sockets
     // into TIME_WAIT under repeated posting. Timeout set per-request via

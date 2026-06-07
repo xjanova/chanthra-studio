@@ -126,6 +126,7 @@
                     </TextBlock>
                     <Button Margin="0,0,8,0" Padding="10,6" Command="{Binding UndoCommand}" Content="↶ Undo" Style="{StaticResource ButtonPill}" ToolTip="Undo (Ctrl+Z)" />
                     <Button Margin="0,0,14,0" Padding="10,6" Command="{Binding RedoCommand}" Content="↷ Redo" Style="{StaticResource ButtonPill}" ToolTip="Redo (Ctrl+Y)" />
+                    <Button Margin="0,0,6,0" Padding="10,6" Command="{Binding ImportClipsCommand}" Content="＋ Import video" Style="{StaticResource ButtonPillGold}" ToolTip="Import your own video / image files onto the timeline" />
                     <Button Margin="0,0,6,0" Padding="10,6" Command="{Binding LoadProjectCommand}" Content="Open…" Style="{StaticResource ButtonPill}" ToolTip="Open NLE project (Ctrl+O)" />
                     <Button Margin="0,0,6,0" Padding="8,6" Click="Recent_Click" Style="{StaticResource ButtonPill}"
                             ToolTip="Recent projects · last 5 .chstudio files you opened or saved">
@@ -514,6 +515,19 @@
                                 </Grid.ColumnDefinitions>
                                 <Slider Grid.Column="0" Minimum="0.5" Maximum="20" SmallChange="0.5" LargeChange="2" Style="{StaticResource GoldSlider}" Value="{Binding Selected.DurationSec, Mode=TwoWay}" />
                                 <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Selected.DurationSec, StringFormat={}{0:F1}s}" />
+                            </Grid>
+                        </StackPanel>
+
+                        <!--  Per-slot trim in-point (video clips) — start N seconds into the source  -->
+                        <StackPanel Margin="0,12,0,0" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Style="{StaticResource TextMonoUpper}" Text="TRIM START · IN-POINT" />
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Slider Grid.Column="0" Minimum="0" Maximum="30" SmallChange="0.5" LargeChange="2" Style="{StaticResource GoldSlider}" Value="{Binding Selected.TrimStartSec, Mode=TwoWay}" ToolTip="Seek this many seconds into the source clip before playing (video clips only)" />
+                                <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Selected.TrimStartSec, StringFormat={}{0:F1}s}" />
                             </Grid>
                         </StackPanel>
 

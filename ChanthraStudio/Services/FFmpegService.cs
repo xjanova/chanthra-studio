@@ -132,6 +132,37 @@ public sealed class FFmpegService
         return null;
     }
 
+    /// <summary>True if the file carries at least one audio stream. Cached
+    /// per process. Returns false on any probe failure (treat as silent —
+    /// the renderer substitutes silence for that clip's segment).</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _hasAudioCache = new();
+    public async Task<bool> ProbeHasAudioAsync(string filePath, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) return false;
+        if (_hasAudioCache.TryGetValue(filePath, out var cached)) return cached;
+        var probe = TryResolveFFprobe();
+        if (probe is null) { _hasAudioCache[filePath] = false; return false; }
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            var (stdout, _, exit) = await RunAsync(probe,
+                new[] { "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+                        "-of", "csv=p=0", filePath },
+                capture: true, ct: cts.Token);
+            var has = exit == 0 && !string.IsNullOrWhiteSpace(stdout);
+            _hasAudioCache[filePath] = has;
+            return has;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn("ffprobe", $"audio probe failed for {Path.GetFileName(filePath)}: {ex.Message}");
+            _hasAudioCache[filePath] = false;
+            return false;
+        }
+    }
+
     /// <summary>Returns ffmpeg's reported version string, or null.</summary>
     public async Task<string?> GetVersionAsync(CancellationToken ct = default)
     {

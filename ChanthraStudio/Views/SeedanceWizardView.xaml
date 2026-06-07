@@ -1,0 +1,723 @@
+<UserControl
+    x:Class="ChanthraStudio.Views.SeedanceWizardView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="clr-namespace:ChanthraStudio.ViewModels"
+    Background="{StaticResource BrushBgBase}"
+    d:DataContext="{d:DesignInstance vm:SeedanceWizardViewModel}"
+    d:DesignHeight="934"
+    d:DesignWidth="1576"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <!--  Single-line / multiline input field  -->
+        <Style x:Key="FieldBox" TargetType="TextBox">
+            <Setter Property="FontFamily" Value="{StaticResource FontUI}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
+            <Setter Property="CaretBrush" Value="{StaticResource BrushGoldHi}" />
+            <Setter Property="Padding" Value="9,7" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border
+                            x:Name="bd"
+                            Background="{StaticResource BrushBgInset}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalScrollBarVisibility="Hidden" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushLineGold}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!--  Step-rail entry. Active highlight driven by the button's Tag (= IsStepN).  -->
+        <Style x:Key="StepChip" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Command" Value="{Binding GoToStepCommand}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border
+                            x:Name="bd"
+                            Padding="11,10"
+                            Background="{StaticResource BrushBgSurface}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="9">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushLineGold}" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1FD4A76A" />
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushGoldHi}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!--  Data-driven single-select chip (shot / move / aspect / resolution).  -->
+        <Style x:Key="PickChipButton" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="CommandParameter" Value="{Binding Id}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border
+                            x:Name="bd"
+                            Padding="11,7"
+                            Background="{StaticResource BrushBgSurface}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="99">
+                            <TextBlock
+                                FontFamily="{StaticResource FontUI}"
+                                FontSize="12"
+                                Foreground="{StaticResource BrushText2}"
+                                Text="{Binding Label}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushLineGold}" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1FD4A76A" />
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushGoldHi}" />
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="248" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="396" />
+        </Grid.ColumnDefinitions>
+
+        <!--  ============== STEP RAIL (left) ==============  -->
+        <Border
+            Grid.Column="0"
+            Background="{StaticResource BrushBgBase}"
+            BorderBrush="{StaticResource BrushLineHairline}"
+            BorderThickness="0,0,1,0">
+            <DockPanel Margin="16,18,16,16" LastChildFill="True">
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Style="{StaticResource TextPanelHeader}">
+                        <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
+                        <Run Text="Seedance" />
+                    </TextBlock>
+                    <TextBlock
+                        Margin="0,3,0,0"
+                        Style="{StaticResource TextMonoUpper}"
+                        Foreground="{StaticResource BrushGoldHi}"
+                        Text="2.0 PROMPT WIZARD" />
+                    <Border Margin="0,14,0,12" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="0,1,0,0" />
+                </StackPanel>
+
+                <!--  Reset pinned to the bottom  -->
+                <Button
+                    DockPanel.Dock="Bottom"
+                    Margin="0,12,0,0"
+                    Padding="10,7"
+                    HorizontalContentAlignment="Center"
+                    Command="{Binding ResetCommand}"
+                    Style="{StaticResource ButtonPill}"
+                    ToolTip="Clear everything back to the starter shot">
+                    <TextBlock Style="{StaticResource TextMonoUpper}" Text="↺ RESET" />
+                </Button>
+
+                <StackPanel>
+                    <Button Style="{StaticResource StepChip}" Tag="{Binding IsStep1}" CommandParameter="1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="24" Height="24" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="12">
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="1" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="Mode &amp; use-case" />
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="HOW TO DIRECT" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                    <Button Style="{StaticResource StepChip}" Tag="{Binding IsStep2}" CommandParameter="2">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="24" Height="24" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="12">
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="2" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="Materials" />
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="@REFERENCES" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                    <Button Style="{StaticResource StepChip}" Tag="{Binding IsStep3}" CommandParameter="3">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="24" Height="24" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="12">
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="3" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="Scene &amp; camera" />
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="SUBJECT · LENS" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                    <Button Style="{StaticResource StepChip}" Tag="{Binding IsStep4}" CommandParameter="4">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="24" Height="24" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="12">
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="4" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="Timeline &amp; sound" />
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="BEATS · AUDIO" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                    <Button Style="{StaticResource StepChip}" Tag="{Binding IsStep5}" CommandParameter="5">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="24" Height="24" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="12">
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="5" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="Output &amp; review" />
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="LENGTH · FRAME" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!--  ============== STEP CONTENT (center) ==============  -->
+        <DockPanel Grid.Column="1" LastChildFill="True">
+            <!--  Header  -->
+            <StackPanel Margin="26,20,26,8" DockPanel.Dock="Top">
+                <TextBlock FontFamily="{StaticResource FontDisplay}" FontSize="22" FontStyle="Italic" Foreground="{StaticResource BrushText1}" Text="{Binding StepTitle}" />
+                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12.5" Text="{Binding StepCaption}" />
+            </StackPanel>
+
+            <!--  Footer nav  -->
+            <Border Margin="26,8,26,18" DockPanel.Dock="Bottom" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="0,1,0,0">
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" Padding="16,8" Command="{Binding PrevStepCommand}" Style="{StaticResource ButtonPill}">
+                        <TextBlock Text="← Back" />
+                    </Button>
+                    <TextBlock Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}">
+                        <Run Text="STEP" />
+                        <Run Foreground="{StaticResource BrushGoldHi}" Text="{Binding CurrentStep, Mode=OneWay}" />
+                        <Run Text="OF 5" />
+                    </TextBlock>
+                    <Button Grid.Column="2" Padding="20,8" Command="{Binding NextStepCommand}" Style="{StaticResource ButtonSummonCta}">
+                        <TextBlock Style="{StaticResource TextSummonCta}" Text="Next →" />
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!--  Body  -->
+            <ScrollViewer Margin="26,4,18,0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <Grid>
+                    <!--  ===== STEP 1 — Mode & use-case =====  -->
+                    <StackPanel Visibility="{Binding IsStep1, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource TextSectionDivider}" Text="DIRECTING MODE" />
+                        <UniformGrid Margin="0,8,0,0" Columns="2">
+                            <RadioButton
+                                Margin="0,0,5,0"
+                                Height="64"
+                                GroupName="seedmode"
+                                Command="{Binding SetModeCommand}"
+                                CommandParameter="Storyboard"
+                                IsChecked="{Binding IsStoryboard, Mode=OneWay}"
+                                Style="{StaticResource ChipRadio}">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock HorizontalAlignment="Center" FontFamily="{StaticResource FontUI}" FontSize="13.5" Foreground="{StaticResource BrushText1}" Text="🎬  Storyboard" />
+                                    <TextBlock Margin="0,3,0,0" Style="{StaticResource TextMonoUpper}" Text="SCENES · CAMERA · TIMELINE" />
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton
+                                Margin="5,0,0,0"
+                                Height="64"
+                                GroupName="seedmode"
+                                Command="{Binding SetModeCommand}"
+                                CommandParameter="LipSync"
+                                IsChecked="{Binding IsLipSync, Mode=OneWay}"
+                                Style="{StaticResource ChipRadio}">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock HorizontalAlignment="Center" FontFamily="{StaticResource FontUI}" FontSize="13.5" Foreground="{StaticResource BrushText1}" Text="💬  Lip-sync" />
+                                    <TextBlock Margin="0,3,0,0" Style="{StaticResource TextMonoUpper}" Text="TALKING HEAD · DIALOGUE" />
+                                </StackPanel>
+                            </RadioButton>
+                        </UniformGrid>
+
+                        <TextBlock Margin="0,20,0,0" Style="{StaticResource TextSectionDivider}" Text="USE-CASE" />
+                        <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding Templates}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="2" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button
+                                        Margin="0,0,6,6"
+                                        HorizontalContentAlignment="Stretch"
+                                        Cursor="Hand"
+                                        Command="{Binding DataContext.SelectTemplateCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding Id}">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="bd" Padding="12,10" Background="{StaticResource BrushBgSurface}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="9">
+                                                    <StackPanel>
+                                                        <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" FontWeight="Medium" Foreground="{StaticResource BrushText1}" Text="{Binding Name}" />
+                                                        <TextBlock Margin="0,3,0,0" Style="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Text="{Binding Blurb}" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushLineGold}" />
+                                                    </Trigger>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                        <Setter TargetName="bd" Property="Background" Value="#1FD4A76A" />
+                                                        <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource BrushGoldHi}" />
+                                                    </DataTrigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!--  ===== STEP 2 — Materials =====  -->
+                    <StackPanel Visibility="{Binding IsStep2, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Margin="0,0,8,0" Padding="13,8" Command="{Binding AddMaterialCommand}" CommandParameter="Image" Style="{StaticResource ButtonPill}">
+                                <TextBlock Text="＋ Image" />
+                            </Button>
+                            <Button Margin="0,0,8,0" Padding="13,8" Command="{Binding AddMaterialCommand}" CommandParameter="Video" Style="{StaticResource ButtonPill}">
+                                <TextBlock Text="＋ Video" />
+                            </Button>
+                            <Button Padding="13,8" Command="{Binding AddMaterialCommand}" CommandParameter="Audio" Style="{StaticResource ButtonPill}">
+                                <TextBlock Text="＋ Audio" />
+                            </Button>
+                        </StackPanel>
+                        <TextBlock Margin="2,9,0,0" Style="{StaticResource TextSecondary}" FontSize="11.5" TextWrapping="Wrap"
+                                   Text="Limits: ≤ 9 images · ≤ 3 videos · ≤ 3 audio (videos+audio ≤ 15s) · ≤ 12 total. Give every material a role — Seedance ignores a material that isn't @referenced with a purpose." />
+
+                        <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding Materials}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,8" Padding="12" Background="{StaticResource BrushBgSurface}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="10">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Grid.Column="0" Width="62" Height="62" VerticalAlignment="Top" Background="#1FD4A76A" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="8">
+                                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Center" Text="{Binding RefName}" />
+                                            </Border>
+
+                                            <StackPanel Grid.Column="1" Margin="12,0,8,0">
+                                                <TextBox Style="{StaticResource FieldBox}" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}" Tag="label" />
+                                                <TextBox Margin="0,7,0,0" Style="{StaticResource FieldBox}" Text="{Binding Role, UpdateSourceTrigger=PropertyChanged}" />
+                                                <TextBlock Margin="2,5,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}">
+                                                    <Run Text="ROLE — " /><Run Text="{Binding RoleHint, Mode=OneWay}" />
+                                                </TextBlock>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="2" VerticalAlignment="Top">
+                                                <Button Width="26" Height="26" Click="AttachMaterial_Click" Style="{StaticResource ButtonIcon}" ToolTip="Attach a file (sets the label)">
+                                                    <Path Width="13" Height="13" Data="{StaticResource IcoPaperclip}" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
+                                                </Button>
+                                                <Button Width="26" Height="26" Margin="0,4,0,0"
+                                                        Command="{Binding DataContext.RemoveMaterialCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource ButtonIcon}" ToolTip="Remove">
+                                                    <Path Width="12" Height="12" Data="{StaticResource IcoTrash}" Stretch="Uniform" Stroke="{StaticResource BrushCrimson}" StrokeThickness="1.4" />
+                                                </Button>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Border Padding="16" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="10"
+                                Visibility="{Binding HasNoMaterials, Converter={StaticResource BoolToVis}}">
+                            <TextBlock HorizontalAlignment="Center" Style="{StaticResource TextSecondary}" FontSize="12" Text="No materials yet — a pure text→video prompt is fine too." />
+                        </Border>
+                    </StackPanel>
+
+                    <!--  ===== STEP 3 — Scene / Dialogue & camera =====  -->
+                    <Grid>
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsStep3}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+
+                        <!--  Storyboard description  -->
+                        <StackPanel Visibility="{Binding IsStoryboard, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Style="{StaticResource TextSectionDivider}" Text="SUBJECT  +  MOTION   ·   REQUIRED" />
+                            <TextBox Margin="0,8,0,0" MinHeight="40" AcceptsReturn="True" TextWrapping="Wrap" Style="{StaticResource FieldBox}" Text="{Binding Subject, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Margin="2,5,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="WHO / WHAT — THE SUBJECT" />
+                            <TextBox Margin="0,10,0,0" MinHeight="40" AcceptsReturn="True" TextWrapping="Wrap" Style="{StaticResource FieldBox}" Text="{Binding Action, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Margin="2,5,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="THE MOTION / ACTION" />
+
+                            <TextBlock Margin="0,18,0,0" Style="{StaticResource TextSectionDivider}" Text="LOOK   ·   OPTIONAL" />
+                            <TextBox Margin="0,8,0,0" MinHeight="44" AcceptsReturn="True" TextWrapping="Wrap" Style="{StaticResource FieldBox}" Text="{Binding Scene, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Margin="2,5,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="ENVIRONMENT · LIGHTING · STYLE" />
+
+                            <TextBlock Margin="0,18,0,8" Style="{StaticResource TextSectionDivider}" Text="SHOT TYPE" />
+                            <ItemsControl ItemsSource="{Binding ShotTypes}">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource PickChipButton}" Command="{Binding DataContext.SelectShotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Margin="0,12,0,8" Style="{StaticResource TextSectionDivider}" Text="CAMERA MOVE" />
+                            <ItemsControl ItemsSource="{Binding CameraMoves}">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource PickChipButton}" Command="{Binding DataContext.SelectMoveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Margin="0,12,0,0" Style="{StaticResource TextSectionDivider}" Text="ON-SCREEN TEXT   ·   OPTIONAL" />
+                            <TextBox Margin="0,8,0,0" Style="{StaticResource FieldBox}" Text="{Binding TextOverlay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Margin="2,5,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="SLOGAN / TITLE / SUBTITLE" />
+                        </StackPanel>
+
+                        <!--  Lip-sync dialogue  -->
+                        <StackPanel Visibility="{Binding IsLipSync, Converter={StaticResource BoolToVis}}">
+                            <Border Padding="12,10" Background="#1FD4A76A" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="9">
+                                <TextBlock Style="{StaticResource TextSecondary}" FontSize="11.5" TextWrapping="Wrap"
+                                           Text="Lip-sync formula: locked medium close-up, front-facing portrait, 5–10 words per line, no head movement. Reference a portrait image in step 2 as the speaker." />
+                            </Border>
+
+                            <TextBlock Margin="0,16,0,0" Style="{StaticResource TextSectionDivider}" Text="SPEAKER  ·  OPTIONAL CONTEXT" />
+                            <TextBox Margin="0,8,0,0" MinHeight="38" AcceptsReturn="True" TextWrapping="Wrap" Style="{StaticResource FieldBox}" Text="{Binding Subject, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Margin="2,5,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="WHO IS SPEAKING / THE PORTRAIT" />
+
+                            <Grid Margin="0,18,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextSectionDivider}" Text="DIALOGUE LINES" />
+                                <Button Grid.Column="1" Padding="11,6" Command="{Binding AddLineCommand}" Style="{StaticResource ButtonPill}">
+                                    <TextBlock Text="＋ Line" />
+                                </Button>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Lines}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,8" Padding="11" Background="{StaticResource BrushBgSurface}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="10">
+                                            <StackPanel>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="120" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox Grid.Column="0" Style="{StaticResource FieldBox}" Text="{Binding Speaker, UpdateSourceTrigger=PropertyChanged}" ToolTip="Speaker name" />
+                                                    <TextBox Grid.Column="1" Margin="7,0,0,0" Style="{StaticResource FieldBox}" Text="{Binding Language, UpdateSourceTrigger=PropertyChanged}" ToolTip="Language" />
+                                                    <Button Grid.Column="2" Width="26" Height="26" Margin="7,0,0,0"
+                                                            Command="{Binding DataContext.RemoveLineCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}" Style="{StaticResource ButtonIcon}" ToolTip="Remove line">
+                                                        <Path Width="12" Height="12" Data="{StaticResource IcoTrash}" Stretch="Uniform" Stroke="{StaticResource BrushCrimson}" StrokeThickness="1.4" />
+                                                    </Button>
+                                                </Grid>
+                                                <TextBox Margin="0,7,0,0" MinHeight="36" AcceptsReturn="True" TextWrapping="Wrap" Style="{StaticResource FieldBox}" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" ToolTip="The spoken line (5–10 words)" />
+                                                <Grid Margin="0,7,0,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox Grid.Column="0" Style="{StaticResource FieldBox}" Text="{Binding Emotion, UpdateSourceTrigger=PropertyChanged}" ToolTip="Emotion / delivery cue" />
+                                                    <Border Grid.Column="1" Margin="8,0,0,0" Padding="8,0" MinWidth="64" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                                        <TextBlock VerticalAlignment="Center" HorizontalAlignment="Center" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}">
+                                                            <Run Text="{Binding WordCount, Mode=OneWay}" /><Run Text=" w" />
+                                                        </TextBlock>
+                                                    </Border>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Style="{StaticResource TextLabel}" Text="Lock camera (medium close-up)" />
+                                    <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="RECOMMENDED FOR CLEAN LIP-SYNC" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" IsChecked="{Binding LockCamera}" Style="{StaticResource ToggleSwitch}" />
+                            </Grid>
+
+                            <TextBlock Margin="0,16,0,0" Style="{StaticResource TextSectionDivider}" Text="SPEAKING STYLE   ·   OPTIONAL" />
+                            <TextBox Margin="0,8,0,0" Style="{StaticResource FieldBox}" Text="{Binding SpeakingStyle, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Margin="2,5,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="e.g. DELIBERATE ENUNCIATION · FAST-PACED" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!--  ===== STEP 4 — Timeline / voice & sound =====  -->
+                    <StackPanel Visibility="{Binding IsStep4, Converter={StaticResource BoolToVis}}">
+                        <!--  Timeline (storyboard only)  -->
+                        <StackPanel Visibility="{Binding IsStoryboard, Converter={StaticResource BoolToVis}}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Style="{StaticResource TextLabel}" Text="Second-by-second timeline" />
+                                    <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="DESCRIBE EACH BEAT — 0-3S, 4-8S…" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" IsChecked="{Binding UseTimeline}" Style="{StaticResource ToggleSwitch}" />
+                            </Grid>
+
+                            <StackPanel Margin="0,10,0,0" Visibility="{Binding UseTimeline, Converter={StaticResource BoolToVis}}">
+                                <ItemsControl ItemsSource="{Binding Segments}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Margin="0,0,0,7" Padding="10" Background="{StaticResource BrushBgSurface}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="9">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="56" />
+                                                        <ColumnDefinition Width="56" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox Grid.Column="0" Style="{StaticResource FieldBox}" Text="{Binding Start, UpdateSourceTrigger=PropertyChanged}" ToolTip="Start (s)" />
+                                                    <TextBox Grid.Column="1" Margin="6,0,0,0" Style="{StaticResource FieldBox}" Text="{Binding End, UpdateSourceTrigger=PropertyChanged}" ToolTip="End (s)" />
+                                                    <TextBox Grid.Column="2" Margin="6,0,0,0" Style="{StaticResource FieldBox}" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" ToolTip="What happens in this beat" />
+                                                    <Button Grid.Column="3" Width="26" Height="26" Margin="6,0,0,0"
+                                                            Command="{Binding DataContext.RemoveSegmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}" Style="{StaticResource ButtonIcon}" ToolTip="Remove beat">
+                                                        <Path Width="12" Height="12" Data="{StaticResource IcoTrash}" Stretch="Uniform" Stroke="{StaticResource BrushCrimson}" StrokeThickness="1.4" />
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Margin="0,2,0,0" Padding="11,7" HorizontalAlignment="Left" Command="{Binding AddSegmentCommand}" Style="{StaticResource ButtonPill}">
+                                    <TextBlock Text="＋ Beat" />
+                                </Button>
+                            </StackPanel>
+                            <Border Margin="0,18,0,0" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="0,1,0,0" />
+                        </StackPanel>
+
+                        <!--  Voice tone (lip-sync only)  -->
+                        <StackPanel Visibility="{Binding IsLipSync, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Style="{StaticResource TextSectionDivider}" Text="VOICE TONE REFERENCE   ·   OPTIONAL" />
+                            <TextBox Margin="0,8,0,0" Style="{StaticResource FieldBox}" Text="{Binding VoiceToneRef, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Margin="2,5,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="COPY A VOICE FROM A MATERIAL — e.g. @VIDEO1 / @AUDIO1" />
+                            <Border Margin="0,18,0,0" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="0,1,0,0" />
+                        </StackPanel>
+
+                        <!--  Shared sound bed  -->
+                        <TextBlock Margin="0,16,0,0" Style="{StaticResource TextSectionDivider}" Text="SOUND" />
+                        <TextBox Margin="0,8,0,0" Style="{StaticResource FieldBox}" Text="{Binding Voiceover, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Margin="2,5,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="VOICEOVER / NARRATION" />
+                        <TextBox Margin="0,10,0,0" Style="{StaticResource FieldBox}" Text="{Binding Sfx, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Margin="2,5,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="SOUND EFFECTS — e.g. FOOTSTEPS, THUNDER" />
+                        <TextBox Margin="0,10,0,0" Style="{StaticResource FieldBox}" Text="{Binding Ambience, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Margin="2,5,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="AMBIENCE / ROOM TONE" />
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextLabel}" Text="Background music" />
+                            <ToggleButton Grid.Column="1" IsChecked="{Binding BackgroundMusic}" Style="{StaticResource ToggleSwitch}" />
+                        </Grid>
+                    </StackPanel>
+
+                    <!--  ===== STEP 5 — Output & review =====  -->
+                    <StackPanel Visibility="{Binding IsStep5, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Style="{StaticResource TextSectionDivider}" Text="ASPECT RATIO" />
+                        <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding Aspects}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource PickChipButton}" Command="{Binding DataContext.SelectAspectCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Margin="0,12,0,8" Style="{StaticResource TextSectionDivider}" Text="RESOLUTION" />
+                        <ItemsControl ItemsSource="{Binding Resolutions}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource PickChipButton}" Command="{Binding DataContext.SelectResolutionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Grid Margin="0,16,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextLabel}" Text="Length" />
+                            <Slider Grid.Column="1" Margin="10,0" Minimum="4" Maximum="15" Style="{StaticResource GoldSlider}" Value="{Binding DurationSec}" />
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding DurationLabel}" />
+                        </Grid>
+                        <TextBlock Margin="2,7,0,0" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="GENERATION LENGTH — SEEDANCE RANGE 4–15S" />
+
+                        <Border Margin="0,18,0,0" Padding="14" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="10">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}" Text="✦ READY" />
+                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextSecondary}" FontSize="12" TextWrapping="Wrap"
+                                           Text="Your prompt is assembled live on the right. Copy it into Seedance 2.0, or send it straight to the Composer to keep working in the studio." />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+        </DockPanel>
+
+        <!--  ============== LIVE PROMPT (right) ==============  -->
+        <Border
+            Grid.Column="2"
+            Background="{StaticResource BrushBgBase}"
+            BorderBrush="{StaticResource BrushLineHairline}"
+            BorderThickness="1,0,0,0">
+            <DockPanel Margin="18,18,18,18" LastChildFill="True">
+                <Grid DockPanel.Dock="Top">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextPanelHeader}">
+                        <Run Foreground="{StaticResource BrushGold}" Text="✦ " /><Run Text="Live prompt" />
+                    </TextBlock>
+                    <Border Grid.Column="1" Padding="8,3" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="99">
+                        <TextBlock Style="{StaticResource TextMono}" FontSize="10" Foreground="{StaticResource BrushText3}">
+                            <Run Text="{Binding CharCount, Mode=OneWay}" /><Run Text=" chars" />
+                        </TextBlock>
+                    </Border>
+                </Grid>
+
+                <!--  Footer: copy + send + status  -->
+                <StackPanel DockPanel.Dock="Bottom">
+                    <TextBlock Margin="2,0,2,8" Style="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource BrushGoldHi}"
+                               Text="{Binding StatusMessage}"
+                               Visibility="{Binding StatusMessage, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}" />
+                    <Button Command="{Binding CopyPromptCommand}" HorizontalContentAlignment="Stretch" Style="{StaticResource ButtonSummonCta}">
+                        <TextBlock HorizontalAlignment="Center" Style="{StaticResource TextSummonCta}" Text="⧉ Copy prompt" />
+                    </Button>
+                    <Button Margin="0,8,0,0" Padding="12,9" HorizontalContentAlignment="Center" Click="SendToComposer_Click" Style="{StaticResource ButtonPill}"
+                            ToolTip="Drop this prompt into the Generate composer">
+                        <TextBlock Text="→ Send to Composer" />
+                    </Button>
+                </StackPanel>
+
+                <!--  Body: assembled prompt + warnings  -->
+                <DockPanel Margin="0,14,0,12" LastChildFill="True">
+                    <!--  Warnings  -->
+                    <Border DockPanel.Dock="Bottom" Margin="0,12,0,0" Padding="12" Background="#14B03346" BorderBrush="{StaticResource BrushLineCrimson}" BorderThickness="1" CornerRadius="10"
+                            Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="#FFE89AA5" Text="⚠ CHECK" />
+                            <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding Warnings}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,3,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Ellipse Grid.Column="0" Width="4" Height="4" Margin="0,6,8,0" VerticalAlignment="Top" Fill="{StaticResource BrushCrimson}" />
+                                            <TextBlock Grid.Column="1" Style="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Text="{Binding}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!--  Assembled prompt — read-only, selectable  -->
+                    <Border Background="{StaticResource BrushBgSurface}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="10">
+                        <ScrollViewer Margin="2" VerticalScrollBarVisibility="Auto">
+                            <TextBox
+                                Padding="14"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                FontFamily="{StaticResource FontMono}"
+                                FontSize="12.5"
+                                Foreground="{StaticResource BrushText1}"
+                                IsReadOnly="True"
+                                TextWrapping="Wrap"
+                                Text="{Binding AssembledPrompt, Mode=OneWay}" />
+                        </ScrollViewer>
+                    </Border>
+                </DockPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

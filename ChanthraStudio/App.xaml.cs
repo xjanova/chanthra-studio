@@ -15,6 +15,19 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Global safety net — a stray UI layout/render exception should be
+        // LOGGED and RECOVERED, not silently kill the app ("เด้ง"). The full
+        // exception lands in %APPDATA%/ChanthraStudio/logs for diagnosis.
+        DispatcherUnhandledException += (_, ux) =>
+        {
+            try { ActivityLog.Error("app", "unhandled UI exception (recovered)", ux.Exception); } catch { }
+            ux.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, ux) =>
+        {
+            try { ActivityLog.Warn("app", "unhandled domain exception: " + ((ux.ExceptionObject as Exception)?.Message ?? "unknown")); } catch { }
+        };
+
         // Apply theme override BEFORE the base call — base.OnStartup
         // honours StartupUri which instantiates MainWindow, and any
         // StaticResource lookups in MainWindow.xaml are resolved at

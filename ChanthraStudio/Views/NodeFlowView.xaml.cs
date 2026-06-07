@@ -10,8 +10,13 @@ namespace ChanthraStudio.Views;
 public partial class NodeFlowView : UserControl
 {
     private FlowNode? _draggingNode;
+    private Border? _dragBorder;   // the node card we captured — released in EndDrag
     private Point _dragStartCanvas;
     private Point _dragStartNode;
+    private NodeFlowViewModel.GraphSnap? _dragPre;   // pre-move undo snapshot
+    private bool _dragPushed;
+    private NodeFlowViewModel.GraphSnap? _paramPre;   // pre-edit undo snapshot for a param field
+    private bool _paramDirty;
 
     private bool _panning;
     private Point _panStart;
@@ -34,6 +39,79 @@ public partial class NodeFlowView : UserControl
 
     private NodeFlowViewModel? Vm => DataContext as NodeFlowViewModel;
 
+    /// <summary>Keyboard shortcuts: Ctrl+Z/Y undo·redo, Ctrl+S save, Ctrl+D
+    /// duplicate, Delete removes the selected node. Text fields keep their own
+    /// Ctrl+Z / Delete while focused (Ctrl+S still saves).</summary>
+    private void NodeFlow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        var mods = System.Windows.Input.Keyboard.Modifiers;
+        var ctrl = (mods & System.Windows.Input.ModifierKeys.Control) == System.Windows.Input.ModifierKeys.Control;
+        var shift = (mods & System.Windows.Input.ModifierKeys.Shift) == System.Windows.Input.ModifierKeys.Shift;
+        var inText = e.OriginalSource is System.Windows.Controls.TextBox;
+
+        if (ctrl && e.Key == System.Windows.Input.Key.S)
+        {
+            Vm?.SaveCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+        if (inText) return;  // let a focused field own Ctrl+Z / Delete while editing
+
+        if (ctrl && (e.Key == System.Windows.Input.Key.Y || (shift && e.Key == System.Windows.Input.Key.Z)))
+        {
+            Vm?.RedoCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (ctrl && e.Key == System.Windows.Input.Key.Z)
+        {
+            Vm?.UndoCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (ctrl && e.Key == System.Windows.Input.Key.D)
+        {
+            Vm?.DuplicateSelectedCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == System.Windows.Input.Key.Delete && Vm?.Selected is not null)
+        {
+            Vm.DeleteSelectedCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    // Param-edit undo: snapshot the graph when a param field gains focus, then
+    // commit that pre-edit snapshot once the value actually changed and focus leaves.
+    private void Param_GotFocus(object sender, System.Windows.RoutedEventArgs e)
+    {
+        _paramPre = Vm?.CaptureSnapshot();
+        _paramDirty = false;
+    }
+
+    private void Param_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        => _paramDirty = true;
+
+    private void Param_LostFocus(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (_paramDirty && _paramPre is not null) Vm?.PushUndoSnapshot(_paramPre);
+        _paramPre = null;
+        _paramDirty = false;
+    }
+
+    /// <summary>Click a wire's fat hit-band to disconnect it (undoable).</summary>
+    private void Wire_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (Vm is null) return;
+        if (sender is System.Windows.FrameworkElement fe && fe.DataContext is FlowWire wire)
+        {
+            Vm.RemoveWire(wire);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>Toolbar "Fit" — frame the whole graph in the live viewport.</summary>
+    private void FitToView_Click(object sender, System.Windows.RoutedEventArgs e)
+        => Vm?.FitToView(CanvasViewport.ActualWidth, CanvasViewport.ActualHeight);
+
     /// <summary>
     /// Click on a node card → select it, and start a drag if the click
     /// landed on the header. The header has Cursor=SizeAll so users can
@@ -53,7 +131,11 @@ public partial class NodeFlowView : UserControl
         var pt = e.GetPosition(bd);
         if (pt.Y > FlowNode.HeaderHeight) return;
 
+        bd.Focus();  // take keyboard focus so the Delete key targets this node
         _draggingNode = node;
+        _dragBorder = bd;
+        _dragPre = vm.CaptureSnapshot();  // grab pre-move state; pushed to undo on first real move
+        _dragPushed = false;
         _dragStartCanvas = e.GetPosition(WorldCanvas);
         _dragStartNode = new Point(node.X, node.Y);
         bd.CaptureMouse();
@@ -80,6 +162,11 @@ public partial class NodeFlowView : UserControl
             var current = e.GetPosition(WorldCanvas);
             var dx = current.X - _dragStartCanvas.X;
             var dy = current.Y - _dragStartCanvas.Y;
+            if (!_dragPushed && _dragPre is not null && (System.Math.Abs(dx) > 0.5 || System.Math.Abs(dy) > 0.5))
+            {
+                Vm.PushUndoSnapshot(_dragPre);   // make the drag undoable — once, on first real movement
+                _dragPushed = true;
+            }
             _draggingNode.X = _dragStartNode.X + dx;
             _draggingNode.Y = _dragStartNode.Y + dy;
             Vm.RecomputeWires();
@@ -151,6 +238,11 @@ public partial class NodeFlowView : UserControl
     /// </summary>
     private void GlobalMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        // Finish a node drag on button-up even if the user never moved — the
+        // Viewport move-handler only ends a drag on the NEXT move, which would
+        // otherwise leave the card holding mouse capture.
+        if (_draggingNode is not null) EndDrag();
+
         if (Vm is null || _wireFromSocket is null) return;
 
         // Hit-test where the user released. WPF's VisualTreeHelper.HitTest
@@ -219,6 +311,12 @@ public partial class NodeFlowView : UserControl
     {
         if (_draggingNode is null) return;
         _draggingNode = null;
-        WorldCanvas.ReleaseMouseCapture();
+        // Release capture on the SAME element we captured (the node card),
+        // NOT WorldCanvas — otherwise the first dragged node keeps mouse
+        // capture forever and every other card becomes un-clickable.
+        _dragBorder?.ReleaseMouseCapture();
+        _dragBorder = null;
+        _dragPre = null;
+        _dragPushed = false;
     }
 }

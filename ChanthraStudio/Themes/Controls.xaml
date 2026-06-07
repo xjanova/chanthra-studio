@@ -140,6 +140,21 @@
                             Background="{TemplateBinding Background}"
                             CornerRadius="10"
                             Effect="{StaticResource ShadowSummonCta}">
+                            <Border.Triggers>
+                                <EventTrigger RoutedEvent="Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation
+                                                Storyboard.TargetProperty="(Effect).(DropShadowEffect.Opacity)"
+                                                From="0.45"
+                                                To="0.75"
+                                                Duration="0:0:2.4"
+                                                AutoReverse="True"
+                                                RepeatBehavior="Forever" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Border.Triggers>
                             <Grid>
                                 <!--  top light bevel  -->
                                 <Border CornerRadius="10">
@@ -160,20 +175,6 @@
                         </Border>
                     </Grid>
                     <ControlTemplate.Triggers>
-                        <EventTrigger RoutedEvent="Loaded">
-                            <BeginStoryboard>
-                                <Storyboard>
-                                    <DoubleAnimation
-                                        Storyboard.TargetName="bd"
-                                        Storyboard.TargetProperty="(Effect).(DropShadowEffect.Opacity)"
-                                        From="0.45"
-                                        To="0.75"
-                                        Duration="0:0:2.4"
-                                        AutoReverse="True"
-                                        RepeatBehavior="Forever" />
-                                </Storyboard>
-                            </BeginStoryboard>
-                        </EventTrigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bd" Property="RenderTransform">
                                 <Setter.Value>

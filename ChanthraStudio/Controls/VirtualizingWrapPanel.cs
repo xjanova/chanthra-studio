@@ -103,10 +103,10 @@ public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
         // a hang. (T59 / 7.22 hardening)
         if (ItemWidth <= 0 || ItemHeight <= 0)
         {
-            _viewport = availableSize;
+            _viewport = Finite(availableSize);
             _extent = new Size(0, 0);
             ScrollOwner?.InvalidateScrollInfo();
-            return availableSize;
+            return new Size(0, 0);
         }
         // Wrap the whole measure pass — virtualisation panels are a known
         // source of "WPF eats your stack trace" crashes when the
@@ -120,12 +120,19 @@ public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
         catch (Exception ex)
         {
             ActivityLog.Warn("vwp", "measure failed: " + ex.Message);
-            _viewport = availableSize;
+            _viewport = Finite(availableSize);
             _extent = new Size(0, 0);
             ScrollOwner?.InvalidateScrollInfo();
-            return availableSize;
+            return new Size(0, 0);
         }
     }
+
+    /// <summary>Replace any Infinity component with 0. A DesiredSize that
+    /// carries Infinity makes WPF throw "should not return PositiveInfinity"
+    /// and tears down the window — this guards every measure return path.</summary>
+    private static Size Finite(Size s) => new Size(
+        double.IsInfinity(s.Width) ? 0 : s.Width,
+        double.IsInfinity(s.Height) ? 0 : s.Height);
 
     private Size MeasureImpl(Size availableSize)
     {
@@ -135,32 +142,49 @@ public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
         var concreteGen = generator as ItemContainerGenerator;
         var itemsOwner = ItemsControl.GetItemsOwner(this);
 
-        var cols = Math.Max(1, (int)Math.Floor(availableSize.Width / ItemWidth));
+        // Width is normally constrained (the Library disables horizontal
+        // scrolling), but guard against an infinite width too so cols stays sane.
+        var usableWidth = double.IsInfinity(availableSize.Width) ? ItemWidth : availableSize.Width;
+        var cols = Math.Max(1, (int)Math.Floor(usableWidth / ItemWidth));
         var itemCount = itemsOwner?.Items.Count ?? 0;
         var rows = (int)Math.Ceiling((double)itemCount / cols);
 
-        _viewport = availableSize;
         _extent = new Size(cols * ItemWidth, rows * ItemHeight);
+
+        // When the parent measures us with an UNCONSTRAINED height, the
+        // ScrollViewer is pixel-scrolling us (it is NOT driving us through
+        // IScrollInfo). In that mode we must realise EVERY item and report our
+        // full, FINITE height — otherwise scrolled rows would be blank, OR (the
+        // original crash) we'd return Infinity as DesiredSize and WPF would tear
+        // the window down. With a finite height we virtualise the visible band.
+        var unconstrained = double.IsInfinity(availableSize.Height);
+        _viewport = new Size(usableWidth, unconstrained ? _extent.Height : availableSize.Height);
 
         // Clamp Y offset in case the new extent shrank below the old offset.
         if (_offset.Y + _viewport.Height > _extent.Height)
             _offset.Y = Math.Max(0, _extent.Height - _viewport.Height);
 
-        // Decide which items are in (or near) the visible band.
-        var firstVisibleRow = (int)Math.Floor(_offset.Y / ItemHeight);
-        var lastVisibleRow  = (int)Math.Floor((_offset.Y + _viewport.Height) / ItemHeight);
-        // 1-row cache band above + below to keep scrolling smooth.
-        var firstRow = Math.Max(0, firstVisibleRow - 1);
-        var lastRow  = Math.Min(Math.Max(0, rows - 1), lastVisibleRow + 1);
-        var firstItem = itemCount == 0 ? 0 : firstRow * cols;
-        var lastItem  = itemCount == 0 ? -1 : Math.Min(itemCount - 1, (lastRow + 1) * cols - 1);
+        int firstItem, lastItem;
+        if (unconstrained)
+        {
+            // Realise all items — full content, pixel-scrolled by the ScrollViewer.
+            firstItem = 0;
+            lastItem = itemCount - 1;
+        }
+        else
+        {
+            // Realise only the visible band (+1 row of cache above/below).
+            var firstVisibleRow = (int)Math.Floor(_offset.Y / ItemHeight);
+            var lastVisibleRow  = (int)Math.Floor((_offset.Y + _viewport.Height) / ItemHeight);
+            var firstRow = Math.Max(0, firstVisibleRow - 1);
+            var lastRow  = Math.Min(Math.Max(0, rows - 1), lastVisibleRow + 1);
+            firstItem = itemCount == 0 ? 0 : firstRow * cols;
+            lastItem  = itemCount == 0 ? -1 : Math.Min(itemCount - 1, (lastRow + 1) * cols - 1);
+        }
 
         // ============================================================
-        // Step 1: recycle out-of-range realised children FIRST. Walking
-        // backwards so removals don't shift unvisited indices. After this
-        // pass, InternalChildren contains only containers whose item
-        // index sits in [firstItem..lastItem] (or 0 of them when the
-        // collection went empty). (7.20 fix — review CRIT #1 + #2)
+        // Step 1: recycle out-of-range realised children FIRST (walk backwards
+        // so removals don't shift unvisited indices). (7.20 fix — CRIT #1 + #2)
         // ============================================================
         if (concreteGen is not null)
         {
@@ -177,20 +201,10 @@ public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
             }
         }
 
-        if (itemCount == 0)
-        {
-            ScrollOwner?.InvalidateScrollInfo();
-            return availableSize;
-        }
-
         // ============================================================
-        // Step 2: generate any IN-range items that don't have a realised
-        // container yet. New containers are appended to the END of
-        // InternalChildren — ArrangeOverride does NOT rely on the child
-        // order matching item order; it asks the generator for each
-        // child's item index and computes col/row from that.
+        // Step 2: generate any IN-range items that don't have a container yet.
         // ============================================================
-        if (generator is not null)
+        if (generator is not null && itemCount > 0 && lastItem >= firstItem)
         {
             var startPos = generator.GeneratorPositionFromIndex(firstItem);
             using (generator.StartAt(startPos, GeneratorDirection.Forward, true))
@@ -210,7 +224,9 @@ public sealed class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
         }
 
         ScrollOwner?.InvalidateScrollInfo();
-        return availableSize;
+        // DesiredSize MUST be finite. Width = content width; Height = the full
+        // extent when unconstrained, else the (finite) viewport height we got.
+        return new Size(_extent.Width, unconstrained ? _extent.Height : availableSize.Height);
     }
 
     protected override Size ArrangeOverride(Size finalSize)

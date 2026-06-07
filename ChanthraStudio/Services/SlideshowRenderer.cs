@@ -63,6 +63,11 @@ public sealed class SlideshowRenderer
         /// </summary>
         public IReadOnlyList<double>? ClipDurations { get; init; }
 
+        /// <summary>Per-clip in-point (seconds) into the source — the renderer
+        /// seeks here before taking the slot duration. Parallel to
+        /// <see cref="Clips"/>; null/short → no trim (start at 0). Video only.</summary>
+        public IReadOnlyList<double>? ClipTrimStarts { get; init; }
+
         /// <summary>
         /// Per-clip Ken Burns + color grading. Same-length list parallel to
         /// <see cref="Clips"/> (and <see cref="ClipDurations"/>). Slots with
@@ -225,16 +230,34 @@ public sealed class SlideshowRenderer
             }
         }
 
-        var args = BuildArgList(spec, outputPath);
-
-        // Total expected frames so we can convert "frame=NNN" into "% done"
-        // and an ETA. Includes both the main timeline and any crossfade
-        // overshoot from chained xfades; close enough for a status pill.
-        var perClipOverride = spec.ClipDurations is { Count: > 0 } durs && durs.Count == spec.Clips.Count
-            ? durs : null;
-        double totalSec = 0;
+        // Probe each VIDEO clip — does it carry audio (keep its sound), and
+        // what's its true length (a silent segment must match the clip exactly
+        // or the concat desyncs). Images need neither. ffprobe is cached.
+        var trims = spec.ClipTrimStarts is { Count: > 0 } ts && ts.Count == spec.Clips.Count ? ts : null;
+        var slotDurs = spec.ClipDurations is { Count: > 0 } sd && sd.Count == spec.Clips.Count ? sd : null;
+        var clipHasAudio = new bool[spec.Clips.Count];
+        var effDur = new double[spec.Clips.Count];
         for (int i = 0; i < spec.Clips.Count; i++)
-            totalSec += perClipOverride?[i] ?? spec.SecondsPerClip;
+        {
+            var slotDur = slotDurs?[i] ?? spec.SecondsPerClip;
+            var trim = trims?[i] ?? 0;
+            if (IsVideoFile(spec.Clips[i].FilePath))
+            {
+                clipHasAudio[i] = await ff.ProbeHasAudioAsync(spec.Clips[i].FilePath, ct);
+                var clipLen = await ff.ProbeDurationSecAsync(spec.Clips[i].FilePath, ct);
+                effDur[i] = clipLen is double cl ? Math.Max(0.1, Math.Min(slotDur, cl - trim)) : slotDur;
+            }
+            else
+            {
+                effDur[i] = slotDur;   // still image loops to exactly slotDur
+            }
+        }
+
+        var args = BuildArgList(spec, outputPath, effDur, trims, clipHasAudio);
+
+        // Total expected frames → "% done" + ETA for the progress pill.
+        double totalSec = 0;
+        for (int i = 0; i < spec.Clips.Count; i++) totalSec += effDur[i];
         if (spec.CrossfadeSec > 0 && spec.Clips.Count > 1)
             totalSec -= spec.CrossfadeSec * (spec.Clips.Count - 1);
         var totalFrames = Math.Max(1, (int)Math.Round(totalSec * spec.Fps));
@@ -272,6 +295,20 @@ public sealed class SlideshowRenderer
         try
         {
             using var c = _ctx.Db.Open();
+            // Imported clips carry an empty/foreign ShotId — the clips.shot_id FK
+            // would reject the render-output row (so the film renders to disk but
+            // never shows in Library). Fall back to a sentinel shot under the
+            // migration-seeded 'default' sequence so it lands in Library.
+            var shotId = firstShotId;
+            if (string.IsNullOrEmpty(shotId)
+                || c.ExecuteScalar<long>("SELECT COUNT(1) FROM shots WHERE id = $id", new { id = shotId }) == 0)
+            {
+                shotId = "editor-render";
+                c.Execute("""
+                    INSERT OR IGNORE INTO shots (id, sequence_id, number, title, created_at, updated_at)
+                    VALUES ($id, 'default', '—', 'Editor render', $now, $now)
+                    """, new { id = shotId, now = DateTimeOffset.UtcNow.ToUnixTimeSeconds() });
+            }
             c.Execute("""
                 INSERT INTO clips (id, shot_id, duration_ms, file_path, created_at)
                 VALUES ($id, $shotId, $dur, $path, $now)
@@ -279,7 +316,7 @@ public sealed class SlideshowRenderer
                 new
                 {
                     id = clipId,
-                    shotId = firstShotId,
+                    shotId,
                     dur = (int)(actualSec * 1000),
                     path = outputPath,
                     now = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
@@ -300,8 +337,9 @@ public sealed class SlideshowRenderer
     /// Filenames with spaces / quotes / shell metacharacters are safe — there
     /// is no shell parsing in this path.
     /// </summary>
-    private static List<string> BuildArgList(Spec spec, string outputPath)
+    private static List<string> BuildArgList(Spec spec, string outputPath, double[] effDur, IReadOnlyList<double>? trims, bool[] clipHasAudio)
     {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
         // Multi-track audio takes precedence over the legacy single-track.
         // Filter both lists down to entries that still exist on disk.
         var audioTracks = spec.AudioTracks
@@ -319,15 +357,26 @@ public sealed class SlideshowRenderer
         var hasOverlay = overlays.Count > 0;
         var args = new List<string> { "-y" };
 
-        var perClipOverride = spec.ClipDurations is { Count: > 0 } durs && durs.Count == spec.Clips.Count
-            ? durs
-            : null;
         for (int i = 0; i < spec.Clips.Count; i++)
         {
-            var dur = perClipOverride?[i] ?? spec.SecondsPerClip;
-            args.Add("-loop");      args.Add("1");
-            args.Add("-t");         args.Add(dur.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
-            args.Add("-i");         args.Add(spec.Clips[i].FilePath);
+            var durStr = effDur[i].ToString("F2", inv);
+            // VIDEO clips play their OWN frames — NEVER -loop (looping froze the
+            // first frame, the old "slideshow pretending to be a video editor"
+            // bug). -ss seeks to the trim in-point; -t takes the slot length.
+            // STILL images keep -loop 1 for the Ken Burns slideshow path.
+            if (IsVideoFile(spec.Clips[i].FilePath))
+            {
+                var trim = trims?[i] ?? 0;
+                if (trim > 0.01) { args.Add("-ss"); args.Add(trim.ToString("F2", inv)); }
+                args.Add("-t");     args.Add(durStr);
+                args.Add("-i");     args.Add(spec.Clips[i].FilePath);
+            }
+            else
+            {
+                args.Add("-loop");  args.Add("1");
+                args.Add("-t");     args.Add(durStr);
+                args.Add("-i");     args.Add(spec.Clips[i].FilePath);
+            }
         }
         // Overlay slots in the input list come BEFORE the audio so audio
         // (when present) is always the last input — keeps filter labels
@@ -362,22 +411,43 @@ public sealed class SlideshowRenderer
         // stays readable. Refactored from a 200-line inline build in 7.14.
         var titles = spec.Titles.Where(t => !string.IsNullOrWhiteSpace(t.Text)).ToList();
         var hasTitles = titles.Count > 0;
+        // Carry each VIDEO clip's OWN audio into the render (the gap that made
+        // this feel like a silent slideshow). Works on BOTH the hard-cut concat
+        // AND the crossfade path — the clip audio is combined the SAME way the
+        // video is (plain concat vs acrossfade) so it stays perfectly in sync.
+        var anyClipAudio = clipHasAudio.Any(x => x);
+        var useClipAudio = anyClipAudio;
+        var finalHasAudio = useClipAudio || hasAudio;
+
         var filter = new StringBuilder();
-        AppendScalePadStage(filter, spec);
-        AppendConcatOrXfadeStage(filter, spec, perClipOverride);
+        AppendScalePadStage(filter, spec, effDur);
+        // Video → [out] (hard-cut concat OR xfade dissolve).
+        AppendConcatOrXfadeStage(filter, spec, effDur);
+        if (useClipAudio)
+        {
+            // Build each clip's audio, then combine to MATCH the video → [acat].
+            AppendClipAudioStage(filter, spec, effDur, clipHasAudio);
+            AppendClipAudioCombineStage(filter, spec, effDur);
+        }
         if (hasOverlay) AppendOverlayStage(filter, overlays, firstOverlayIndex, spec.Width, hasTitles);
         if (hasTitles) AppendTitleStage(filter, titles, hasOverlay, overlays.Count);
-        if (hasLegacyAudio)
-            AppendLegacyAudioStage(filter, audioIndex, spec.AudioVolume);
-        else if (hasMultiAudio)
-            AppendMultiAudioStage(filter, audioTracks, audioIndex);
+        // Audio mix → [a].
+        if (useClipAudio)
+        {
+            // Mix the clips' own audio with any external music / voice tracks.
+            if (hasMultiAudio) { AppendMultiAudioStage(filter, audioTracks, audioIndex, "ext"); filter.Append(";[acat][ext]amix=inputs=2:duration=first:dropout_transition=0[a]"); }
+            else if (hasLegacyAudio) { AppendLegacyAudioStage(filter, audioIndex, spec.AudioVolume, "ext"); filter.Append(";[acat][ext]amix=inputs=2:duration=first:dropout_transition=0[a]"); }
+            else filter.Append(";[acat]anull[a]");
+        }
+        else if (hasLegacyAudio) AppendLegacyAudioStage(filter, audioIndex, spec.AudioVolume, "a");
+        else if (hasMultiAudio) AppendMultiAudioStage(filter, audioTracks, audioIndex, "a");
 
         args.Add("-filter_complex");
         args.Add(filter.ToString());
 
         // When the overlay filter ran, the final video label is [outpip], not [out].
         args.Add("-map");           args.Add((hasOverlay || hasTitles) ? "[outpip]" : "[out]");
-        if (hasAudio)
+        if (finalHasAudio)
         {
             args.Add("-map");       args.Add("[a]");
             args.Add("-c:a");       args.Add("aac");
@@ -420,16 +490,15 @@ public sealed class SlideshowRenderer
     /// a uniform output frame. Emits <c>[i:v]scale=…pad=…[vN]</c> per clip
     /// with optional eq (color grade) and zoompan (Ken Burns) stages
     /// appended when SlotMeta supplies non-identity values. (7.18)</summary>
-    private static void AppendScalePadStage(StringBuilder filter, Spec spec)
+    private static void AppendScalePadStage(StringBuilder filter, Spec spec, double[] effDur)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
-        var perClipOverride = spec.ClipDurations is { Count: > 0 } durs && durs.Count == spec.Clips.Count
-            ? durs : null;
         var perSlotMeta = spec.SlotMeta is { Count: > 0 } metas && metas.Count == spec.Clips.Count
             ? metas : null;
 
         for (int i = 0; i < spec.Clips.Count; i++)
         {
+            var isVideo = IsVideoFile(spec.Clips[i].FilePath);
             // Base stage: fit-and-letterbox into output frame.
             filter.Append($"[{i}:v]scale={spec.Width}:{spec.Height}:force_original_aspect_ratio=decrease,");
             filter.Append($"pad={spec.Width}:{spec.Height}:(ow-iw)/2:(oh-ih)/2:color=#060409,setsar=1");
@@ -450,9 +519,12 @@ public sealed class SlideshowRenderer
             // slot's duration × output fps. Both zoom AND pan target
             // interpolate linearly (T50 / 7.19) — pan stays at 0.5/0.5 on
             // both ends for the legacy centre-anchored behaviour.
-            if (meta is not null && meta.HasZoom)
+            // Ken Burns is a STILLS effect — only for images; video clips carry
+            // their own motion. Either branch normalises to the output fps so
+            // concat / xfade get a uniform timebase across mixed video + stills.
+            if (!isVideo && meta is not null && meta.HasZoom)
             {
-                var dur = perClipOverride?[i] ?? spec.SecondsPerClip;
+                var dur = effDur[i];
                 var frames = Math.Max(1, (int)System.Math.Round(dur * spec.Fps));
                 var z0 = (meta.ZoomStartPct / 100.0).ToString("F3", inv);
                 var z1 = (meta.ZoomEndPct / 100.0).ToString("F3", inv);
@@ -472,6 +544,10 @@ public sealed class SlideshowRenderer
                       .Append($":x='{xExpr}':y='{yExpr}'")
                       .Append($":d={frames}:s={spec.Width}x{spec.Height}:fps={spec.Fps}");
             }
+            else
+            {
+                filter.Append($",fps={spec.Fps}");
+            }
 
             filter.Append($"[v{i}];");
         }
@@ -481,7 +557,7 @@ public sealed class SlideshowRenderer
     /// stream. Hard-cut concat unless <see cref="Spec.CrossfadeSec"/> &gt; 0
     /// and there are 2+ clips, in which case an xfade chain walks
     /// pairwise with a running offset.</summary>
-    private static void AppendConcatOrXfadeStage(StringBuilder filter, Spec spec, IReadOnlyList<double>? perClipOverride)
+    private static void AppendConcatOrXfadeStage(StringBuilder filter, Spec spec, double[] effDur)
     {
         if (spec.CrossfadeSec > 0 && spec.Clips.Count >= 2)
         {
@@ -491,17 +567,17 @@ public sealed class SlideshowRenderer
             double minDur = double.MaxValue;
             for (int i = 0; i < spec.Clips.Count; i++)
             {
-                var d = perClipOverride?[i] ?? spec.SecondsPerClip;
+                var d = effDur[i];
                 if (d < minDur) minDur = d;
             }
             if (fade >= minDur) fade = Math.Max(0.2, minDur - 0.1);
 
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             string lastLabel = "v0";
-            double runLen = perClipOverride?[0] ?? spec.SecondsPerClip;
+            double runLen = effDur[0];
             for (int i = 1; i < spec.Clips.Count; i++)
             {
-                var nextDur = perClipOverride?[i] ?? spec.SecondsPerClip;
+                var nextDur = effDur[i];
                 var offset = runLen - fade;
                 var outLabel = i == spec.Clips.Count - 1 ? "out" : $"x{i}";
                 filter.Append(
@@ -594,12 +670,61 @@ public sealed class SlideshowRenderer
         }
     }
 
-    /// <summary>Stage 5a: legacy single-track audio — just volume scale
-    /// the one input and label it [a].</summary>
-    private static void AppendLegacyAudioStage(StringBuilder filter, int audioInputIndex, double volume)
+    /// <summary>Stage 4c: per-clip NATIVE audio for the hard-cut concat path.
+    /// Clips WITH audio pass their (already -ss/-t-trimmed) stream through a
+    /// resample/format normalise; images + silent clips get an exact-length
+    /// silence so the parallel <c>concat=a=1</c> stays in sync. Each clip is
+    /// labelled [aclipN] and consumed by the video+audio concat.</summary>
+    private static void AppendClipAudioStage(StringBuilder filter, Spec spec, double[] effDur, bool[] hasAudio)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        for (int i = 0; i < spec.Clips.Count; i++)
+        {
+            // Leading ';' (this runs AFTER the video [out] which has no trailing ';').
+            if (hasAudio[i])
+                filter.Append($";[{i}:a]aresample=44100,aformat=channel_layouts=stereo,asetpts=N/SR/TB[aclip{i}]");
+            else
+                filter.Append($";anullsrc=r=44100:cl=stereo,atrim=duration={effDur[i].ToString("F2", inv)},asetpts=N/SR/TB[aclip{i}]");
+        }
+    }
+
+    /// <summary>Combine the per-clip [aclipN] streams into [acat], the SAME way
+    /// the video is combined: a plain audio concat for hard cuts, or an
+    /// acrossfade chain whose overlaps match the video xfade so audio stays in
+    /// sync (each overlap shortens the total by the fade, exactly like xfade).</summary>
+    private static void AppendClipAudioCombineStage(StringBuilder filter, Spec spec, double[] effDur)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        filter.Append(";");
+        if (spec.CrossfadeSec > 0 && spec.Clips.Count >= 2)
+        {
+            double fade = spec.CrossfadeSec;
+            double minDur = double.MaxValue;
+            for (int i = 0; i < spec.Clips.Count; i++) if (effDur[i] < minDur) minDur = effDur[i];
+            if (fade >= minDur) fade = Math.Max(0.2, minDur - 0.1);
+            var fadeStr = fade.ToString("F3", inv);
+            string last = "aclip0";
+            for (int i = 1; i < spec.Clips.Count; i++)
+            {
+                var outL = i == spec.Clips.Count - 1 ? "acat" : $"ax{i}";
+                filter.Append($"[{last}][aclip{i}]acrossfade=d={fadeStr}[{outL}]");
+                if (i < spec.Clips.Count - 1) filter.Append(";");
+                last = outL;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < spec.Clips.Count; i++) filter.Append($"[aclip{i}]");
+            filter.Append($"concat=n={spec.Clips.Count}:v=0:a=1[acat]");
+        }
+    }
+
+    /// <summary>Stage 5a: legacy single-track external audio — volume scale +
+    /// normalise, labelled [outLabel].</summary>
+    private static void AppendLegacyAudioStage(StringBuilder filter, int audioInputIndex, double volume, string outLabel)
     {
         var vol = Math.Clamp(volume, 0.0, 2.0);
-        filter.Append($";[{audioInputIndex}:a]volume={vol.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}[a]");
+        filter.Append($";[{audioInputIndex}:a]volume={vol.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)},aresample=44100,aformat=channel_layouts=stereo[{outLabel}]");
     }
 
     /// <summary>Stage 5b: multi-track audio mixer. Per-track adelay + volume
@@ -614,7 +739,7 @@ public sealed class SlideshowRenderer
     /// 60s into the track — long enough that legitimate audio finishes
     /// playing, short enough that loops don't drone on. (T42 / 7.16)
     /// </summary>
-    private static void AppendMultiAudioStage(StringBuilder filter, List<AudioTrackDescriptor> audioTracks, int firstAudioInputIndex)
+    private static void AppendMultiAudioStage(StringBuilder filter, List<AudioTrackDescriptor> audioTracks, int firstAudioInputIndex, string outLabel)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         for (int ai = 0; ai < audioTracks.Count; ai++)
@@ -630,7 +755,7 @@ public sealed class SlideshowRenderer
             // DELAYED stream so afade=t=in:st=0 means "at the moment this
             // track first becomes audible", not "0 on the master timeline".
             filter.Append($";[{input}:a]");
-            var parts = new List<string>();
+            var parts = new List<string> { "aresample=44100", "aformat=channel_layouts=stereo" };
             if (startMs > 0) parts.Add($"adelay={startMs}|{startMs}");
             parts.Add($"volume={vol.ToString("F2", inv)}");
             if (t.FadeInSec > 0.01)
@@ -650,7 +775,7 @@ public sealed class SlideshowRenderer
         }
         filter.Append(";");
         for (int ai = 0; ai < audioTracks.Count; ai++) filter.Append($"[a{ai}]");
-        filter.Append($"amix=inputs={audioTracks.Count}:duration=longest:dropout_transition=0[a]");
+        filter.Append($"amix=inputs={audioTracks.Count}:duration=longest:dropout_transition=0[{outLabel}]");
     }
 
     /// <summary>Parse ffmpeg's per-frame progress line into a "Rendering ·
@@ -689,6 +814,15 @@ public sealed class SlideshowRenderer
         var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var skip = Math.Max(0, lines.Length - n);
         return string.Join(" · ", lines.Skip(skip).Select(l => l.Trim()));
+    }
+
+    /// <summary>True for container extensions we should treat as MOVING video
+    /// (play their own frames) rather than a still image to loop.</summary>
+    private static bool IsVideoFile(string path)
+    {
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        return ext is ".mp4" or ".mov" or ".webm" or ".mkv" or ".avi" or ".m4v"
+            or ".gif" or ".mpg" or ".mpeg" or ".wmv" or ".flv" or ".ts" or ".m2ts";
     }
 
     private static string SafeFilename(string raw)

@@ -58,6 +58,17 @@ public sealed class UndoStack<TSnapshot>
         Changed?.Invoke();
     }
 
+    /// <summary>Push a PRE-CAPTURED snapshot rather than capturing live state.
+    /// Use when the pre-mutation state was grabbed earlier — e.g. before a
+    /// node drag or a text edit that mutates state gradually.</summary>
+    public void PushSnapshot(TSnapshot snapshot)
+    {
+        _undo.Push(snapshot);
+        TrimToLimit();
+        _redo.Clear();
+        Changed?.Invoke();
+    }
+
     public void Undo()
     {
         if (_undo.Count == 0) return;

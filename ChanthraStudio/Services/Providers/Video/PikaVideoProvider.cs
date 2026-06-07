@@ -54,7 +54,15 @@ public sealed class PikaVideoProvider : IVideoProvider
     public string ApiKeyHint => "pk_… · pika.art (developer tier required)";
     public ProviderKind Kind => ProviderKind.Video;
     public bool RequiresApiKey => true;
-    public bool IsImplemented => true;
+
+    // Hidden (2026-06 audit): Pika's OFFICIAL API is now served through fal.ai
+    // (endpoints like pika/v2.2/text-to-video, FAL_KEY auth) — the standalone
+    // api.pikapikapika.io endpoint below was always speculative/untested and
+    // very likely 404s. Rather than surface a route that errors the moment a
+    // user pastes a key, we hide it: run Pika via the Fal route with a
+    // "fal-ai/pika/v2.2/text-to-video" model slug instead. The HTTP client is
+    // retained in case Pika ships a real first-party REST API later.
+    public bool IsImplemented => false;
 
     private const string BaseUrl = "https://api.pikapikapika.io/v1";
 

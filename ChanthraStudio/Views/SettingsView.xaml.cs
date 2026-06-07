@@ -20,7 +20,10 @@ public partial class SettingsView : UserControl
         // ViewModel created lazily so design-time DataContext doesn't trigger DB bootstrap.
         Loaded += (_, _) =>
         {
-            if (DataContext is null)
+            // Force our own VM — the ViewSwitcher leaves DataContext inheriting
+            // MainViewModel, so a plain `is null` guard never fires and the
+            // whole Settings page (API-key boxes included) binds to nothing.
+            if (DataContext is not SettingsViewModel)
             {
                 var s = App.Current.Studio;
                 DataContext = new SettingsViewModel(s.Settings, s.Providers);

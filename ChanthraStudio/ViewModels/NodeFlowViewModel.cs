@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -108,6 +109,7 @@ public sealed class NodeFlowViewModel : ObservableObject
             w.FromNodeId == fromNode.Id && w.FromSocketId == fromSocket.Id &&
             w.ToNodeId == toNode.Id && w.ToSocketId == toSocket.Id);
         if (dupe is not null) return true;
+        PushUndo();
         // Replace any existing wire into the same input.
         var replaced = Wires.Where(w => w.ToNodeId == toNode.Id && w.ToSocketId == toSocket.Id).ToList();
         foreach (var r in replaced) Wires.Remove(r);
@@ -141,6 +143,23 @@ public sealed class NodeFlowViewModel : ObservableObject
     public IRelayCommand LoadCommand { get; }
     public IAsyncRelayCommand RunCommand { get; }
     public IRelayCommand<NodeSocket> SocketClickCommand { get; }
+    public IRelayCommand<FlowNode> DeleteNodeCommand { get; }
+    public IRelayCommand DeleteSelectedCommand { get; }
+    public IRelayCommand UndoCommand { get; }
+    public IRelayCommand RedoCommand { get; }
+    public IRelayCommand DuplicateSelectedCommand { get; }
+    public IRelayCommand NewGraphCommand { get; }
+    public IAsyncRelayCommand AiBuildCommand { get; }
+    public bool CanUndo => _undo.CanUndo;
+    public bool CanRedo => _undo.CanRedo;
+    private readonly UndoStack<GraphSnap> _undo;
+
+    private string _aiPrompt = "";
+    /// <summary>Natural-language description the AI turns into a ComfyUI graph.</summary>
+    public string AiPrompt { get => _aiPrompt; set => SetProperty(ref _aiPrompt, value); }
+
+    private bool _isAiBuilding;
+    public bool IsAiBuilding { get => _isAiBuilding; set => SetProperty(ref _isAiBuilding, value); }
 
     private string _statusMessage = "";
     /// <summary>Bottom-bar message after a Save/Load/Run action — also drives
@@ -175,6 +194,24 @@ public sealed class NodeFlowViewModel : ObservableObject
         LoadCommand = new RelayCommand(LoadGraph);
         RunCommand = new AsyncRelayCommand(RunGraphAsync);
         SocketClickCommand = new RelayCommand<NodeSocket>(OnSocketClicked);
+        DeleteNodeCommand = new RelayCommand<FlowNode>(DeleteNode);
+        DeleteSelectedCommand = new RelayCommand(() => DeleteNode(Selected));
+
+        // Undo / redo — snapshot the whole graph (positions, sockets, params,
+        // wires, selection) so every structural edit and drag is reversible.
+        _undo = new UndoStack<GraphSnap>(CaptureSnapshot, ApplySnapshot);
+        UndoCommand = new RelayCommand(_undo.Undo, () => _undo.CanUndo);
+        RedoCommand = new RelayCommand(_undo.Redo, () => _undo.CanRedo);
+        DuplicateSelectedCommand = new RelayCommand(DuplicateSelected);
+        NewGraphCommand = new RelayCommand(NewGraph);
+        AiBuildCommand = new AsyncRelayCommand(AiBuildAsync);
+        _undo.Changed += () =>
+        {
+            UndoCommand.NotifyCanExecuteChanged();
+            RedoCommand.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(CanUndo));
+            OnPropertyChanged(nameof(CanRedo));
+        };
 
         RecomputeWires();
     }
@@ -216,6 +253,7 @@ public sealed class NodeFlowViewModel : ObservableObject
             GraphName = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName);
             RecomputeWires();
             Selected = Nodes.FirstOrDefault();
+            _undo.Clear();   // fresh history — can't undo past a load
             ShowStatus($"Loaded · {Nodes.Count} nodes · {Wires.Count} wires", "ok");
         }
         catch (Exception ex)
@@ -263,6 +301,55 @@ public sealed class NodeFlowViewModel : ObservableObject
         }
     }
 
+    /// <summary>Ask the active LLM to design a ComfyUI graph from
+    /// <see cref="AiPrompt"/>, validate it, and load it into the editor
+    /// (replacing the canvas — undoable). The user can tweak it then Run.</summary>
+    private async Task AiBuildAsync()
+    {
+        var ctx = (System.Windows.Application.Current as App)?.Studio;
+        if (ctx is null)
+        {
+            ShowStatus("AI build needs the running app (not available at design time).", "warn");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(AiPrompt))
+        {
+            ShowStatus("Describe the workflow first — e.g. \"SDXL portrait with a LoRA, 1024², 30 steps\".", "warn");
+            return;
+        }
+
+        IsAiBuilding = true;
+        ShowStatus("AI is designing the workflow…", "info");
+        try
+        {
+            var spec = await ctx.Llm.BuildComfyWorkflowAsync(AiPrompt);
+            var graph = AiWorkflowBuilder.BuildGraph(spec);
+            if (graph.Nodes.Count == 0)
+            {
+                ShowStatus("AI returned an empty graph — try rephrasing.", "err");
+                return;
+            }
+
+            PushUndo();
+            Nodes.Clear();
+            Wires.Clear();
+            foreach (var n in graph.Nodes) Nodes.Add(n);
+            foreach (var w in graph.Wires) Wires.Add(w);
+            _pendingFrom = null;
+            Selected = Nodes.FirstOrDefault();
+            RecomputeWires();
+            ShowStatus($"AI built {graph.Nodes.Count} nodes · {graph.Wires.Count} wires — tweak then Run", "ok");
+        }
+        catch (Exception ex)
+        {
+            ShowStatus("AI build failed: " + ex.Message, "err");
+        }
+        finally
+        {
+            IsAiBuilding = false;
+        }
+    }
+
     private void OnSocketClicked(NodeSocket? socket)
     {
         if (socket is null) return;
@@ -297,6 +384,7 @@ public sealed class NodeFlowViewModel : ObservableObject
             // Any existing wire INTO the same input gets replaced — most
             // ComfyUI inputs are single-source, multiple wires would crash
             // the server at run time.
+            PushUndo();
             var replaced = Wires.Where(w => w.ToNodeId == owner.Id && w.ToSocketId == socket.Id).ToList();
             foreach (var r in replaced) Wires.Remove(r);
 
@@ -334,9 +422,127 @@ public sealed class NodeFlowViewModel : ObservableObject
     /// <summary>Delete a wire (e.g. context menu on a wire path).</summary>
     public void RemoveWire(FlowWire w)
     {
+        PushUndo();
         Wires.Remove(w);
         ShowStatus($"Disconnected {w.FromSocketId} → {w.ToSocketId}", "info");
     }
+
+    /// <summary>Delete a node and every wire connected to either of its ends.
+    /// Driven by the × on the node card AND the Delete key.</summary>
+    public void DeleteNode(FlowNode? node)
+    {
+        if (node is null) return;
+        PushUndo();
+        var doomed = Wires.Where(w => w.FromNodeId == node.Id || w.ToNodeId == node.Id).ToList();
+        foreach (var w in doomed) Wires.Remove(w);
+        Nodes.Remove(node);
+        if (_pendingFrom is { } pf && ReferenceEquals(pf.Node, node)) _pendingFrom = null;
+        if (ReferenceEquals(Selected, node)) Selected = Nodes.FirstOrDefault();
+        RecomputeWires();
+        ShowStatus($"Deleted {node.Title} · {doomed.Count} wire(s) removed", "info");
+    }
+
+    // ─────────────────────────── Undo / Redo ───────────────────────────
+
+    /// <summary>Capture+push the CURRENT state before a discrete mutation.
+    /// Call this immediately BEFORE adding/removing nodes or wires.</summary>
+    public void PushUndo() => _undo.Push();
+
+    /// <summary>Push a pre-captured snapshot — used by drag &amp; param edits
+    /// that grab the "before" state up front and commit it once changed.</summary>
+    public void PushUndoSnapshot(GraphSnap pre) => _undo.PushSnapshot(pre);
+
+    /// <summary>Full-fidelity, immutable clone of the graph for the undo stack.</summary>
+    public GraphSnap CaptureSnapshot() => new(
+        Nodes.Select(n => new NodeSnap(
+            n.Id, n.Title, n.Kind, n.AccentKey, n.X, n.Y, n.Width,
+            n.Inputs.Select(s => new SocketSnap(s.Id, s.Label, s.Type, s.IsInput, s.Row)).ToList(),
+            n.Outputs.Select(s => new SocketSnap(s.Id, s.Label, s.Type, s.IsInput, s.Row)).ToList(),
+            n.Params.Select(p => new ParamSnap(p.Label, p.Value, p.Editor)).ToList())).ToList(),
+        Wires.Select(w => new WireSnap(w.Id, w.FromNodeId, w.FromSocketId, w.ToNodeId, w.ToSocketId, w.Type)).ToList(),
+        Selected?.Id);
+
+    private void ApplySnapshot(GraphSnap snap)
+    {
+        Nodes.Clear();
+        Wires.Clear();
+        foreach (var ns in snap.Nodes)
+        {
+            var node = new FlowNode
+            {
+                Id = ns.Id, Title = ns.Title, Kind = ns.Kind,
+                AccentKey = ns.AccentKey, X = ns.X, Y = ns.Y, Width = ns.Width,
+            };
+            foreach (var s in ns.Inputs) node.Inputs.Add(new NodeSocket { Id = s.Id, Label = s.Label, Type = s.Type, IsInput = s.IsInput, Row = s.Row });
+            foreach (var s in ns.Outputs) node.Outputs.Add(new NodeSocket { Id = s.Id, Label = s.Label, Type = s.Type, IsInput = s.IsInput, Row = s.Row });
+            foreach (var p in ns.Params) node.Params.Add(new NodeParam { Label = p.Label, Value = p.Value, Editor = p.Editor });
+            Nodes.Add(node);
+        }
+        foreach (var ws in snap.Wires)
+            Wires.Add(new FlowWire { Id = ws.Id, FromNodeId = ws.FromNodeId, FromSocketId = ws.FromSocketId, ToNodeId = ws.ToNodeId, ToSocketId = ws.ToSocketId, Type = ws.Type });
+
+        _pendingFrom = null;
+        Selected = snap.SelectedId is null ? null : Nodes.FirstOrDefault(n => n.Id == snap.SelectedId);
+        RecomputeWires();
+    }
+
+    /// <summary>Clone the selected node 30px down-right with a fresh id.</summary>
+    private void DuplicateSelected()
+    {
+        if (Selected is null) return;
+        PushUndo();
+        var src = Selected;
+        var copy = new FlowNode
+        {
+            Id = $"n{Nodes.Count + 1}_{Guid.NewGuid().ToString("N")[..4]}",
+            Title = src.Title, Kind = src.Kind, AccentKey = src.AccentKey,
+            X = src.X + 30, Y = src.Y + 30, Width = src.Width,
+        };
+        foreach (var s in src.Inputs) copy.Inputs.Add(new NodeSocket { Id = s.Id, Label = s.Label, Type = s.Type, IsInput = s.IsInput, Row = s.Row });
+        foreach (var s in src.Outputs) copy.Outputs.Add(new NodeSocket { Id = s.Id, Label = s.Label, Type = s.Type, IsInput = s.IsInput, Row = s.Row });
+        foreach (var p in src.Params) copy.Params.Add(new NodeParam { Label = p.Label, Value = p.Value, Editor = p.Editor });
+        Nodes.Add(copy);
+        Selected = copy;
+        RecomputeWires();
+        ShowStatus($"Duplicated {src.Title}", "ok");
+    }
+
+    /// <summary>Clear the whole canvas (undoable).</summary>
+    private void NewGraph()
+    {
+        if (Nodes.Count == 0 && Wires.Count == 0) return;
+        PushUndo();
+        Nodes.Clear();
+        Wires.Clear();
+        _pendingFrom = null;
+        Selected = null;
+        ShowStatus("New graph — canvas cleared (Ctrl+Z to restore)", "info");
+    }
+
+    /// <summary>Frame + centre the whole graph in the given viewport. The
+    /// view passes its live canvas size from the toolbar's Fit button.</summary>
+    public void FitToView(double viewportW, double viewportH)
+    {
+        if (Nodes.Count == 0 || viewportW <= 0 || viewportH <= 0) return;
+        double minX = Nodes.Min(n => n.X), minY = Nodes.Min(n => n.Y);
+        double maxX = Nodes.Max(n => n.X + n.Width), maxY = Nodes.Max(n => n.Y + n.TotalHeight);
+        double cw = Math.Max(1, maxX - minX), ch = Math.Max(1, maxY - minY);
+        const double margin = 90;
+        Zoom = Math.Clamp(Math.Min((viewportW - margin) / cw, (viewportH - margin) / ch), 0.4, 2.2);
+        double ccx = (minX + maxX) / 2, ccy = (minY + maxY) / 2;
+        // Render maps point → point*Zoom + Pan (Scale then Translate), so to put
+        // the content centre at the viewport centre: Pan = viewportCentre − centre*Zoom.
+        PanX = viewportW / 2 - ccx * Zoom;
+        PanY = viewportH / 2 - ccy * Zoom;
+    }
+
+    // Immutable snapshot value types for the undo stack.
+    public sealed record GraphSnap(List<NodeSnap> Nodes, List<WireSnap> Wires, string? SelectedId);
+    public sealed record NodeSnap(string Id, string Title, NodeKind Kind, string AccentKey,
+        double X, double Y, double Width, List<SocketSnap> Inputs, List<SocketSnap> Outputs, List<ParamSnap> Params);
+    public sealed record SocketSnap(string Id, string Label, SocketType Type, bool IsInput, int Row);
+    public sealed record ParamSnap(string Label, string Value, string Editor);
+    public sealed record WireSnap(string Id, string FromNodeId, string FromSocketId, string ToNodeId, string ToSocketId, SocketType Type);
 
     private void SeedSampleGraph()
     {
@@ -487,6 +693,7 @@ public sealed class NodeFlowViewModel : ObservableObject
     private void AutoArrange()
     {
         if (Nodes.Count == 0) return;
+        PushUndo();
 
         var depth = new System.Collections.Generic.Dictionary<string, int>();
         foreach (var n in Nodes) depth[n.Id] = 0;
@@ -527,6 +734,7 @@ public sealed class NodeFlowViewModel : ObservableObject
         if (string.IsNullOrEmpty(kindKey)) return;
         if (!Enum.TryParse<NodeKind>(kindKey, out var kind)) return;
 
+        PushUndo();
         var n = new FlowNode
         {
             Id = $"n{Nodes.Count + 1}",

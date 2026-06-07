@@ -51,8 +51,17 @@
                     BorderBrush="{StaticResource BrushLineGold}"
                     BorderThickness="0,1,0,0"
                     DockPanel.Dock="Bottom">
+                    <StackPanel Margin="0,12,0,0">
                     <Button
-                        Margin="0,12,0,0"
+                        Margin="0,0,0,8"
+                        Padding="0,7"
+                        HorizontalContentAlignment="Center"
+                        Command="{Binding AiWorkflowRunCommand}"
+                        Style="{StaticResource ButtonPillGold}"
+                        ToolTip="AI designs a ComfyUI workflow from your prompt, then runs it on ComfyUI">
+                        <TextBlock FontFamily="{StaticResource FontUI}" FontSize="12" Text="✦ AI workflow → run (ComfyUI)" />
+                    </Button>
+                    <Button
                         HorizontalContentAlignment="Stretch"
                         Command="{Binding SummonSceneCommand}"
                         Style="{StaticResource ButtonSummonCta}">
@@ -80,6 +89,7 @@
                             </Border>
                         </Grid>
                     </Button>
+                    </StackPanel>
                 </Border>
 
                 <!--  Scrollable body  -->

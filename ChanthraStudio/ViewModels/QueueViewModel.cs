@@ -8,7 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace ChanthraStudio.ViewModels;
 
-public sealed class QueueViewModel : ObservableObject
+public sealed class QueueViewModel : ObservableObject, IDisposable
 {
     private readonly StudioContext _ctx;
 
@@ -34,18 +34,27 @@ public sealed class QueueViewModel : ObservableObject
         // continuously, collapsing user scroll position and flickering pills.
         // The queue rows users care about are status transitions, not the
         // 0–100 progress bar (that lives on the Generate-view shot card).
-        _ctx.Generation.ProgressChanged += (_, e) =>
-        {
-            if (e.Status == ShotStatus.Done
-                || e.Status == ShotStatus.Error
-                || e.Status == ShotStatus.Queue)
-            {
-                Refresh();
-            }
-        };
+        // Named handler (not a lambda) so Dispose() can detach it — the
+        // ViewSwitcher recreates this VM on every Queue visit while
+        // Generation is a long-lived singleton.
+        _ctx.Generation.ProgressChanged += OnGenerationProgress;
 
         Refresh();
     }
+
+    private void OnGenerationProgress(object? sender, GenerationProgressEventArgs e)
+    {
+        if (e.Status == ShotStatus.Done
+            || e.Status == ShotStatus.Error
+            || e.Status == ShotStatus.Queue)
+        {
+            Refresh();
+        }
+    }
+
+    /// <summary>Detach from the Generation singleton. Called from
+    /// QueueView.Unloaded so navigating away doesn't leak the VM.</summary>
+    public void Dispose() => _ctx.Generation.ProgressChanged -= OnGenerationProgress;
 
     public void Refresh()
     {

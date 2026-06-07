@@ -10,10 +10,13 @@ public partial class QueueView : UserControl
         InitializeComponent();
         Loaded += (_, _) =>
         {
-            if (DataContext is null)
+            // Force our own VM — the ViewSwitcher leaves DataContext inheriting
+            // MainViewModel, so a plain `is null` guard never fires.
+            if (DataContext is not QueueViewModel qvm)
                 DataContext = new QueueViewModel(App.Current.Studio);
-            else if (DataContext is QueueViewModel qvm)
+            else
                 qvm.Refresh();
         };
+        Unloaded += (_, _) => (DataContext as System.IDisposable)?.Dispose();
     }
 }

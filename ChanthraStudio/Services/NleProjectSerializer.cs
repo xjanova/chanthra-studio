@@ -80,6 +80,8 @@ public static class NleProjectSerializer
         public string ShotId { get; set; } = "";
         public string FilePath { get; set; } = "";
         public double DurationSec { get; set; }
+        /// <summary>Trim in-point (seconds) into the source clip. (clip trim)</summary>
+        public double TrimStartSec { get; set; }
         /// <summary>Ken Burns zoom (7.18). Default 100/100 = static.</summary>
         public double ZoomStartPct { get; set; } = 100;
         public double ZoomEndPct { get; set; } = 100;

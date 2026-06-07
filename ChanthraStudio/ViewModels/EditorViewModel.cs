@@ -130,6 +130,12 @@ public sealed class TimelineSlot : ObservableObject
     private double _durationSec = 3.0;
     public double DurationSec { get => _durationSec; set => SetProperty(ref _durationSec, value); }
 
+    private double _trimStartSec;
+    /// <summary>In-point (seconds) into the SOURCE clip — the renderer seeks
+    /// here, then plays for DurationSec. Lets you use a portion of a longer
+    /// clip instead of always starting at 0. Video clips only. (clip trim)</summary>
+    public double TrimStartSec { get => _trimStartSec; set => SetProperty(ref _trimStartSec, Math.Max(0, value)); }
+
     private bool _isSelected;
     /// <summary>True when this slot is the inspector's focus. EditorViewModel
     /// keeps this in sync with its own <c>Selected</c> pointer so the
@@ -475,6 +481,7 @@ public sealed class EditorViewModel : ObservableObject
 
     public IRelayCommand RefreshCommand { get; }
     public IRelayCommand<Clip> AddClipCommand { get; }
+    public IRelayCommand ImportClipsCommand { get; }
     public IRelayCommand<TimelineSlot> RemoveSlotCommand { get; }
     public IRelayCommand<TimelineSlot> MoveLeftCommand { get; }
     public IRelayCommand<TimelineSlot> MoveRightCommand { get; }
@@ -517,6 +524,7 @@ public sealed class EditorViewModel : ObservableObject
 
         RefreshCommand = new RelayCommand(Refresh);
         AddClipCommand = new RelayCommand<Clip>(AddClip);
+        ImportClipsCommand = new RelayCommand(ImportClips);
         RemoveSlotCommand = new RelayCommand<TimelineSlot>(RemoveSlot);
         MoveLeftCommand = new RelayCommand<TimelineSlot>(s => MoveSlot(s, -1));
         MoveRightCommand = new RelayCommand<TimelineSlot>(s => MoveSlot(s, +1));
@@ -642,6 +650,35 @@ public sealed class EditorViewModel : ObservableObject
         slot.PropertyChanged += OnSlotChanged;
         Timeline.Add(slot);
         Selected = slot;
+    }
+
+    /// <summary>Import arbitrary video / image files straight onto the timeline —
+    /// so the editor works on ANY footage, not only clips the app generated.
+    /// Each becomes an in-memory Clip added to the library rail + the timeline.</summary>
+    private void ImportClips()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import video / image clips",
+            Filter = "Video & images|*.mp4;*.mov;*.webm;*.mkv;*.avi;*.m4v;*.gif;*.png;*.jpg;*.jpeg;*.webp;*.bmp|" +
+                     "Video|*.mp4;*.mov;*.webm;*.mkv;*.avi;*.m4v;*.gif|Images|*.png;*.jpg;*.jpeg;*.webp;*.bmp|All files|*.*",
+            CheckFileExists = true,
+            Multiselect = true,
+        };
+        if (dlg.ShowDialog() != true) return;
+        foreach (var path in dlg.FileNames)
+        {
+            var clip = new Clip
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                ShotId = "",
+                FilePath = path,
+                CreatedAt = DateTimeOffset.Now,
+            };
+            LibraryClips.Insert(0, clip);
+            AddClip(clip);   // pushes undo + drops it on the timeline
+        }
+        ShowToast($"Imported {dlg.FileNames.Length} clip{(dlg.FileNames.Length == 1 ? "" : "s")} — render to stitch them", "ok");
     }
 
     private void RemoveSlot(TimelineSlot? slot)
@@ -930,6 +967,7 @@ public sealed class EditorViewModel : ObservableObject
             {
                 Clips = Timeline.Select(s => s.Clip).ToList(),
                 ClipDurations = Timeline.Select(s => s.DurationSec).ToList(),
+                ClipTrimStarts = Timeline.Select(s => s.TrimStartSec).ToList(),
                 SlotMeta = Timeline.Select(s => new SlideshowRenderer.SlotDescriptor
                 {
                     ZoomStartPct = s.ZoomStartPct,
@@ -1224,12 +1262,13 @@ public sealed class EditorViewModel : ObservableObject
         double zoomStartPct = 100, double zoomEndPct = 100,
         double brightness = 0, double contrast = 1.0, double saturation = 1.0,
         double panStartX = 0.5, double panStartY = 0.5,
-        double panEndX = 0.5, double panEndY = 0.5)
+        double panEndX = 0.5, double panEndY = 0.5, double trimStartSec = 0)
     {
         var slot = new TimelineSlot
         {
             Clip = clip,
             DurationSec = durationSec,
+            TrimStartSec = trimStartSec,
             ZoomStartPct = zoomStartPct,
             ZoomEndPct = zoomEndPct,
             PanStartX = panStartX,

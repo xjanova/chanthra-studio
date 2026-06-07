@@ -32,6 +32,7 @@ public sealed class ProviderRegistry
             new GeminiLlmProvider(),
             new OpenAiLlmProvider(),
             new AnthropicLlmProvider(),
+            new GrokLlmProvider(),
             new OpenRouterLlmProvider(),
         };
 
@@ -39,6 +40,10 @@ public sealed class ProviderRegistry
         {
             new ComfyUiVideoProvider(),
             new ReplicateVideoProvider(),
+            new KlingVideoProvider(),
+            new SeedanceVideoProvider(),
+            new MinimaxVideoProvider(),
+            new Video.GeminiVeoVideoProvider(),
             new Video.RunwayVideoProvider(),
             new Video.PikaVideoProvider(),
             new Video.FalVideoProvider(),

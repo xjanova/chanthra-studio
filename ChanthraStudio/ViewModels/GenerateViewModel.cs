@@ -234,6 +234,7 @@ public sealed class GenerateViewModel : ObservableObject
     public int QueueCount => Storyboard.Count(s => s.Status == ShotStatus.Queue || s.Status == ShotStatus.Generating);
 
     public IAsyncRelayCommand SummonSceneCommand { get; }
+    public IAsyncRelayCommand AiWorkflowRunCommand { get; }
     public IAsyncRelayCommand EnhancePromptCommand { get; }
     public IRelayCommand RandomPromptCommand { get; }
 
@@ -262,6 +263,7 @@ public sealed class GenerateViewModel : ObservableObject
     {
         _ctx = ctx;
         SummonSceneCommand = new AsyncRelayCommand(SummonSceneAsync);
+        AiWorkflowRunCommand = new AsyncRelayCommand(AiBuildAndRunAsync);
         EnhancePromptCommand = new AsyncRelayCommand(EnhancePromptAsync);
         RandomPromptCommand = new RelayCommand(() =>
         {
@@ -516,6 +518,45 @@ public sealed class GenerateViewModel : ObservableObject
         catch (Exception ex)
         {
             ShowToast(ex.Message, "err");
+        }
+    }
+
+    /// <summary>
+    /// AI designs a ComfyUI workflow from the current Prompt, saves it as a
+    /// reusable workflow file, selects it on the ComfyUI route, then Summons —
+    /// from a sentence to a running graph in one click. The existing ComfyUI
+    /// pipeline injects the prompt/seed/size + auto-fixes model names, so the
+    /// AI only has to get the STRUCTURE right.
+    /// </summary>
+    private async Task AiBuildAndRunAsync()
+    {
+        if (_ctx is null) { ShowToast("Studio context not wired", "warn"); return; }
+        if (string.IsNullOrWhiteSpace(Prompt)) { ShowToast("Type a prompt first.", "warn"); return; }
+
+        ShowToast("AI is designing a ComfyUI workflow…", "info");
+        try
+        {
+            var spec = await _ctx.Llm.BuildComfyWorkflowAsync(Prompt);
+            var graph = AiWorkflowBuilder.BuildGraph(spec);
+            if (graph.Nodes.Count == 0) { ShowToast("AI returned an empty workflow — try rephrasing.", "err"); return; }
+
+            var path = NodeFlowConverter.SaveToUserWorkflows(graph, "ai-generated");
+            var name = System.IO.Path.GetFileNameWithoutExtension(path);
+
+            _ctx.Settings.ActiveWorkflow = name;
+            _ctx.Settings.ActiveVideo = "comfyui";
+            try { _ctx.Settings.Save(); } catch { }
+            LoadWorkflows();   // rescan disk + select the new workflow by name
+
+            var comfy = VideoRoutes.FirstOrDefault(r => r.Id == "comfyui");
+            if (comfy is not null) { _activeRoute = comfy; OnPropertyChanged(nameof(ActiveRoute)); }
+
+            ShowToast($"AI workflow ready ({graph.Nodes.Count} nodes) — summoning on ComfyUI…", "ok");
+            await SummonSceneAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowToast("AI workflow failed: " + ex.Message, "err");
         }
     }
 

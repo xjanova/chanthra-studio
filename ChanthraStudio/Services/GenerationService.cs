@@ -66,6 +66,10 @@ public sealed class GenerationService
         {
             "replicate" => SubmitToReplicateAsync(shot, workflowOverride, ct),
             "runway"    => SubmitToRunwayAsync(shot, ct),
+            "kling"     => SubmitToKlingAsync(shot, ct),
+            "seedance"  => SubmitToCloudAsync(shot, "seedance", workflowOverride, ct),
+            "minimax"   => SubmitToCloudAsync(shot, "minimax", workflowOverride, ct),
+            "veo"       => SubmitToCloudAsync(shot, "veo", workflowOverride, ct),
             "pika"      => SubmitToCloudAsync(shot, "pika", workflowOverride, ct),
             "fal"       => SubmitToCloudAsync(shot, "fal", workflowOverride, ct),
             _           => SubmitToComfyUiAsync(shot, workflowOverride, ct),
@@ -82,6 +86,10 @@ public sealed class GenerationService
     private async Task<string> SubmitToCloudAsync(Shot shot, string providerId, string? workflowOverride, CancellationToken ct)
     {
         var apiKey = _ctx.Settings[providerId];
+        // Veo rides on the Gemini API, so fall back to the Gemini key rather
+        // than making the user paste the same AIzaSy… key under a second slot.
+        if (string.IsNullOrWhiteSpace(apiKey) && providerId == "veo")
+            apiKey = _ctx.Settings["gemini"];
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException(
                 $"{providerId} API key missing — paste it in Settings → Video Providers.");
@@ -92,6 +100,9 @@ public sealed class GenerationService
         {
             "pika" => (r, p, c) => new Providers.Video.PikaVideoProvider().SubmitAndWaitAsync(r, p, c),
             "fal"  => (r, p, c) => new Providers.Video.FalVideoProvider().SubmitAndWaitAsync(r, p, c),
+            "seedance" => (r, p, c) => new Providers.Video.SeedanceVideoProvider().SubmitAndWaitAsync(r, p, c),
+            "minimax"  => (r, p, c) => new Providers.Video.MinimaxVideoProvider().SubmitAndWaitAsync(r, p, c),
+            "veo"      => (r, p, c) => new Providers.Video.GeminiVeoVideoProvider().SubmitAndWaitAsync(r, p, c),
             _      => throw new InvalidOperationException($"No cloud route handler for {providerId}"),
         };
 
@@ -106,6 +117,9 @@ public sealed class GenerationService
         var modelSlug = providerId switch
         {
             "fal" => slugSource is { Length: > 0 } s && s.Contains('/') ? s : Providers.Video.FalVideoProvider.DefaultModel,
+            "seedance" => ResolveActiveModel("seedance", Providers.Video.SeedanceVideoProvider.DefaultModel),
+            "minimax" => ResolveActiveModel("minimax", Providers.Video.MinimaxVideoProvider.DefaultModel),
+            "veo" => ResolveActiveModel("veo", Providers.Video.GeminiVeoVideoProvider.DefaultModel),
             _ => slugSource ?? "",  // Pika doesn't take a model slug — engine choice is account-tier
         };
 
@@ -119,6 +133,8 @@ public sealed class GenerationService
             Aspect = aspect,
             Seed = shot.Seed.A,
             DurationSec = shot.DurationSec,
+            Hd4k = shot.Hd4k,
+            Audio = shot.Audio,
         };
 
         var jobId = Guid.NewGuid().ToString("N").Substring(0, 16);
@@ -257,6 +273,105 @@ public sealed class GenerationService
                 // picks up the per-second rate from ProviderCatalog if the
                 // user has runway pricing configured.
                 try { _ctx.Tracker.RecordSeconds("runway", req.Model, req.DurationSec, "video"); }
+                catch { }
+
+                Raise(jobId, shot.Id, ShotStatus.Done, 100, null, dest);
+            }
+            catch (OperationCanceledException)
+            {
+                WriteJobUpdate(jobId, "cancelled", null);
+                Raise(jobId, shot.Id, ShotStatus.Error, 0, "cancelled");
+            }
+            catch (Exception ex)
+            {
+                WriteJobUpdate(jobId, "error", ex.Message);
+                Raise(jobId, shot.Id, ShotStatus.Error, 0, ex.Message);
+            }
+            finally
+            {
+                _running.TryRemove(jobId, out _);
+                _promptToShot.TryRemove(jobId, out _);
+            }
+        });
+
+        return jobId;
+    }
+
+    /// <summary>
+    /// Cloud route through Kling AI (Kuaishou). Unlike Runway this supports
+    /// BOTH text-to-video and image-to-video — the KlingVideoProvider picks
+    /// the endpoint based on whether the shot carries a reference image. Same
+    /// orchestration shape as the other cloud routes: mint a jobId, submit +
+    /// poll in the background, download the result, raise the shared Done event.
+    /// </summary>
+    private async Task<string> SubmitToKlingAsync(Shot shot, CancellationToken ct)
+    {
+        var apiKey = _ctx.Settings["kling"];
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException(
+                "Kling keys missing — paste your AccessKey:SecretKey in Settings → Video Providers.");
+
+        var provider = new Providers.Video.KlingVideoProvider();
+        var aspect = shot.Aspect switch
+        {
+            AspectRatio.Vertical => "9:16",
+            AspectRatio.Square => "1:1",
+            AspectRatio.Cinema => "21:9",
+            _ => "16:9",
+        };
+        // The user's picked Kling model (Settings chips persist it under
+        // activeModel:kling); empty → provider default (kling-v1-6).
+        var model = _ctx.Settings.GetSetting("activeModel:kling");
+        var req = new Providers.VideoRequest
+        {
+            ApiKey = apiKey,
+            Model = model,
+            Prompt = PromptAugmenter.Augment(shot),
+            NegativePrompt = shot.NegativePrompt,
+            ReferenceImagePath = shot.ReferenceImagePath,
+            Aspect = aspect,
+            Seed = shot.Seed.A,
+            DurationSec = shot.DurationSec,
+            Hd4k = shot.Hd4k,
+            Audio = shot.Audio,
+            CamMode = shot.Cam.ToString().ToLowerInvariant(),
+        };
+
+        var jobId = Guid.NewGuid().ToString("N").Substring(0, 16);
+        _ctx.Shots.Insert(shot);
+        WriteJobRow(shot.Id, jobId, "queued");
+
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _running[jobId] = cts;
+        _promptToShot[jobId] = shot.Id;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                Raise(jobId, shot.Id, ShotStatus.Generating, 1, null);
+                var progress = new Progress<double>(p => Raise(jobId, shot.Id, ShotStatus.Generating, p, null));
+                var outputUrl = await provider.SubmitAndWaitAsync(req, progress, cts.Token);
+
+                var safeName = SafeFilename($"{shot.Id}_kling.mp4");
+                var dest = Path.Combine(AppPaths.MediaFolder, safeName);
+                using (var dl = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) })
+                {
+                    using var resp = await dl.GetAsync(outputUrl, cts.Token);
+                    resp.EnsureSuccessStatusCode();
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? ".");
+                    await using var fs = File.Create(dest);
+                    await resp.Content.CopyToAsync(fs, cts.Token);
+                }
+
+                WriteClipRow(shot.Id, dest, "videos");
+                WriteJobUpdate(jobId, "done", null);
+                try
+                {
+                    _ctx.Tracker.RecordSeconds("kling",
+                        string.IsNullOrEmpty(model) ? Providers.Video.KlingVideoProvider.DefaultModel : model,
+                        shot.DurationSec, "video");
+                }
                 catch { }
 
                 Raise(jobId, shot.Id, ShotStatus.Done, 100, null, dest);
@@ -612,6 +727,15 @@ public sealed class GenerationService
         });
 
         return jobId;
+    }
+
+    /// <summary>Resolve the user's picked model for a cloud provider from the
+    /// Settings model chips (<c>activeModel:&lt;id&gt;</c>), falling back to the
+    /// provider's default so both the request and billing carry a real model.</summary>
+    private string ResolveActiveModel(string providerId, string fallback)
+    {
+        var m = _ctx.Settings.GetSetting($"activeModel:{providerId}");
+        return string.IsNullOrWhiteSpace(m) ? fallback : m;
     }
 
     /// <summary>Heuristic: a Replicate model slug looks like "owner/name".

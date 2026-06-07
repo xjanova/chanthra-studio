@@ -9,6 +9,7 @@
     d:DataContext="{d:DesignInstance vm:NodeFlowViewModel}"
     d:DesignHeight="940"
     d:DesignWidth="1500"
+    PreviewKeyDown="NodeFlow_PreviewKeyDown"
     mc:Ignorable="d">
 
     <UserControl.DataContext>
@@ -134,9 +135,45 @@
                     <TextBlock
                         Margin="0,2,0,0"
                         FontFamily="{StaticResource FontMono}"
-                        FontSize="10"
+                        FontSize="11.5"
                         Foreground="{StaticResource BrushText3}"
                         Text="visual graph editor · ComfyUI compat" />
+
+                    <!--  AI workflow builder — describe a graph, the LLM designs it  -->
+                    <Border Margin="0,14,0,0" Padding="10" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="8">
+                        <StackPanel>
+                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="10.5" Foreground="{StaticResource BrushGoldHi}" Text="✦ BUILD WITH AI" />
+                            <TextBox
+                                Margin="0,6,0,0"
+                                MinHeight="46"
+                                Padding="8,6"
+                                Background="{StaticResource BrushVoid}"
+                                BorderBrush="{StaticResource BrushLineHairline}"
+                                BorderThickness="1"
+                                CaretBrush="{StaticResource BrushGoldHi}"
+                                FontFamily="{StaticResource FontUI}"
+                                FontSize="11.5"
+                                Foreground="{StaticResource BrushText1}"
+                                AcceptsReturn="True"
+                                TextWrapping="Wrap"
+                                Text="{Binding AiPrompt, UpdateSourceTrigger=PropertyChanged}"
+                                ToolTip="Describe the workflow — e.g. 'SDXL portrait with a LoRA, 1024², 30 steps'" />
+                            <Button
+                                Margin="0,6,0,0"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Command="{Binding AiBuildCommand}"
+                                Content="✦ Generate workflow"
+                                Style="{StaticResource ButtonPillGold}" />
+                            <TextBlock
+                                Margin="0,5,0,0"
+                                FontFamily="{StaticResource FontMono}"
+                                FontSize="10"
+                                Foreground="{StaticResource BrushGoldHi}"
+                                Text="designing…"
+                                Visibility="{Binding IsAiBuilding, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <ScrollViewer
@@ -147,7 +184,7 @@
                         <TextBlock
                             Margin="0,0,0,6"
                             FontFamily="{StaticResource FontMono}"
-                            FontSize="9"
+                            FontSize="11"
                             Foreground="{StaticResource BrushText4}"
                             Text="LOADERS" />
                         <Button
@@ -169,7 +206,7 @@
                         <TextBlock
                             Margin="0,12,0,6"
                             FontFamily="{StaticResource FontMono}"
-                            FontSize="9"
+                            FontSize="11"
                             Foreground="{StaticResource BrushText4}"
                             Text="CONDITIONING" />
                         <Button
@@ -186,7 +223,7 @@
                         <TextBlock
                             Margin="0,12,0,6"
                             FontFamily="{StaticResource FontMono}"
-                            FontSize="9"
+                            FontSize="11"
                             Foreground="{StaticResource BrushText4}"
                             Text="LATENT" />
                         <Button
@@ -203,7 +240,7 @@
                         <TextBlock
                             Margin="0,12,0,6"
                             FontFamily="{StaticResource FontMono}"
-                            FontSize="9"
+                            FontSize="11"
                             Foreground="{StaticResource BrushText4}"
                             Text="OUTPUT" />
                         <Button
@@ -220,7 +257,7 @@
                         <TextBlock
                             Margin="0,12,0,6"
                             FontFamily="{StaticResource FontMono}"
-                            FontSize="9"
+                            FontSize="11"
                             Foreground="{StaticResource BrushText4}"
                             Text="VIDEO" />
                         <Button
@@ -258,11 +295,16 @@
                             Command="{Binding AutoArrangeCommand}"
                             Content="✦ Auto-arrange"
                             Style="{StaticResource ButtonPill}" />
+                        <Button Width="30" Margin="0,0,4,0" Command="{Binding UndoCommand}" Content="↶" Style="{StaticResource ButtonPill}" ToolTip="Undo (Ctrl+Z)" />
+                        <Button Width="30" Margin="0,0,8,0" Command="{Binding RedoCommand}" Content="↷" Style="{StaticResource ButtonPill}" ToolTip="Redo (Ctrl+Y)" />
+                        <Button Margin="0,0,4,0" Command="{Binding DuplicateSelectedCommand}" Content="⎘ Duplicate" Style="{StaticResource ButtonPill}" ToolTip="Duplicate selected node (Ctrl+D)" />
+                        <Button Margin="0,0,4,0" Click="FitToView_Click" Content="⤢ Fit" Style="{StaticResource ButtonPill}" ToolTip="Frame the whole graph in view" />
+                        <Button Margin="0,0,8,0" Command="{Binding NewGraphCommand}" Content="✕ Clear" Style="{StaticResource ButtonPill}" ToolTip="Clear the canvas (Ctrl+Z restores)" />
                         <TextBlock
                             Margin="14,0,8,0"
                             VerticalAlignment="Center"
                             FontFamily="{StaticResource FontMono}"
-                            FontSize="10"
+                            FontSize="11.5"
                             Foreground="{StaticResource BrushText3}"
                             Text="ZOOM" />
                         <Button
@@ -280,7 +322,7 @@
                                 Padding="0,4"
                                 HorizontalAlignment="Center"
                                 FontFamily="{StaticResource FontMono}"
-                                FontSize="10"
+                                FontSize="11.5"
                                 Foreground="{StaticResource BrushText1}"
                                 Text="{Binding Zoom, StringFormat={}{0:P0}}" />
                         </Border>
@@ -329,7 +371,7 @@
                         </Border.Style>
                         <TextBlock
                             FontFamily="{StaticResource FontMono}"
-                            FontSize="10.5"
+                            FontSize="11.5"
                             Foreground="{StaticResource BrushText1}"
                             Text="{Binding StatusMessage}" />
                     </Border>
@@ -376,6 +418,7 @@
 
             <!--  Canvas viewport  -->
             <Grid
+                x:Name="CanvasViewport"
                 Grid.Row="1"
                 Background="{StaticResource BrushBgInset}"
                 ClipToBounds="True"
@@ -383,21 +426,16 @@
                 MouseRightButtonUp="Viewport_MouseRightButtonUp"
                 MouseMove="Viewport_MouseMove"
                 MouseWheel="Viewport_MouseWheel">
-                <!--  Dot-grid background to anchor the canvas perception  -->
-                <Rectangle>
+                <!--  Flat, smooth canvas — no grid pattern at all. A soft radial
+                      vignette (faint center lift → gently darker edges) gives the
+                      workspace depth without any busy texture.  -->
+                <Rectangle IsHitTestVisible="False">
                     <Rectangle.Fill>
-                        <DrawingBrush
-                            TileMode="Tile"
-                            Viewport="0,0,24,24"
-                            ViewportUnits="Absolute">
-                            <DrawingBrush.Drawing>
-                                <GeometryDrawing Brush="#22D4A76A">
-                                    <GeometryDrawing.Geometry>
-                                        <EllipseGeometry Center="12,12" RadiusX="0.8" RadiusY="0.8" />
-                                    </GeometryDrawing.Geometry>
-                                </GeometryDrawing>
-                            </DrawingBrush.Drawing>
-                        </DrawingBrush>
+                        <RadialGradientBrush Center="0.5,0.4" GradientOrigin="0.5,0.4" RadiusX="0.85" RadiusY="1.05">
+                            <GradientStop Offset="0" Color="#0AFFFFFF" />
+                            <GradientStop Offset="0.5" Color="#00000000" />
+                            <GradientStop Offset="1" Color="#36000000" />
+                        </RadialGradientBrush>
                     </Rectangle.Fill>
                 </Rectangle>
 
@@ -419,7 +457,13 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type m:FlowWire}">
-                                <Path Data="{Binding Geometry}" Style="{StaticResource WirePath}" />
+                                <Canvas>
+                                    <!--  Invisible fat hit-band so the thin bezier is easy to click → delete  -->
+                                    <Path Data="{Binding Geometry}" Stroke="Transparent" StrokeThickness="14"
+                                          Cursor="Hand" MouseLeftButtonDown="Wire_MouseLeftButtonDown"
+                                          ToolTip="Click to remove this connection" />
+                                    <Path Data="{Binding Geometry}" Style="{StaticResource WirePath}" IsHitTestVisible="False" />
+                                </Canvas>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
@@ -450,6 +494,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type m:FlowNode}">
                                 <Border
+                                    Focusable="True"
                                     MouseLeftButtonDown="Node_MouseLeftButtonDown"
                                     Style="{StaticResource NodeCard}"
                                     Width="{Binding Width}">
@@ -467,21 +512,59 @@
                                             Background="{Binding AccentKey, Converter={StaticResource ResourceLookup}}"
                                             CornerRadius="9,9,0,0"
                                             Cursor="SizeAll">
-                                            <Grid Margin="12,0">
+                                            <Grid Margin="12,0,6,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
                                                 <TextBlock
+                                                    Grid.Column="0"
                                                     VerticalAlignment="Center"
                                                     FontFamily="{StaticResource FontDisplay}"
                                                     FontSize="13"
                                                     FontStyle="Italic"
                                                     Foreground="#FF1A0D05"
-                                                    Text="{Binding Title}" />
+                                                    Text="{Binding Title}"
+                                                    TextTrimming="CharacterEllipsis" />
                                                 <TextBlock
-                                                    HorizontalAlignment="Right"
+                                                    Grid.Column="1"
+                                                    Margin="6,0,4,0"
                                                     VerticalAlignment="Center"
                                                     FontFamily="{StaticResource FontMono}"
-                                                    FontSize="9"
+                                                    FontSize="11"
                                                     Foreground="#992A1B3D"
                                                     Text="{Binding Id}" />
+                                                <!--  Delete this node (also works with the Delete key)  -->
+                                                <Button
+                                                    Grid.Column="2"
+                                                    Width="20"
+                                                    Height="20"
+                                                    VerticalAlignment="Center"
+                                                    Cursor="Hand"
+                                                    Command="{Binding DataContext.DeleteNodeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="Delete this node (or select it and press Delete)">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="bd" Background="Transparent" CornerRadius="4">
+                                                                <TextBlock
+                                                                    HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center"
+                                                                    FontFamily="{StaticResource FontMono}"
+                                                                    FontSize="12"
+                                                                    FontWeight="Bold"
+                                                                    Foreground="#FF1A0D05"
+                                                                    Text="✕" />
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="bd" Property="Background" Value="#33000000" />
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
                                             </Grid>
                                         </Border>
 
@@ -520,7 +603,7 @@
                                                                 Grid.Column="1"
                                                                 VerticalAlignment="Center"
                                                                 FontFamily="{StaticResource FontMono}"
-                                                                FontSize="10"
+                                                                FontSize="11.5"
                                                                 Foreground="{StaticResource BrushText2}"
                                                                 Text="{Binding Label}" />
                                                         </Grid>
@@ -542,7 +625,7 @@
                                                                 HorizontalAlignment="Right"
                                                                 VerticalAlignment="Center"
                                                                 FontFamily="{StaticResource FontMono}"
-                                                                FontSize="10"
+                                                                FontSize="11.5"
                                                                 Foreground="{StaticResource BrushText1}"
                                                                 Text="{Binding Label}" />
                                                             <Border
@@ -582,13 +665,13 @@
                                                             <TextBlock
                                                                 Grid.Column="0"
                                                                 FontFamily="{StaticResource FontMono}"
-                                                                FontSize="9.5"
+                                                                FontSize="11"
                                                                 Foreground="{StaticResource BrushText3}"
                                                                 Text="{Binding Label}" />
                                                             <TextBlock
                                                                 Grid.Column="1"
                                                                 FontFamily="{StaticResource FontMono}"
-                                                                FontSize="9.5"
+                                                                FontSize="11"
                                                                 Foreground="{StaticResource BrushText1}"
                                                                 Text="{Binding Value}"
                                                                 TextTrimming="CharacterEllipsis" />
@@ -622,7 +705,7 @@
                 <StackPanel Grid.Row="0" Margin="14,16,14,8">
                     <TextBlock
                         FontFamily="{StaticResource FontMono}"
-                        FontSize="9"
+                        FontSize="11"
                         Foreground="{StaticResource BrushText4}"
                         Text="INSPECTOR" />
                     <TextBlock
@@ -682,7 +765,7 @@
                         <TextBlock
                             Margin="0,0,0,8"
                             FontFamily="{StaticResource FontMono}"
-                            FontSize="9"
+                            FontSize="11"
                             Foreground="{StaticResource BrushText4}"
                             Text="PARAMETERS" />
                         <ItemsControl ItemsSource="{Binding Selected.Params}">
@@ -691,7 +774,7 @@
                                     <StackPanel Margin="0,0,0,10">
                                         <TextBlock
                                             FontFamily="{StaticResource FontMono}"
-                                            FontSize="10"
+                                            FontSize="11.5"
                                             Foreground="{StaticResource BrushText3}"
                                             Text="{Binding Label}" />
                                         <Border
@@ -703,14 +786,17 @@
                                             <TextBox
                                                 Padding="6,4"
                                                 FontFamily="{StaticResource FontMono}"
-                                                FontSize="10"
+                                                FontSize="11.5"
                                                 Background="Transparent"
                                                 BorderThickness="0"
                                                 Foreground="{StaticResource BrushText1}"
                                                 Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
                                                 AcceptsReturn="True"
                                                 TextWrapping="Wrap"
-                                                MaxHeight="120" />
+                                                MaxHeight="120"
+                                                GotFocus="Param_GotFocus"
+                                                TextChanged="Param_TextChanged"
+                                                LostFocus="Param_LostFocus" />
                                         </Border>
                                     </StackPanel>
                                 </DataTemplate>
@@ -725,7 +811,7 @@
                             <StackPanel>
                                 <TextBlock
                                     FontFamily="{StaticResource FontMono}"
-                                    FontSize="9"
+                                    FontSize="11"
                                     Foreground="{StaticResource BrushText4}"
                                     Text="HINT" />
                                 <TextBlock

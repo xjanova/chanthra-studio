@@ -42,7 +42,9 @@ public partial class EditorView : UserControl
         InitializeComponent();
         Loaded += (_, _) =>
         {
-            if (DataContext is null)
+            // Force our own VM — the ViewSwitcher leaves DataContext inheriting
+            // MainViewModel, so a plain `is null` guard never fires.
+            if (DataContext is not EditorViewModel)
                 DataContext = new EditorViewModel(App.Current.Studio);
 
             // Subscribe to VM.Selected changes so the MediaElement reloads its

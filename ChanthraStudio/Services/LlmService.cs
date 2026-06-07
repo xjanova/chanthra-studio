@@ -122,4 +122,115 @@ public sealed class LlmService
             """;
         return CompleteAsync(system, draft, temperature: 0.8, maxTokens: 600, ct);
     }
+
+    /// <summary>
+    /// Expand a concept into a full multi-clip storyboard as compact JSON for
+    /// <see cref="StoryboardBuilder.Parse"/>. The model only writes the creative
+    /// content (titles, visuals, camera, SFX, Thai dialogue, tarot cards, the
+    /// Facebook post); the app owns the character lock, prompt assembly, routing
+    /// and generation. Returns the raw JSON spec.
+    /// </summary>
+    public Task<string> WriteStoryboardAsync(string concept, string character, string styleNote,
+        int clipCount, double clipDurationSec, string voiceNote, CancellationToken ct = default)
+    {
+        const string system = """
+            You are a short-form vertical-video storyboard writer for a Thai
+            fortune-telling brand (a young female card reader, "lunar atelier"
+            mystical-but-warm aesthetic). You turn a concept into a clip-by-clip
+            storyboard for talking-head AI video models (Seedance / Veo / Kling).
+
+            Output ONLY a JSON object — no prose, no markdown fences. Schema:
+            {
+              "title": "<short Thai title>",
+              "clips": [
+                {
+                  "title": "<short Thai beat title>",
+                  "durationSec": <number>,
+                  "visual": "<Thai: what we see — the character's action, lighting, props>",
+                  "camera": "<camera language, e.g. 'fast zoom-in on face', 'close-up'>",
+                  "sfx": "<sound effects, e.g. 'bell chime กริ๊ง, golden light'>",
+                  "dialogue": [ { "text": "<one short spoken Thai line>", "emotion": "<optional cue>" } ],
+                  "cards": [ "<tarot card name in English, e.g. The Star>" ],
+                  "audioBehavior": "<voice direction, e.g. 'cheerful, spoken dialogue only'>"
+                }
+              ],
+              "facebook": {
+                "caption": "<Thai caption with line breaks + emojis, ending in a clear CTA>",
+                "hashtags": [ "#..." ],
+                "commaTags": [ "<keyword>", "..." ]
+              }
+            }
+
+            Rules:
+            - Write the DIALOGUE in natural spoken Thai (สุภาพ, เป็นกันเอง), 1 short
+              sentence per line, ~3–10 lines total across the board's arc.
+            - Build a hook → reveal → obstacle → call-to-action arc across the clips.
+            - End the final clip with the brand CTA: ask viewers to type a Thai
+              keyword (เช่น "เลิกจน") and share the post.
+            - 2 tarot cards per clip is ideal. Use real tarot names in English.
+            - The Facebook caption mirrors the board's message and ends with the
+              same type-a-keyword-and-share CTA; 12–18 hashtags; 15–20 commaTags.
+            - Keep it positive and inspirational — no guarantees of wealth, no
+              fear-mongering, no medical/financial promises.
+            """;
+        var user =
+            $"Concept / hook:\n{concept}\n\n" +
+            $"Character (keep consistent every clip): {character}\n" +
+            $"Visual style: {styleNote}\n" +
+            $"Number of clips: {Math.Clamp(clipCount, 1, 8)}, each about {clipDurationSec:0} seconds\n" +
+            $"Voice direction: {voiceNote}\n\n" +
+            "Write the storyboard JSON now.";
+        return CompleteAsync(system, user, temperature: 0.85, maxTokens: 3200, ct);
+    }
+
+    /// <summary>
+    /// Build a ComfyUI workflow GRAPH from a natural-language description. The
+    /// LLM emits a compact node/wire spec using ONLY the node kinds the app
+    /// knows; <see cref="AiWorkflowBuilder"/> then seeds the real sockets and
+    /// validates every wire, so the result is always a valid graph. Returns the
+    /// raw JSON spec (caller passes it to AiWorkflowBuilder.BuildGraph).
+    /// </summary>
+    public Task<string> BuildComfyWorkflowAsync(string description, CancellationToken ct = default)
+    {
+        const string system = """
+            You are a ComfyUI workflow architect. Given a user's description, output a
+            JSON graph using ONLY these node kinds and their exact socket ids.
+            Output ONLY the JSON object — no prose, no markdown fences.
+
+            Node kinds — "kind": outputs[…] · inputs[…] · params:
+            - LoadCheckpoint:   out[model,clip,vae]                       · param ckpt_name
+            - LoraLoader:       in[model,clip] out[model,clip]            · params lora_name,strength_model,strength_clip
+            - CLIPTextEncode:   in[clip] out[cond]                        · param text
+            - EmptyLatentImage: out[latent]                              · params width,height,batch_size
+            - KSampler:         in[model,positive,negative,latent_image] out[latent] · params seed,steps,cfg,sampler_name,scheduler,denoise
+            - VAEDecode:        in[samples,vae] out[image]
+            - SaveImage:        in[images]                                · param filename_prefix
+            - LoadImage:        out[image,mask]                           · param image
+            - ControlNetApply:  in[conditioning,control_net,image] out[conditioning] · param strength
+            - AnimateDiff:      in[model] out[model]                      · params motion_model,beta_schedule
+
+            Output shape:
+            {"nodes":[{"id":"<unique>","kind":"<Kind>","params":{"<k>":"<v>"}}],
+             "wires":[{"from":"<nodeId>:<outSocket>","to":"<nodeId>:<inSocket>"}]}
+
+            A standard text-to-image graph:
+            LoadCheckpoint(ckpt) → CLIPTextEncode(pos)+CLIPTextEncode(neg) + EmptyLatentImage(latent)
+            → KSampler(sampler) → VAEDecode(vae) → SaveImage(save).
+            Wire: ckpt:clip→pos:clip, ckpt:clip→neg:clip, ckpt:model→sampler:model,
+            pos:cond→sampler:positive, neg:cond→sampler:negative, latent:latent→sampler:latent_image,
+            sampler:latent→vae:samples, ckpt:vae→vae:vae, vae:image→save:images.
+
+            Rules:
+            - Put the user's subject in the POSITIVE CLIPTextEncode text; the negative gets
+              common quality negatives ("blurry, lowres, deformed, bad anatomy").
+            - Leave ckpt_name "" — the app auto-picks an installed checkpoint.
+            - Add LoraLoader ONLY if the user asks for a LoRA, wired ckpt:model→lora:model,
+              ckpt:clip→lora:clip, then lora:model→sampler:model and lora:clip→both CLIPTextEncode.
+            - Set width/height/steps/cfg sensibly for the request. Keep it minimal and valid.
+            """;
+        var user = string.IsNullOrWhiteSpace(description)
+            ? "A cinematic SDXL portrait, soft light."
+            : description;
+        return CompleteAsync(system, user, temperature: 0.3, maxTokens: 1800, ct);
+    }
 }

@@ -152,7 +152,7 @@ public sealed class NleProjectFiles
         }).ToList(),
         Timeline = vm.Timeline.Select(s => new NleProjectSerializer.SlotEntry
         {
-            ShotId = s.Clip.ShotId, FilePath = s.Clip.FilePath, DurationSec = s.DurationSec,
+            ShotId = s.Clip.ShotId, FilePath = s.Clip.FilePath, DurationSec = s.DurationSec, TrimStartSec = s.TrimStartSec,
             ZoomStartPct = s.ZoomStartPct, ZoomEndPct = s.ZoomEndPct,
             PanStartX = s.PanStartX, PanStartY = s.PanStartY,
             PanEndX = s.PanEndX, PanEndY = s.PanEndY,
@@ -246,7 +246,8 @@ public sealed class NleProjectFiles
                 vm.AppendRestoredSlot(clip, entry.DurationSec,
                     entry.ZoomStartPct, entry.ZoomEndPct,
                     entry.Brightness, entry.Contrast, entry.Saturation,
-                    entry.PanStartX, entry.PanStartY, entry.PanEndX, entry.PanEndY);
+                    entry.PanStartX, entry.PanStartY, entry.PanEndX, entry.PanEndY,
+                    entry.TrimStartSec);
             }
             foreach (var entry in file.Overlay)
             {

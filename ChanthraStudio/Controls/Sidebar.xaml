@@ -32,6 +32,34 @@
             </ToggleButton>
             <ToggleButton
                 Command="{Binding SwitchViewCommand}"
+                CommandParameter="Seedance"
+                IsChecked="{Binding ActiveView, Converter={StaticResource EnumEquals}, ConverterParameter=Seedance, Mode=OneWay}"
+                Style="{StaticResource SidebarItem}"
+                ToolTip="Seedance 2.0 prompt wizard">
+                <Path
+                    Width="19"
+                    Height="19"
+                    Data="{StaticResource IcoClapper}"
+                    Stretch="Uniform"
+                    Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                    StrokeThickness="1.4" />
+            </ToggleButton>
+            <ToggleButton
+                Command="{Binding SwitchViewCommand}"
+                CommandParameter="Storyboard"
+                IsChecked="{Binding ActiveView, Converter={StaticResource EnumEquals}, ConverterParameter=Storyboard, Mode=OneWay}"
+                Style="{StaticResource SidebarItem}"
+                ToolTip="Storyboard · multi-clip generator">
+                <Path
+                    Width="19"
+                    Height="19"
+                    Data="{StaticResource IcoFilm}"
+                    Stretch="Uniform"
+                    Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                    StrokeThickness="1.4" />
+            </ToggleButton>
+            <ToggleButton
+                Command="{Binding SwitchViewCommand}"
                 CommandParameter="Edit"
                 IsChecked="{Binding ActiveView, Converter={StaticResource EnumEquals}, ConverterParameter=Edit, Mode=OneWay}"
                 Style="{StaticResource SidebarItem}"

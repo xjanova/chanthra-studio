@@ -11,7 +11,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace ChanthraStudio.ViewModels;
 
-public sealed class LibraryViewModel : ObservableObject
+public sealed class LibraryViewModel : ObservableObject, IDisposable
 {
     private readonly StudioContext _ctx;
 
@@ -113,17 +113,31 @@ public sealed class LibraryViewModel : ObservableObject
         SetLimitCommand = new RelayCommand<string>(m => { if (!string.IsNullOrEmpty(m)) LimitMode = m!; });
         SetKindFilterCommand = new RelayCommand<string>(k => { if (!string.IsNullOrEmpty(k)) KindFilter = k!; });
 
-        // Auto-refresh whenever a generation completes — the ProgressChanged
-        // event fires on the UI thread already (GenerationService dispatches).
-        _ctx.Generation.ProgressChanged += (_, e) =>
-        {
-            if (e.Status == ShotStatus.Done) Refresh();
-        };
-
-        // Title-bar search box re-filters the visible clips live.
-        _ctx.Search.PropertyChanged += (_, _) => ApplyFilter();
+        // Auto-refresh whenever a generation completes + re-filter on search.
+        // Named handlers (not lambdas) so Dispose() can detach them — the
+        // ViewSwitcher recreates this VM on every Library visit, but
+        // Generation + Search are long-lived singletons that would otherwise
+        // keep a zombie VM alive firing Refresh()/ApplyFilter() forever.
+        _ctx.Generation.ProgressChanged += OnGenerationProgress;
+        _ctx.Search.PropertyChanged += OnSearchChanged;
 
         Refresh();
+    }
+
+    private void OnGenerationProgress(object? sender, GenerationProgressEventArgs e)
+    {
+        if (e.Status == ShotStatus.Done) Refresh();
+    }
+
+    private void OnSearchChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => ApplyFilter();
+
+    /// <summary>Detach from singletons + per-clip handlers. Called from
+    /// LibraryView.Unloaded so navigating away doesn't leave a live VM.</summary>
+    public void Dispose()
+    {
+        _ctx.Generation.ProgressChanged -= OnGenerationProgress;
+        _ctx.Search.PropertyChanged -= OnSearchChanged;
+        foreach (var c in _allClips) c.PropertyChanged -= OnClipPropertyChanged;
     }
 
     public void Refresh()

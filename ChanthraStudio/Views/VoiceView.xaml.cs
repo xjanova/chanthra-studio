@@ -14,9 +14,11 @@ public partial class VoiceView : UserControl
         InitializeComponent();
         Loaded += (_, _) =>
         {
-            if (DataContext is null)
+            // Force our own VM — the ViewSwitcher leaves DataContext inheriting
+            // MainViewModel, so a plain `is null` guard never fires.
+            if (DataContext is not VoiceViewModel vvm)
                 DataContext = new VoiceViewModel(App.Current.Studio);
-            else if (DataContext is VoiceViewModel vvm)
+            else
                 vvm.RefreshTakes();
             // Subscribe to CurrentlyPlaying changes so the MediaElement
             // swaps source and auto-plays whenever the VM signals a new
