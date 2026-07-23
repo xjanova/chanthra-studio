@@ -102,6 +102,20 @@
             </ToggleButton>
             <ToggleButton
                 Command="{Binding SwitchViewCommand}"
+                CommandParameter="WebStudio"
+                IsChecked="{Binding ActiveView, Converter={StaticResource EnumEquals}, ConverterParameter=WebStudio, Mode=OneWay}"
+                Style="{StaticResource SidebarItem}"
+                ToolTip="Web Studio · ขับเว็บอัตโนมัติ (Magnific ฯลฯ)">
+                <Path
+                    Width="19"
+                    Height="19"
+                    Data="{StaticResource IcoGlobe}"
+                    Stretch="Uniform"
+                    Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                    StrokeThickness="1.4" />
+            </ToggleButton>
+            <ToggleButton
+                Command="{Binding SwitchViewCommand}"
                 CommandParameter="Library"
                 IsChecked="{Binding ActiveView, Converter={StaticResource EnumEquals}, ConverterParameter=Library, Mode=OneWay}"
                 Style="{StaticResource SidebarItem}"

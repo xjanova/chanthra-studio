@@ -29,6 +29,8 @@ public sealed class StudioContext
     public SearchBus Search { get; } = new();
     public RecentProjectsService RecentProjects { get; } = new();
     public NleProjectFiles NleProjectFiles { get; }
+    public WebStudioService WebStudio { get; } = new();
+    public WebRecipeRepository WebRecipes { get; } = new();
 
     public StudioContext()
     {

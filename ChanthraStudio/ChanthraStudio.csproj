@@ -19,6 +19,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Dapper" Version="2.1.72" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
@@ -32,6 +33,14 @@
       discover them by scanning Assets/Workflows/ next to the .exe.
     -->
     <Content Include="Assets\Workflows\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!--
+      Web Studio recipes (per-site automation steps) ship the same way:
+      plain Content discoverable on disk next to the .exe so they stay
+      editable and can be repaired by teach mode / self-heal at runtime.
+    -->
+    <Content Include="Assets\WebRecipes\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

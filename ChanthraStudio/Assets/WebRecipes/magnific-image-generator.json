@@ -1,0 +1,24 @@
+{
+  "siteId": "magnific",
+  "toolId": "image-generator",
+  "name": "Magnific — Image Generator",
+  "homeUrl": "https://www.magnific.com/app/ai-image-generator",
+  "version": 1,
+  "notes": [
+    "Captured live 2026-06-28 from the signed-in account. Magnific = Freepik canvas suite (not a single form).",
+    "Random GUID ids on some controls (e.g. the Generate button) — match by visible text, never id.",
+    "Prompt is a contenteditable rich editor (role=textbox); the runner sets it via focus + paste/InputEvent, not .value.",
+    "Generate is disabled (cursor-not-allowed) until the prompt has text — waitForEnabled handles this.",
+    "From the tool intro page you click 'Start creating' once to open the editor panel; that step is optional/skip-if-present.",
+    "The result tile + per-result download control appear on the canvas after generation — those two steps still need teach mode (empty css = TEACH_ME)."
+  ],
+  "steps": [
+    { "kind": "Click", "label": "เปิด editor (Start creating)", "css": "#scd-3-trigger", "text": "Create", "optional": true, "waitMs": 4000 },
+    { "kind": "SelectModel", "label": "โมเดล / โหมด", "css": "#image-mode-selector-image-generator-form", "value": "{{model}}" },
+    { "kind": "Upload", "label": "ภาพ reference (ตัวละคร/ฉาก)", "css": "input[type=file]", "value": "{{image}}", "optional": true },
+    { "kind": "Fill", "label": "Prompt", "css": "[role=textbox][contenteditable=true][aria-multiline=true]", "value": "{{prompt}}" },
+    { "kind": "Click", "label": "Generate", "css": "button", "text": "Generate", "waitForEnabled": true },
+    { "kind": "WaitFor", "label": "ผลลัพธ์เสร็จ (ต้องสอนเพิ่ม)", "css": "", "waitMs": 180000 },
+    { "kind": "Download", "label": "ดาวน์โหลดผล (ต้องสอนเพิ่ม)", "css": "" }
+  ]
+}

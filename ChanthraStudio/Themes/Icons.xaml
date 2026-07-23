@@ -18,6 +18,7 @@
     <Geometry x:Key="IcoCoin">M12 3 A9 9 0 1 0 12 21 A9 9 0 1 0 12 3 M16 8 H10 A2 2 0 1 0 10 12 H14 A2 2 0 1 1 14 16 H8 M12 6 V18</Geometry>
     <Geometry x:Key="IcoSettings">M12 9 A3 3 0 1 0 12 15 A3 3 0 1 0 12 9 M19.4 15 L21 13.5 L19.5 11 L17.4 11.4 A7.6 7.6 0 0 0 16.5 9.8 L17 7.6 L14.7 6.5 L13.2 8.1 A7.6 7.6 0 0 0 11.3 8.1 L9.8 6.5 L7.5 7.6 L8 9.8 A7.6 7.6 0 0 0 7.1 11.4 L5 11 L3.5 13.5 L5.1 15 A7.6 7.6 0 0 0 5.1 16.6 L3.5 18.1 L5 20.6 L7.1 20.2 A7.6 7.6 0 0 0 8 21.8 L7.5 24 L9.8 25.1 Z</Geometry>
     <Geometry x:Key="IcoSearch">M11 4 A7 7 0 1 0 11 18 A7 7 0 1 0 11 4 M21 21 L16 16</Geometry>
+    <Geometry x:Key="IcoGlobe">M12 3 A9 9 0 1 0 12 21 A9 9 0 1 0 12 3 M3.5 12 H20.5 M12 3 C7.6 7 7.6 17 12 21 C16.4 17 16.4 7 12 3</Geometry>
     <Geometry x:Key="IcoPlus">M12 5 V19 M5 12 H19</Geometry>
     <Geometry x:Key="IcoClose">M6 6 L18 18 M18 6 L6 18</Geometry>
     <Geometry x:Key="IcoMinimize">M5 12 H19</Geometry>

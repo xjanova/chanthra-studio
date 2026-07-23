@@ -1,0 +1,329 @@
+<UserControl
+    x:Class="ChanthraStudio.Views.WebStudioView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="clr-namespace:ChanthraStudio.ViewModels"
+    xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+    d:DataContext="{d:DesignInstance vm:WebStudioViewModel}"
+    d:DesignHeight="800"
+    d:DesignWidth="1200"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!--  Toolbar: site · tool · nav · teach · address  -->
+        <Border
+            Grid.Row="0"
+            Padding="12,8"
+            BorderBrush="{StaticResource BrushLineHairline}"
+            BorderThickness="0,0,0,1">
+            <DockPanel IsEnabled="{Binding ToolbarEnabled}" LastChildFill="True">
+                <ComboBox
+                    Width="170"
+                    Margin="0,0,8,0"
+                    DockPanel.Dock="Left"
+                    DisplayMemberPath="DisplayName"
+                    IsEnabled="{Binding CanSwitchSite}"
+                    ItemsSource="{Binding Sites}"
+                    SelectedItem="{Binding SelectedSite}"
+                    ToolTip="เว็บไซต์ (ล็อกไว้ — รองรับเว็บเดียวในเฟสนี้)" />
+                <ComboBox
+                    Width="180"
+                    Margin="0,0,10,0"
+                    DockPanel.Dock="Left"
+                    DisplayMemberPath="Name"
+                    ItemsSource="{Binding Tools}"
+                    SelectedItem="{Binding SelectedTool}"
+                    ToolTip="เครื่องมือ" />
+
+                <Button
+                    Width="34"
+                    Margin="0,0,4,0"
+                    Command="{Binding BackCommand}"
+                    Content="◀"
+                    DockPanel.Dock="Left"
+                    ToolTip="ย้อนกลับ" />
+                <Button
+                    Width="34"
+                    Margin="0,0,4,0"
+                    Command="{Binding ForwardCommand}"
+                    Content="▶"
+                    DockPanel.Dock="Left"
+                    ToolTip="ถัดไป" />
+                <Button
+                    Width="34"
+                    Margin="0,0,10,0"
+                    Command="{Binding ReloadCommand}"
+                    Content="⟳"
+                    DockPanel.Dock="Left"
+                    ToolTip="โหลดใหม่" />
+
+                <ToggleButton
+                    MinWidth="58"
+                    Margin="0,0,6,0"
+                    DockPanel.Dock="Left"
+                    Content="สอน"
+                    IsChecked="{Binding TeachMode}"
+                    ToolTip="โหมดสอน · คลิกองค์ประกอบบนหน้าเว็บเพื่อจับ selector" />
+                <ToggleButton
+                    MinWidth="58"
+                    Margin="0,0,10,0"
+                    DockPanel.Dock="Left"
+                    Content="รัน"
+                    IsChecked="{Binding RunPanelOpen}"
+                    ToolTip="แผงรัน recipe · กรอก prompt แล้วกดรัน" />
+
+                <Button
+                    Width="48"
+                    Margin="8,0,0,0"
+                    Command="{Binding GoCommand}"
+                    Content="ไป"
+                    DockPanel.Dock="Right"
+                    ToolTip="ไปยังที่อยู่" />
+                <Button
+                    Width="38"
+                    Margin="8,0,0,0"
+                    Command="{Binding OpenHomeCommand}"
+                    Content="⌂"
+                    DockPanel.Dock="Right"
+                    ToolTip="หน้าหลักของเว็บ" />
+
+                <TextBox
+                    Padding="8,0"
+                    VerticalContentAlignment="Center"
+                    Text="{Binding AddressText, UpdateSourceTrigger=PropertyChanged}"
+                    ToolTip="ที่อยู่เว็บ">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding GoCommand}" />
+                    </TextBox.InputBindings>
+                </TextBox>
+            </DockPanel>
+        </Border>
+
+        <!--  Browser + teach panel  -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <wv2:WebView2 x:Name="Web" Grid.Column="0" />
+
+            <Border
+                Grid.Column="1"
+                Width="350"
+                Background="{StaticResource BrushBgMica}"
+                BorderBrush="{StaticResource BrushLineHairline}"
+                BorderThickness="1,0,0,0"
+                Visibility="{Binding TeachMode, Converter={StaticResource BoolToVis}}">
+                <DockPanel Margin="12">
+                    <TextBlock
+                        DockPanel.Dock="Top"
+                        FontWeight="SemiBold"
+                        Foreground="{StaticResource BrushText1}"
+                        Text="ขั้นตอนที่จับได้ (Teach)" />
+                    <TextBlock
+                        Margin="0,4,0,8"
+                        DockPanel.Dock="Top"
+                        FontSize="11"
+                        Foreground="{StaticResource BrushText1}"
+                        Opacity="0.6"
+                        Text="คลิกองค์ประกอบบนหน้าเว็บเพื่อจับ · แก้ชนิด/ค่าได้ · {{prompt}} {{image}} {{model}}"
+                        TextWrapping="Wrap" />
+
+                    <StackPanel
+                        Margin="0,8,0,0"
+                        DockPanel.Dock="Bottom"
+                        Orientation="Horizontal">
+                        <Button
+                            Width="56"
+                            Margin="0,0,6,0"
+                            Command="{Binding LoadRecipeCommand}"
+                            Content="โหลด"
+                            ToolTip="โหลด recipe เดิมของเครื่องมือนี้มาแก้" />
+                        <Button
+                            Width="56"
+                            Margin="0,0,6,0"
+                            Command="{Binding ClearStepsCommand}"
+                            Content="ล้าง" />
+                        <Button
+                            Width="120"
+                            Command="{Binding SaveRecipeCommand}"
+                            Content="บันทึก recipe"
+                            IsEnabled="{Binding HasCapturedSteps}" />
+                    </StackPanel>
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding CapturedSteps}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border
+                                        Margin="0,0,0,6"
+                                        Padding="8"
+                                        BorderBrush="{StaticResource BrushLineHairline}"
+                                        BorderThickness="1"
+                                        CornerRadius="6">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+
+                                            <DockPanel Grid.Row="0">
+                                                <Button
+                                                    Width="22"
+                                                    Height="22"
+                                                    Command="{Binding DataContext.RemoveStepCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Content="✕"
+                                                    DockPanel.Dock="Right"
+                                                    ToolTip="ลบขั้นตอนนี้" />
+                                                <ComboBox
+                                                    ItemsSource="{Binding DataContext.StepKinds, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    SelectedItem="{Binding Kind}"
+                                                    ToolTip="ชนิดของขั้นตอน" />
+                                            </DockPanel>
+
+                                            <TextBox
+                                                Grid.Row="1"
+                                                Margin="0,6,0,0"
+                                                Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}"
+                                                ToolTip="ป้ายชื่อ (อ่านง่าย)" />
+
+                                            <DockPanel Grid.Row="2" Margin="0,6,0,0">
+                                                <TextBox
+                                                    Width="120"
+                                                    DockPanel.Dock="Right"
+                                                    Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                    ToolTip="ค่า เช่น {{prompt}}" />
+                                                <TextBlock
+                                                    VerticalAlignment="Center"
+                                                    FontSize="10"
+                                                    Foreground="{StaticResource BrushText1}"
+                                                    Opacity="0.6"
+                                                    Text="{Binding Css}"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    ToolTip="{Binding Css}" />
+                                            </DockPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!--  Run panel (shares the column with the teach panel)  -->
+            <Border
+                Grid.Column="1"
+                Width="350"
+                Background="{StaticResource BrushBgMica}"
+                BorderBrush="{StaticResource BrushLineHairline}"
+                BorderThickness="1,0,0,0"
+                Visibility="{Binding RunPanelOpen, Converter={StaticResource BoolToVis}}">
+                <DockPanel Margin="12">
+                    <TextBlock
+                        DockPanel.Dock="Top"
+                        FontWeight="SemiBold"
+                        Foreground="{StaticResource BrushText1}"
+                        Text="รัน recipe" />
+                    <TextBlock
+                        Margin="0,4,0,8"
+                        DockPanel.Dock="Top"
+                        FontSize="11"
+                        Foreground="{StaticResource BrushText1}"
+                        Opacity="0.6"
+                        Text="กรอก prompt + เลือกภาพ แล้วกดรัน · ระบบจะขับหน้าเว็บให้อัตโนมัติ"
+                        TextWrapping="Wrap" />
+
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                        <Button
+                            Height="36"
+                            Command="{Binding RunCommand}"
+                            Content="▶ รัน"
+                            IsEnabled="{Binding CanRun}" />
+                        <Button
+                            Height="30"
+                            Margin="0,6,0,0"
+                            Command="{Binding StopCommand}"
+                            Content="■ หยุด"
+                            Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+
+                    <StackPanel>
+                        <TextBlock
+                            Margin="0,0,0,4"
+                            Foreground="{StaticResource BrushText1}"
+                            Text="Prompt" />
+                        <TextBox
+                            Height="130"
+                            AcceptsReturn="True"
+                            Text="{Binding RunPrompt, UpdateSourceTrigger=PropertyChanged}"
+                            TextWrapping="Wrap"
+                            VerticalScrollBarVisibility="Auto" />
+
+                        <TextBlock
+                            Margin="0,8,0,4"
+                            Foreground="{StaticResource BrushText1}"
+                            Text="โมเดล (เว้นว่าง = คงเดิม)" />
+                        <TextBox
+                            Text="{Binding RunModel, UpdateSourceTrigger=PropertyChanged}"
+                            ToolTip="เช่น Cinematic, Flux, Mystic, Seedream" />
+
+                        <TextBlock
+                            Margin="0,8,0,4"
+                            Foreground="{StaticResource BrushText1}"
+                            Text="ภาพ reference (ตัวละคร/ฉาก)" />
+                        <DockPanel>
+                            <Button
+                                Width="32"
+                                Margin="6,0,0,0"
+                                Command="{Binding BrowseImageCommand}"
+                                Content="…"
+                                DockPanel.Dock="Right"
+                                ToolTip="เลือกภาพ" />
+                            <Button
+                                Width="32"
+                                Margin="6,0,0,0"
+                                Command="{Binding ClearImageCommand}"
+                                Content="✕"
+                                DockPanel.Dock="Right"
+                                ToolTip="ล้างภาพ" />
+                            <TextBox
+                                IsReadOnly="True"
+                                Text="{Binding RunImagePath}"
+                                ToolTip="{Binding RunImagePath}" />
+                        </DockPanel>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!--  Status line  -->
+        <Border
+            Grid.Row="2"
+            Padding="12,5"
+            BorderBrush="{StaticResource BrushLineHairline}"
+            BorderThickness="0,1,0,0">
+            <TextBlock
+                FontSize="11"
+                Foreground="{StaticResource BrushText1}"
+                Opacity="0.7"
+                Text="{Binding StatusText}"
+                TextTrimming="CharacterEllipsis" />
+        </Border>
+    </Grid>
+</UserControl>

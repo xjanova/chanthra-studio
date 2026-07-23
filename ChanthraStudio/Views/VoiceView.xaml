@@ -320,7 +320,6 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Style="{StaticResource TextPanelHeader}">
                             <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
-                            <Run Text="{Binding IsTtsMode, Converter={StaticResource BoolToVis}, FallbackValue=Takes}" />
                             <Run Text="Takes" />
                         </TextBlock>
                         <Button Grid.Column="1" Padding="10,4" Command="{Binding RefreshTakesCommand}" Content="Refresh" Style="{StaticResource ButtonPill}" />

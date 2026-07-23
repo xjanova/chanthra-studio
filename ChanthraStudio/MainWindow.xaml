@@ -73,6 +73,16 @@
                         </Setter.Value>
                     </Setter>
                 </DataTrigger>
+                <DataTrigger Binding="{Binding ActiveView}" Value="WebStudio">
+                    <Setter Property="Content">
+                        <Setter.Value>
+                            <!--  WebView2 can't render in the transparent main window — the
+                                  browser lives in its own opaque WebStudioWindow; this is just
+                                  the launcher.  -->
+                            <views:WebStudioLauncherView />
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding ActiveView}" Value="Library">
                     <Setter Property="Content">
                         <Setter.Value>

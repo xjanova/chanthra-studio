@@ -5,7 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace ChanthraStudio.ViewModels;
 
-public enum AppView { Generate, Seedance, Storyboard, Edit, Voice, Flow, Library, Models, Queue, Schedule, Usage, Settings }
+public enum AppView { Generate, Seedance, Storyboard, Edit, Voice, Flow, WebStudio, Library, Models, Queue, Schedule, Usage, Settings }
 
 public sealed class TabItem : ObservableObject
 {
@@ -59,6 +59,7 @@ public sealed class MainViewModel : ObservableObject
 
     public GenerateViewModel Generate { get; }
     public StoryboardViewModel Board { get; }
+    public WebStudioViewModel WebStudio { get; }
     public StatusBarViewModel Status { get; } = new();
 
     public IRelayCommand<string> SwitchViewCommand { get; }
@@ -73,6 +74,7 @@ public sealed class MainViewModel : ObservableObject
         var studio = (System.Windows.Application.Current as App)?.Studio;
         Generate = studio is not null ? new GenerateViewModel(studio) : new GenerateViewModel();
         Board = studio is not null ? new StoryboardViewModel(studio) : new StoryboardViewModel();
+        WebStudio = studio is not null ? new WebStudioViewModel(studio) : new WebStudioViewModel();
 
         OpenTabs.Add(new TabItem { Id = "empress", Title = "The Empress", IsLive = true });
         OpenTabs.Add(new TabItem { Id = "moondog", Title = "Moondog", IsLive = false });
