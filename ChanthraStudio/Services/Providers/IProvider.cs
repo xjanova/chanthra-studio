@@ -65,6 +65,10 @@ public sealed class VideoRequest
     public string Prompt { get; set; } = "";
     public string? NegativePrompt { get; set; }
     public string? ReferenceImagePath { get; set; }
+    /// <summary>Optional extra references (scene plate, wardrobe). Consumed only
+    /// by engines with multi-reference support — Veo 3.1 asset references today.</summary>
+    public string? SceneReferenceImagePath { get; set; }
+    public string? OutfitReferenceImagePath { get; set; }
     public string Aspect { get; set; } = "16:9";
     public double DurationSec { get; set; } = 8.0;
     public double Motion { get; set; } = 0.7;

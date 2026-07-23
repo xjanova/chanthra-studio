@@ -167,6 +167,72 @@ public static class StoryboardBuilder
         return sb.ToString().Trim();
     }
 
+    // ── Shot assembly ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Build the generation <see cref="Shot"/> for one storyboard clip — the
+    /// single source of truth shared by the card's Queue button and the Auto
+    /// Pilot run, so both paths always submit identical work. When scene /
+    /// outfit references are attached, a short reference legend is appended to
+    /// the prompt so every engine (multi-ref capable or not) knows what each
+    /// image stands for.
+    /// </summary>
+    public static Shot BuildShot(
+        StoryboardSpec spec, StoryboardClip clip,
+        string? characterRef, string? sceneRef, string? outfitRef)
+    {
+        var prompt = string.IsNullOrWhiteSpace(clip.VideoPrompt)
+            ? BuildVideoPrompt(spec, clip)
+            : clip.VideoPrompt;
+
+        var hasScene = !string.IsNullOrEmpty(sceneRef);
+        var hasOutfit = !string.IsNullOrEmpty(outfitRef);
+        if (hasScene || hasOutfit)
+        {
+            var legend = new StringBuilder("\nReference images: @ref1 = character face + outfit lock");
+            if (hasScene) legend.Append(", @ref2 = scene / background plate");
+            if (hasOutfit) legend.Append(hasScene ? ", @ref3" : ", @ref2").Append(" = wardrobe / costume");
+            legend.Append('.');
+            prompt += legend.ToString();
+        }
+
+        var rng = new Random();
+        return new Shot
+        {
+            Id = Guid.NewGuid().ToString("N")[..8],
+            Number = clip.Index.ToString("D2"),
+            Title = clip.Title,
+            Description = clip.Title,
+            // Empty StyleId → PromptAugmenter adds no brand-style prefix, so the
+            // board's own character clause isn't overwritten by the Empress style.
+            StyleId = "",
+            Prompt = prompt,
+            Aspect = AspectToEnum(spec.AspectId),
+            DurationSec = clip.DurationSec,
+            Motion = 0.4,
+            Cam = CamMode.Locked,
+            Seed = (rng.Next(1000, 99999), rng.Next(1000, 99999)),
+            Hd4k = true,
+            Audio = true,
+            Status = ShotStatus.Queue,
+            DurationLabel = clip.DurationLabel,
+            ReferenceImagePath = characterRef,
+            SceneReferenceImagePath = sceneRef,
+            OutfitReferenceImagePath = outfitRef,
+        };
+    }
+
+    /// <summary>The caption actually sent to the Facebook Graph API: post body
+    /// plus the hashtag line (the comma-tag block is a paste-helper for manual
+    /// posting, not part of the caption).</summary>
+    public static string ComposeFacebookCaption(FacebookPost fb)
+    {
+        var caption = fb.Caption.Trim();
+        if (fb.Hashtags.Count > 0)
+            caption = string.IsNullOrEmpty(caption) ? fb.HashtagLine : caption + "\n\n" + fb.HashtagLine;
+        return caption;
+    }
+
     // ── Copy-ready text renders ───────────────────────────────────────────────
 
     /// <summary>The whole board as a single pasteable script — concept hook, each

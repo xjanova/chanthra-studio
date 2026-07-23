@@ -168,7 +168,7 @@
                         <TextBlock Margin="0,14,0,0" Style="{StaticResource TextSectionDivider}" Text="VOICE" />
                         <TextBox Margin="0,8,0,0" Style="{StaticResource FieldBox}" Text="{Binding VoiceNote, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <TextBlock Margin="0,14,0,0" Style="{StaticResource TextSectionDivider}" Text="REFERENCE IMAGE · @ref1" />
+                        <TextBlock Margin="0,14,0,0" Style="{StaticResource TextSectionDivider}" Text="ภาพต้นแบบ · @ref1 ตัวละคร" />
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -183,6 +183,44 @@
                             </Button>
                             <Button Grid.Column="2" Width="30" Height="30" Margin="4,0,0,0" Command="{Binding ClearReferenceCommand}" Style="{StaticResource ButtonIcon}" ToolTip="Clear"
                                     Visibility="{Binding HasReferenceImage, Converter={StaticResource BoolToVis}}">
+                                <Path Width="12" Height="12" Data="{StaticResource IcoTrash}" Stretch="Uniform" Stroke="{StaticResource BrushCrimson}" StrokeThickness="1.4" />
+                            </Button>
+                        </Grid>
+
+                        <TextBlock Margin="0,12,0,0" Style="{StaticResource TextSectionDivider}" Text="@ref2 ฉาก / สถานที่" />
+                        <Grid Margin="0,8,0,0" ToolTip="เอนจินที่รองรับหลายภาพอ้างอิง (Veo 3.1) จะใช้ภาพนี้คุมฉาก — เอนจินอื่นใช้ข้อความบรรยายแทน">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Padding="9,7" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText3}" TextTrimming="CharacterEllipsis" Text="{Binding SceneImageLabel}" />
+                            </Border>
+                            <Button Grid.Column="1" Width="30" Height="30" Margin="6,0,0,0" Command="{Binding BrowseSceneCommand}" Style="{StaticResource ButtonIcon}" ToolTip="Browse">
+                                <Path Width="13" Height="13" Data="{StaticResource IcoPaperclip}" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
+                            </Button>
+                            <Button Grid.Column="2" Width="30" Height="30" Margin="4,0,0,0" Command="{Binding ClearSceneCommand}" Style="{StaticResource ButtonIcon}" ToolTip="Clear"
+                                    Visibility="{Binding HasSceneImage, Converter={StaticResource BoolToVis}}">
+                                <Path Width="12" Height="12" Data="{StaticResource IcoTrash}" Stretch="Uniform" Stroke="{StaticResource BrushCrimson}" StrokeThickness="1.4" />
+                            </Button>
+                        </Grid>
+
+                        <TextBlock Margin="0,12,0,0" Style="{StaticResource TextSectionDivider}" Text="@ref3 เสื้อผ้า / ชุด" />
+                        <Grid Margin="0,8,0,0" ToolTip="เอนจินที่รองรับหลายภาพอ้างอิง (Veo 3.1) จะใช้ภาพนี้ล็อกชุด — เอนจินอื่นใช้ข้อความบรรยายแทน">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Padding="9,7" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
+                                <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText3}" TextTrimming="CharacterEllipsis" Text="{Binding OutfitImageLabel}" />
+                            </Border>
+                            <Button Grid.Column="1" Width="30" Height="30" Margin="6,0,0,0" Command="{Binding BrowseOutfitCommand}" Style="{StaticResource ButtonIcon}" ToolTip="Browse">
+                                <Path Width="13" Height="13" Data="{StaticResource IcoPaperclip}" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
+                            </Button>
+                            <Button Grid.Column="2" Width="30" Height="30" Margin="4,0,0,0" Command="{Binding ClearOutfitCommand}" Style="{StaticResource ButtonIcon}" ToolTip="Clear"
+                                    Visibility="{Binding HasOutfitImage, Converter={StaticResource BoolToVis}}">
                                 <Path Width="12" Height="12" Data="{StaticResource IcoTrash}" Stretch="Uniform" Stroke="{StaticResource BrushCrimson}" StrokeThickness="1.4" />
                             </Button>
                         </Grid>
@@ -409,6 +447,66 @@
                                Text="{Binding StatusMessage}"
                                Visibility="{Binding StatusMessage, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}" />
                     <StackPanel Visibility="{Binding HasSpec, Converter={StaticResource BoolToVis}}">
+
+                        <!--  ⚡ Auto Pilot — the one-button pipeline  -->
+                        <Border Margin="0,0,0,10" Padding="14" Background="{StaticResource BrushBgSurface}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="10">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}" Text="⚡ AUTO PILOT" />
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap"
+                                           Text="สร้างทุกคลิป → รวมเป็นไฟล์เดียว → โพสต์ขึ้น Facebook Page อัตโนมัติ" />
+
+                                <CheckBox Margin="0,10,0,0" Foreground="{StaticResource BrushText1}" IsChecked="{Binding AutoPostFacebook, Mode=TwoWay}"
+                                          Content="โพสต์ขึ้น Facebook เมื่อเสร็จ" />
+                                <TextBlock Margin="22,3,0,0" FontFamily="{StaticResource FontMono}" FontSize="10" Foreground="{StaticResource BrushText4}"
+                                           TextWrapping="Wrap" Text="{Binding FacebookTargetLabel}" />
+
+                                <!--  Idle → launch  -->
+                                <Button Margin="0,12,0,0" HorizontalContentAlignment="Center" Command="{Binding AutoPilotCommand}" Style="{StaticResource ButtonSummonCta}"
+                                        ToolTip="รันทั้งไปป์ไลน์อัตโนมัติ — คลิปที่เสร็จแล้วจะไม่ถูกสร้างซ้ำ"
+                                        Visibility="{Binding IsAutoPilotIdle, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock HorizontalAlignment="Center" Style="{StaticResource TextSummonCta}" Text="⚡ Auto Pilot — สร้าง · รวม · โพสต์" />
+                                </Button>
+
+                                <!--  Running → progress + cancel  -->
+                                <StackPanel Margin="0,12,0,0" Visibility="{Binding IsAutoPilotRunning, Converter={StaticResource BoolToVis}}">
+                                    <ProgressBar Height="4" Minimum="0" Maximum="100" BorderThickness="0"
+                                                 Background="{StaticResource BrushBgInset}" Foreground="{StaticResource BrushGold}"
+                                                 Value="{Binding AutoPilotPercent, Mode=OneWay}" />
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource BrushGoldHi}"
+                                                   TextWrapping="Wrap" Text="{Binding AutoPilotStatus}" />
+                                        <Button Grid.Column="1" Padding="9,5" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                Command="{Binding CancelAutoPilotCommand}" Style="{StaticResource ButtonPill}" ToolTip="ยกเลิกรอบนี้">
+                                            <TextBlock FontSize="11" Text="✕ ยกเลิก" />
+                                        </Button>
+                                    </Grid>
+                                </StackPanel>
+
+                                <!--  Last-run result while idle  -->
+                                <TextBlock Margin="0,8,0,0" FontSize="10.5" Foreground="{StaticResource BrushText3}" TextWrapping="Wrap"
+                                           Text="{Binding AutoPilotStatus}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding IsAutoPilotIdle}" Value="True" />
+                                                        <Condition Binding="{Binding AutoPilotStatus, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}" Value="Visible" />
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
                         <Button Margin="0,0,0,8" HorizontalContentAlignment="Center" Command="{Binding SendAllCommand}" Style="{StaticResource ButtonSummonCta}" ToolTip="ส่งทุกคลิปเข้า Queue">
                             <TextBlock HorizontalAlignment="Center" Style="{StaticResource TextSummonCta}" Text="→ Send all clips to Queue" />
                         </Button>

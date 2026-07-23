@@ -34,6 +34,17 @@ public sealed class Shot : ObservableObject
     private string? _referenceImagePath;
     public string? ReferenceImagePath { get => _referenceImagePath; set => SetProperty(ref _referenceImagePath, value); }
 
+    /// <summary>Optional second reference image — the scene / background /
+    /// location plate. Only engines with multi-reference support consume it
+    /// (Veo 3.1 asset references); others silently use the character ref only.</summary>
+    private string? _sceneReferenceImagePath;
+    public string? SceneReferenceImagePath { get => _sceneReferenceImagePath; set => SetProperty(ref _sceneReferenceImagePath, value); }
+
+    /// <summary>Optional third reference image — wardrobe / outfit lock.
+    /// Same multi-reference caveat as <see cref="SceneReferenceImagePath"/>.</summary>
+    private string? _outfitReferenceImagePath;
+    public string? OutfitReferenceImagePath { get => _outfitReferenceImagePath; set => SetProperty(ref _outfitReferenceImagePath, value); }
+
     public string StyleId { get; set; } = "empress";
     public string ModelId { get; set; } = "chanthra-sora-lyra-2.4";
     public AspectRatio Aspect { get; set; } = AspectRatio.Wide;

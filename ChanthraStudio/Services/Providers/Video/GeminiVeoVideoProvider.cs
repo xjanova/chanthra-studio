@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -72,11 +73,68 @@ public sealed class GeminiVeoVideoProvider : IVideoProvider
         if (string.IsNullOrWhiteSpace(req.ApiKey))
             throw new InvalidOperationException("Veo (Gemini) API key missing — set it in Settings.");
 
+        // Multi-reference (character + scene + outfit) rides Veo 3.1's asset
+        // reference feature. It is documented but has been seen to 400 with
+        // "not supported" on some keys/regions — so on that rejection we retry
+        // once in plain single-image mode rather than failing the clip.
+        var extraRefs = CollectExtraRefs(req);
+        if (extraRefs.Count > 0)
+        {
+            try { return await SubmitCoreAsync(req, useAssetRefs: true, ct); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("HTTP 400"))
+            {
+                ActivityLog.Warn("veo",
+                    "referenceImages rejected by the API — retrying with the character image only: " + ex.Message);
+            }
+        }
+        return await SubmitCoreAsync(req, useAssetRefs: false, ct);
+    }
+
+    /// <summary>Scene + outfit refs that actually exist on disk. The character
+    /// ref (<see cref="VideoRequest.ReferenceImagePath"/>) is handled separately
+    /// because it doubles as the first-frame image in single-ref mode.</summary>
+    private static List<string> CollectExtraRefs(VideoRequest req)
+    {
+        var list = new List<string>();
+        if (!string.IsNullOrEmpty(req.SceneReferenceImagePath) && File.Exists(req.SceneReferenceImagePath))
+            list.Add(req.SceneReferenceImagePath);
+        if (!string.IsNullOrEmpty(req.OutfitReferenceImagePath) && File.Exists(req.OutfitReferenceImagePath))
+            list.Add(req.OutfitReferenceImagePath);
+        return list;
+    }
+
+    private async Task<VideoJob> SubmitCoreAsync(VideoRequest req, bool useAssetRefs, CancellationToken ct)
+    {
         var model = string.IsNullOrWhiteSpace(req.Model) ? DefaultModel : req.Model;
 
         var hasImage = !string.IsNullOrEmpty(req.ReferenceImagePath) && File.Exists(req.ReferenceImagePath);
         var instance = new JsonObject { ["prompt"] = req.Prompt };
-        if (hasImage)
+        if (useAssetRefs)
+        {
+            // Asset references guide text-to-video generation (up to 3 images,
+            // ai.google.dev/gemini-api/docs/veo). Mutually exclusive with the
+            // first-frame `image` field, so the character ref goes in here too.
+            var refs = new JsonArray();
+            var paths = new List<string>();
+            if (hasImage) paths.Add(req.ReferenceImagePath!);
+            paths.AddRange(CollectExtraRefs(req));
+            foreach (var p in paths)
+            {
+                if (refs.Count == 3) break;   // hard API cap
+                refs.Add(new JsonObject
+                {
+                    ["image"] = new JsonObject
+                    {
+                        ["bytesBase64Encoded"] = Convert.ToBase64String(await File.ReadAllBytesAsync(p, ct)),
+                        ["mimeType"] = GuessMime(p),
+                    },
+                    ["referenceType"] = "asset",
+                });
+            }
+            instance["referenceImages"] = refs;
+            hasImage = false;   // personGeneration below must follow t2v rules
+        }
+        else if (hasImage)
         {
             instance["image"] = new JsonObject
             {

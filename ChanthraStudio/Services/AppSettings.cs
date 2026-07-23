@@ -51,6 +51,10 @@ public sealed class AppSettings
     /// Settings.</summary>
     public bool AutoCheckUpdates { get; set; } = true;
 
+    /// <summary>Storyboard Auto Pilot: post the assembled film to the
+    /// configured Facebook Page automatically when the run finishes.</summary>
+    public bool StoryboardAutoPost { get; set; } = true;
+
     /// <summary>Hours between background update polls. Clamped 1..168
     /// (one week). The default of 6 mirrors what most editor-class
     /// apps do — frequent enough to surface day-one fixes, rare enough
@@ -156,6 +160,7 @@ public sealed class AppSettings
         Upsert(c, tx, "autosaveSeconds", AutosaveSeconds.ToString(), false, now);
         Upsert(c, tx, "monthlyBudgetThb", MonthlyBudgetThb.ToString(System.Globalization.CultureInfo.InvariantCulture), false, now);
         Upsert(c, tx, "autoCheckUpdates", AutoCheckUpdates ? "1" : "0", false, now);
+        Upsert(c, tx, "storyboardAutoPost", StoryboardAutoPost ? "1" : "0", false, now);
         Upsert(c, tx, "updateCheckIntervalHours", UpdateCheckIntervalHours.ToString(System.Globalization.CultureInfo.InvariantCulture), false, now);
         Upsert(c, tx, "skippedUpdateVersion", SkippedUpdateVersion ?? "", false, now);
         Upsert(c, tx, "theme", Theme, false, now);
@@ -220,6 +225,7 @@ public sealed class AppSettings
             case "autosaveSeconds":    if (int.TryParse(r.Value, out var n)) s.AutosaveSeconds = n; break;
             case "monthlyBudgetThb":   if (double.TryParse(r.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var b)) s.MonthlyBudgetThb = b; break;
             case "autoCheckUpdates":   s.AutoCheckUpdates = r.Value != "0"; break;
+            case "storyboardAutoPost": s.StoryboardAutoPost = r.Value != "0"; break;
             case "updateCheckIntervalHours":
                 if (int.TryParse(r.Value, out var hrs)) s.UpdateCheckIntervalHours = Math.Clamp(hrs, 1, 168);
                 break;

@@ -17,6 +17,7 @@ public sealed class StudioContext
     public ShotsRepository Shots { get; }
     public ChanthraStudio.Services.Providers.ComfyUI.WorkflowRepository Workflows { get; }
     public PostingService Posting { get; }
+    public StoryboardAutoPilot AutoPilot { get; }
     public FFmpegService FFmpeg { get; }
     public SlideshowRenderer SlideshowRenderer { get; }
     public VoiceService VoiceService { get; }
@@ -46,6 +47,7 @@ public sealed class StudioContext
         Generation = new GenerationService(this);
         Posting = new PostingService(this);
         FFmpeg = new FFmpegService(this);
+        AutoPilot = new StoryboardAutoPilot(this);
         SlideshowRenderer = new SlideshowRenderer(this);
         VoiceService = new VoiceService(this);
         Llm = new LlmService(this);

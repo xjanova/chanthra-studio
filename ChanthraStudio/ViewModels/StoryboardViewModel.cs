@@ -112,6 +112,38 @@ public sealed class StoryboardViewModel : ObservableObject
         ? "แนบภาพอ้างอิงตัวละคร · drag image or click"
         : Path.GetFileName(_referenceImagePath);
 
+    private string? _sceneImagePath;
+    public string? SceneImagePath
+    {
+        get => _sceneImagePath;
+        set
+        {
+            if (!SetProperty(ref _sceneImagePath, value)) return;
+            OnPropertyChanged(nameof(HasSceneImage));
+            OnPropertyChanged(nameof(SceneImageLabel));
+        }
+    }
+    public bool HasSceneImage => !string.IsNullOrEmpty(_sceneImagePath);
+    public string SceneImageLabel => string.IsNullOrEmpty(_sceneImagePath)
+        ? "แนบภาพฉาก / สถานที่ (ไม่บังคับ)"
+        : Path.GetFileName(_sceneImagePath);
+
+    private string? _outfitImagePath;
+    public string? OutfitImagePath
+    {
+        get => _outfitImagePath;
+        set
+        {
+            if (!SetProperty(ref _outfitImagePath, value)) return;
+            OnPropertyChanged(nameof(HasOutfitImage));
+            OnPropertyChanged(nameof(OutfitImageLabel));
+        }
+    }
+    public bool HasOutfitImage => !string.IsNullOrEmpty(_outfitImagePath);
+    public string OutfitImageLabel => string.IsNullOrEmpty(_outfitImagePath)
+        ? "แนบภาพเสื้อผ้า / ชุด (ไม่บังคับ)"
+        : Path.GetFileName(_outfitImagePath);
+
     private VideoRouteOption? _defaultRoute;
     /// <summary>Engine applied to every clip when a board is generated/loaded.
     /// Changing it re-stamps all clips (the user can still override per clip).</summary>
@@ -166,12 +198,65 @@ public sealed class StoryboardViewModel : ObservableObject
     private string _statusKind = "info";
     public string StatusKind { get => _statusKind; set => SetProperty(ref _statusKind, value); }
 
+    // ── Auto Pilot state ──────────────────────────────────────────────────────
+    private System.Threading.CancellationTokenSource? _autoPilotCts;
+
+    private bool _isAutoPilotRunning;
+    public bool IsAutoPilotRunning
+    {
+        get => _isAutoPilotRunning;
+        private set
+        {
+            if (!SetProperty(ref _isAutoPilotRunning, value)) return;
+            OnPropertyChanged(nameof(IsAutoPilotIdle));
+            AutoPilotCommand.NotifyCanExecuteChanged();
+        }
+    }
+    public bool IsAutoPilotIdle => !_isAutoPilotRunning;
+
+    private string _autoPilotStatus = "";
+    public string AutoPilotStatus { get => _autoPilotStatus; private set => SetProperty(ref _autoPilotStatus, value); }
+
+    private double _autoPilotPercent;
+    public double AutoPilotPercent { get => _autoPilotPercent; private set => SetProperty(ref _autoPilotPercent, value); }
+
+    /// <summary>Post the assembled film to the configured Facebook Page at the
+    /// end of an Auto Pilot run. Persisted so the choice survives restarts.</summary>
+    public bool AutoPostFacebook
+    {
+        get => _ctx?.Settings.StoryboardAutoPost ?? true;
+        set
+        {
+            if (_ctx is null || _ctx.Settings.StoryboardAutoPost == value) return;
+            _ctx.Settings.StoryboardAutoPost = value;
+            try { _ctx.Settings.Save(); } catch { /* best-effort */ }
+            OnPropertyChanged();
+        }
+    }
+
+    public bool FacebookConfigured =>
+        _ctx is not null
+        && !string.IsNullOrWhiteSpace(_ctx.Settings.PostFacebookPageId)
+        && !string.IsNullOrWhiteSpace(_ctx.Settings["facebook"]);
+
+    public string FacebookTargetLabel => _ctx is null
+        ? ""
+        : FacebookConfigured
+            ? $"Page {_ctx.Settings.PostFacebookPageId} · token ✓"
+            : "ยังไม่ได้ตั้ง Page ID / token — Settings → Posting";
+
     // ── Commands ──────────────────────────────────────────────────────────────
     public IRelayCommand<string> SelectTemplateCommand { get; }
     public IRelayCommand<string> SetAspectCommand { get; }
     public IAsyncRelayCommand GenerateCommand { get; }
     public IRelayCommand BrowseReferenceCommand { get; }
     public IRelayCommand ClearReferenceCommand { get; }
+    public IRelayCommand BrowseSceneCommand { get; }
+    public IRelayCommand ClearSceneCommand { get; }
+    public IRelayCommand BrowseOutfitCommand { get; }
+    public IRelayCommand ClearOutfitCommand { get; }
+    public IAsyncRelayCommand AutoPilotCommand { get; }
+    public IRelayCommand CancelAutoPilotCommand { get; }
     public IRelayCommand CopyBoardCommand { get; }
     public IRelayCommand CopyFacebookCommand { get; }
     public IRelayCommand<StoryboardClip> CopyClipPromptCommand { get; }
@@ -190,8 +275,14 @@ public sealed class StoryboardViewModel : ObservableObject
         SelectTemplateCommand = new RelayCommand<string>(SelectTemplate);
         SetAspectCommand = new RelayCommand<string>(id => { if (!string.IsNullOrEmpty(id)) AspectId = id; });
         GenerateCommand = new AsyncRelayCommand(GenerateAsync, () => !IsBusy);
-        BrowseReferenceCommand = new RelayCommand(BrowseReference);
+        BrowseReferenceCommand = new RelayCommand(() => BrowseInto(p => ReferenceImagePath = p, "เลือกภาพอ้างอิงตัวละคร (lock face/outfit)"));
         ClearReferenceCommand = new RelayCommand(() => ReferenceImagePath = null);
+        BrowseSceneCommand = new RelayCommand(() => BrowseInto(p => SceneImagePath = p, "เลือกภาพฉาก / สถานที่"));
+        ClearSceneCommand = new RelayCommand(() => SceneImagePath = null);
+        BrowseOutfitCommand = new RelayCommand(() => BrowseInto(p => OutfitImagePath = p, "เลือกภาพเสื้อผ้า / ชุด"));
+        ClearOutfitCommand = new RelayCommand(() => OutfitImagePath = null);
+        AutoPilotCommand = new AsyncRelayCommand(RunAutoPilotAsync, () => !IsAutoPilotRunning);
+        CancelAutoPilotCommand = new RelayCommand(() => _autoPilotCts?.Cancel());
         CopyBoardCommand = new RelayCommand(CopyBoard);
         CopyFacebookCommand = new RelayCommand(CopyFacebook);
         CopyClipPromptCommand = new RelayCommand<StoryboardClip>(CopyClipPrompt);
@@ -395,30 +486,9 @@ public sealed class StoryboardViewModel : ObservableObject
         }
 
         var route = string.IsNullOrWhiteSpace(clip.Route) ? "seedance" : clip.Route;
-        var rng = new Random();
-        var shot = new Shot
-        {
-            Id = Guid.NewGuid().ToString("N")[..8],
-            Number = clip.Index.ToString("D2"),
-            Title = clip.Title,
-            Description = clip.Title,
-            // Empty StyleId → PromptAugmenter adds no brand-style prefix, so the
-            // หน้าตา/บท of บุษบา isn't overwritten by the Empress style clause.
-            StyleId = "",
-            Prompt = string.IsNullOrWhiteSpace(clip.VideoPrompt)
-                ? StoryboardBuilder.BuildVideoPrompt(_spec, clip)
-                : clip.VideoPrompt,
-            Aspect = StoryboardBuilder.AspectToEnum(_spec.AspectId),
-            DurationSec = clip.DurationSec,
-            Motion = 0.4,
-            Cam = CamMode.Locked,
-            Seed = (rng.Next(1000, 99999), rng.Next(1000, 99999)),
-            Hd4k = true,
-            Audio = true,
-            Status = ShotStatus.Queue,
-            DurationLabel = clip.DurationLabel,
-            ReferenceImagePath = ReferenceImagePath,
-        };
+        // Shared with Auto Pilot — one source of truth for what a clip submit
+        // looks like (prompt assembly, refs, seed, aspect).
+        var shot = StoryboardBuilder.BuildShot(_spec, clip, ReferenceImagePath, SceneImagePath, OutfitImagePath);
 
         // For the ComfyUI route, build + select a ready scene workflow so the
         // local pipeline actually has a graph to run (these 10 nodes render the
@@ -501,15 +571,83 @@ public sealed class StoryboardViewModel : ObservableObject
             SetStatus($"CLIP {clip.Index}: {e.Error ?? "generation failed"}", "err");
     }
 
-    private void BrowseReference()
+    private static void BrowseInto(Action<string> assign, string title)
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "เลือกภาพอ้างอิงตัวละคร (lock face/outfit)",
+            Title = title,
             Filter = "Images|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif|All files|*.*",
             CheckFileExists = true,
         };
-        if (dlg.ShowDialog() == true) ReferenceImagePath = dlg.FileName;
+        if (dlg.ShowDialog() == true) assign(dlg.FileName);
+    }
+
+    // ── Auto Pilot ────────────────────────────────────────────────────────────
+
+    /// <summary>The whole pipeline on one button: render every clip, conform +
+    /// concat into a single film, save to Library, and (optionally) publish to
+    /// the configured Facebook Page with the board's caption + hashtags.</summary>
+    private async Task RunAutoPilotAsync()
+    {
+        if (_ctx is null) { SetStatus("Studio context not wired.", "warn"); return; }
+        if (_spec is null || _spec.Clips.Count == 0)
+        {
+            SetStatus("สร้างสตอรี่บอร์ดก่อน แล้วค่อยกด Auto Pilot", "warn");
+            return;
+        }
+        if (AutoPostFacebook && !FacebookConfigured)
+        {
+            AutoPilotStatus = "ตั้ง Facebook Page ID + Page token ใน Settings → Posting ก่อน (หรือปิดสวิตช์โพสต์อัตโนมัติ)";
+            SetStatus(AutoPilotStatus, "err");
+            return;
+        }
+
+        _autoPilotCts = new System.Threading.CancellationTokenSource();
+        IsAutoPilotRunning = true;
+        AutoPilotPercent = 0;
+        AutoPilotStatus = "เริ่ม Auto Pilot…";
+
+        var progress = new Progress<StoryboardAutoPilot.AutoPilotProgress>(p =>
+        {
+            AutoPilotStatus = p.Message;
+            AutoPilotPercent = p.Step switch
+            {
+                StoryboardAutoPilot.AutoPilotStep.Generating =>
+                    p.TotalClips > 0 ? Math.Max(4, 80.0 * p.DoneClips / p.TotalClips) : 4,
+                StoryboardAutoPilot.AutoPilotStep.Assembling => 85,
+                StoryboardAutoPilot.AutoPilotStep.Saving => 92,
+                StoryboardAutoPilot.AutoPilotStep.Posting => 96,
+                StoryboardAutoPilot.AutoPilotStep.Done => 100,
+                _ => AutoPilotPercent,
+            };
+        });
+
+        try
+        {
+            var result = await _ctx.AutoPilot.RunAsync(
+                _spec, ReferenceImagePath, SceneImagePath, OutfitImagePath,
+                AutoPostFacebook, progress, _autoPilotCts.Token);
+
+            if (result.Ok)
+            {
+                AutoPilotPercent = 100;
+                AutoPilotStatus = result.FacebookPostId is null
+                    ? $"เสร็จแล้ว ✓ ไฟล์รวมอยู่ใน Library · {Path.GetFileName(result.FinalPath)}"
+                    : $"โพสต์ขึ้น Facebook แล้ว ✓ · post {result.FacebookPostId}";
+                SetStatus(AutoPilotStatus, "ok");
+            }
+            else
+            {
+                AutoPilotStatus = result.Error ?? "Auto Pilot ผิดพลาด";
+                SetStatus(AutoPilotStatus, "err");
+            }
+        }
+        finally
+        {
+            IsAutoPilotRunning = false;
+            _autoPilotCts.Dispose();
+            _autoPilotCts = null;
+        }
     }
 
     private static bool TrySetClipboard(string text)
