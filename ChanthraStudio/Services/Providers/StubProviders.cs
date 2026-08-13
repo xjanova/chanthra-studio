@@ -94,6 +94,27 @@ internal sealed class ComfyUiVideoProvider : StubVideoProvider
             "Connect via Settings → ComfyUI URL; the generation orchestrator probes the server live before each submit."));
 }
 
+internal sealed class RentedGpuVideoProvider : StubVideoProvider
+{
+    public override string Id => "rentgpu";
+    public override string DisplayName => "Rented GPU · ComfyUI on a hired card";
+    public override string ApiKeyHint => "SimplePod API key · set in the GPU panel";
+    public override bool RequiresApiKey => false;   // the GPU panel owns the key, not Settings
+
+    /// <summary>
+    /// Like the ComfyUI row, this is a shell: the route is wired, but it goes
+    /// through GenerationService → GpuWorkerService → ComfyUiClient rather
+    /// than the IVideoProvider submit/poll interface. The shell exists so the
+    /// Composer's engine picker lists the route.
+    /// </summary>
+    public override bool IsImplemented => true;
+
+    public override Task<ProviderHealth> ProbeAsync(string apiKey, CancellationToken ct = default)
+        => Task.FromResult(new ProviderHealth(true, "on demand",
+            "Rents a GPU, installs ComfyUI on it, renders, then releases it. " +
+            "Budget caps and the live meter live in the GPU panel."));
+}
+
 // Replicate is now a real implementation in Services/Providers/Video/ —
 // the registry instantiates it directly.
 

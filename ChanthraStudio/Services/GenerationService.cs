@@ -40,6 +40,18 @@ public sealed class GenerationService
     /// the schedule fan-out in 6.6/7.8 made it user-reachable).</summary>
     private readonly ConcurrentDictionary<string, string> _promptToShot = new();
 
+    /// <summary>promptId → the ComfyUI server that prompt was sent to. Local
+    /// jobs and rented-GPU jobs run through identical code, so cancelling has
+    /// to remember which box to call /interrupt on — firing it at the local
+    /// URL would stop the wrong queue and leave the rented card churning on
+    /// work nobody wants any more.</summary>
+    private readonly ConcurrentDictionary<string, ComfyEndpoint> _promptToEndpoint = new();
+
+    /// <summary>Where a ComfyUI job runs. <see cref="WorkerId"/> is null for
+    /// the local server and set for a rented machine, which is what lets the
+    /// listener bank render seconds against the right worker.</summary>
+    private sealed record ComfyEndpoint(string Url, string? Token, string? WorkerId);
+
     public event EventHandler<GenerationProgressEventArgs>? ProgressChanged;
 
     public GenerationService(StudioContext ctx)
@@ -72,8 +84,67 @@ public sealed class GenerationService
             "veo"       => SubmitToCloudAsync(shot, "veo", workflowOverride, ct),
             "pika"      => SubmitToCloudAsync(shot, "pika", workflowOverride, ct),
             "fal"       => SubmitToCloudAsync(shot, "fal", workflowOverride, ct),
+            "rentgpu"   => SubmitToRentedGpuAsync(shot, workflowOverride, ct),
             _           => SubmitToComfyUiAsync(shot, workflowOverride, ct),
         };
+    }
+
+    /// <summary>
+    /// Rented-GPU route: rent (or reuse) a machine, wait for it to finish
+    /// installing itself, then hand the job to the ordinary ComfyUI path
+    /// pointed at that machine.
+    ///
+    /// The reuse of <see cref="SubmitToComfyUiAsync"/> is the whole design.
+    /// A rented worker runs stock ComfyUI, so workflow loading, reference-image
+    /// upload, model-name fuzzy resolution, progress streaming and output
+    /// download all work exactly as they do locally — there is no second
+    /// pipeline to keep in step with the first.
+    /// </summary>
+    private async Task<string> SubmitToRentedGpuAsync(Shot shot, string? workflowOverride, CancellationToken ct)
+    {
+        var gpu = _ctx.GpuWorkers;
+        var workflowName = !string.IsNullOrEmpty(workflowOverride) ? workflowOverride : _ctx.Settings.ActiveWorkflow;
+
+        // Pick the profile that can actually run the chosen workflow. Renting
+        // a Flux box for an SDXL workflow would bill for weights the workflow
+        // never loads and then fail on a missing checkpoint.
+        var guard = Gpu.GpuGuardrails.Load(_ctx.Settings);
+        var profile = Gpu.GpuModelCatalog.ForWorkflow(workflowName)
+                      ?? Gpu.GpuModelCatalog.Find(guard.ProfileKey)
+                      ?? throw new Gpu.GpuRentalException(
+                          $"No GPU profile covers the workflow \"{workflowName}\". " +
+                          "Pick a bundled workflow, or set a default profile in the GPU panel.");
+
+        // Warm-up runs for tens of minutes. Report it as job progress so the
+        // composer shows real stages instead of an idle spinner — a user who
+        // cannot tell "downloading 16 GB" from "hung" will cancel and retry,
+        // and pay for the warm-up twice.
+        // Warm-up occupies the first 15% of the shot's progress bar; the
+        // render itself takes the rest. No prompt id exists yet, so the shot
+        // id stands in — the UI keys off ShotId alone.
+        var warmup = new Progress<Gpu.GpuWarmupProgress>(p =>
+            Raise(shot.Id, shot.Id, ShotStatus.Generating, Math.Clamp(p.Fraction * 15.0, 1, 15), null));
+
+        var worker = await gpu.EnsureWorkerAsync(profile.Key, warmup, ct);
+        if (string.IsNullOrWhiteSpace(worker.EndpointUrl))
+            throw new Gpu.GpuRentalException(
+                $"{worker.Name} is ready but published no endpoint — release it from the GPU panel and try again.");
+
+        var endpoint = new ComfyEndpoint(worker.EndpointUrl!, worker.Token, worker.Id);
+        gpu.MarkJobStarted(worker.Id);
+        try
+        {
+            return await SubmitToComfyUiAsync(shot, workflowOverride, ct, endpoint);
+        }
+        catch
+        {
+            // Submit never got off the ground, so no listener will ever
+            // release this worker. Free it here or it stays Busy — and Busy
+            // workers are deliberately exempt from the idle reaper, so it
+            // would bill until the lifetime cap.
+            gpu.MarkJobFinished(worker.Id, 0);
+            throw;
+        }
     }
 
     /// <summary>
@@ -402,16 +473,21 @@ public sealed class GenerationService
         return jobId;
     }
 
-    private async Task<string> SubmitToComfyUiAsync(Shot shot, string? workflowOverride, CancellationToken ct)
+    /// <param name="endpoint">
+    /// Which ComfyUI to talk to. Null means the local server configured in
+    /// Settings; a rented worker passes its own URL and bearer token here.
+    /// </param>
+    private async Task<string> SubmitToComfyUiAsync(
+        Shot shot, string? workflowOverride, CancellationToken ct, ComfyEndpoint? endpoint = null)
     {
-        var url = _ctx.Settings.ComfyUiUrl;
+        var url = endpoint?.Url ?? _ctx.Settings.ComfyUiUrl;
         if (string.IsNullOrWhiteSpace(url))
             throw new InvalidOperationException("ComfyUI server URL is empty — set it in Settings.");
 
         // NOTE: client lifecycle is owned by the listener task — do NOT use a
         // `using` here. Disposing it kills the listener's WebSocket and HTTP
         // pipeline mid-job.
-        var client = new ComfyUiClient(url);
+        var client = new ComfyUiClient(url, clientId: null, authToken: endpoint?.Token);
 
         try
         {
@@ -419,7 +495,9 @@ public sealed class GenerationService
             if (!probe.Ok)
             {
                 client.Dispose();
-                throw new ComfyUiException($"ComfyUI not reachable at {url} — {probe.Status}");
+                throw new ComfyUiException(endpoint is null
+                    ? $"ComfyUI not reachable at {url} — {probe.Status}"
+                    : $"The rented worker stopped answering — {probe.Status}");
             }
 
             // Load the user's active workflow from the repository — falls
@@ -504,6 +582,7 @@ public sealed class GenerationService
             var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             _running[promptId] = cts;
             _promptToShot[promptId] = shot.Id;
+            _promptToEndpoint[promptId] = endpoint ?? new ComfyEndpoint(url, null, null);
 
             // Listener takes ownership of `client` from here.
             _ = Task.Run(async () =>
@@ -541,24 +620,36 @@ public sealed class GenerationService
     /// </summary>
     public async Task CancelAllAsync()
     {
-        var any = false;
+        var touched = new List<ComfyEndpoint>();
         foreach (var (promptId, _) in _promptToShot.ToArray())
         {
             if (_running.TryRemove(promptId, out var cts))
             {
-                try { cts.Cancel(); any = true; } catch { }
+                try { cts.Cancel(); } catch { }
             }
             _promptToShot.TryRemove(promptId, out _);
+            if (_promptToEndpoint.TryGetValue(promptId, out var ep)) touched.Add(ep);
         }
-        if (!any) return;
-        var url = _ctx.Settings.ComfyUiUrl;
-        if (string.IsNullOrWhiteSpace(url)) return;
-        try
+        await InterruptEndpointsAsync(touched);
+    }
+
+    /// <summary>
+    /// Fire /interrupt at each distinct server we actually sent work to.
+    /// Blanket-interrupting the local server (the old behaviour) both missed
+    /// rented workers and stopped unrelated local queue items.
+    /// </summary>
+    private async Task InterruptEndpointsAsync(IEnumerable<ComfyEndpoint> endpoints)
+    {
+        foreach (var ep in endpoints.DistinctBy(e => e.Url))
         {
-            using var c = new ComfyUiClient(url);
-            await c.InterruptAsync();
+            if (string.IsNullOrWhiteSpace(ep.Url)) continue;
+            try
+            {
+                using var c = new ComfyUiClient(ep.Url, clientId: null, authToken: ep.Token);
+                await c.InterruptAsync();
+            }
+            catch { /* best effort — the CTS has already stopped our side */ }
         }
-        catch { /* best effort — local jobs already cancelled via CTS */ }
     }
 
     /// <summary>Snapshot count of currently-running prompt ids. Drives the
@@ -567,7 +658,7 @@ public sealed class GenerationService
 
     public async Task CancelByShotAsync(string shotId)
     {
-        bool comfySetupTouched = false;
+        var touched = new List<ComfyEndpoint>();
         foreach (var (promptId, sid) in _promptToShot.ToArray())
         {
             if (sid != shotId) continue;
@@ -576,21 +667,12 @@ public sealed class GenerationService
                 try { cts.Cancel(); } catch { }
             }
             _promptToShot.TryRemove(promptId, out _);
-            // ComfyUI prompt ids are 36-char UUIDs; Replicate/Runway/etc.
-            // mint our shorter 16-hex ids. Cheap heuristic: if it parses
-            // as a Guid, it came from ComfyUI's /prompt endpoint.
-            if (System.Guid.TryParse(promptId, out _)) comfySetupTouched = true;
+            // Only ComfyUI-routed prompts have an endpoint recorded, so this
+            // replaces the old "does it parse as a Guid?" heuristic with the
+            // actual fact of where the job went.
+            if (_promptToEndpoint.TryGetValue(promptId, out var ep)) touched.Add(ep);
         }
-
-        if (!comfySetupTouched) return;
-        var url = _ctx.Settings.ComfyUiUrl;
-        if (string.IsNullOrWhiteSpace(url)) return;
-        try
-        {
-            using var c = new ComfyUiClient(url);
-            await c.InterruptAsync();
-        }
-        catch { /* best effort */ }
+        await InterruptEndpointsAsync(touched);
     }
 
     public async Task CancelAsync(string promptId)
@@ -599,18 +681,11 @@ public sealed class GenerationService
             cts.Cancel();
         // Replicate cancellation is handled by the linked CTS above — the
         // poll loop checks ct on every tick. ComfyUI also gets a hard
-        // /interrupt so the in-flight prompt stops chewing GPU.
-        var url = _ctx.Settings.ComfyUiUrl;
-        if (string.IsNullOrWhiteSpace(url)) return;
-        try
-        {
-            using var c = new ComfyUiClient(url);
-            await c.InterruptAsync();
-        }
-        catch
-        {
-            // Cancel is best-effort — server may already be down.
-        }
+        // /interrupt so the in-flight prompt stops chewing GPU — on the
+        // machine it was actually sent to, which for a rented worker is not
+        // the local server.
+        if (_promptToEndpoint.TryGetValue(promptId, out var ep))
+            await InterruptEndpointsAsync(new[] { ep });
     }
 
     /// <summary>
@@ -758,6 +833,7 @@ public sealed class GenerationService
 
     private async Task RunListenerAsync(Shot shot, string promptId, ComfyUiClient client, CancellationToken ct)
     {
+        var startedAt = DateTime.UtcNow;
         try
         {
             // Background WS task — feeds progress to the UI but is NOT trusted
@@ -833,6 +909,21 @@ public sealed class GenerationService
         {
             _running.TryRemove(promptId, out _);
             _promptToShot.TryRemove(promptId, out _);
+            _promptToEndpoint.TryRemove(promptId, out var ep);
+
+            // Release the rented worker on EVERY exit path — success, error,
+            // and cancellation alike. A worker left marked Busy is exempt
+            // from the idle reaper by design, so missing this would keep a
+            // card billing until the lifetime cap hours later.
+            if (ep?.WorkerId is { } workerId)
+            {
+                try
+                {
+                    _ctx.GpuWorkers.MarkJobFinished(
+                        workerId, (DateTime.UtcNow - startedAt).TotalSeconds);
+                }
+                catch { /* accounting must never mask the job's own outcome */ }
+            }
         }
     }
 

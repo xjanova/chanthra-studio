@@ -39,6 +39,7 @@ public sealed class ProviderRegistry
         Video = new IVideoProvider[]
         {
             new ComfyUiVideoProvider(),
+            new RentedGpuVideoProvider(),
             new ReplicateVideoProvider(),
             new KlingVideoProvider(),
             new SeedanceVideoProvider(),

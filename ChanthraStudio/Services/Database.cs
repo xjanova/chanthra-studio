@@ -289,6 +289,56 @@ public sealed class Database
                 """);
             SetSchemaVersion(c, tx, 5);
         }
+
+        if (current < 6)
+        {
+            // Phase 7.26 — rented-GPU render route.
+            //
+            // Every row is a machine that either is, or once was, costing
+            // money by the second. That shapes the schema:
+            //
+            //  * Rows are NEVER deleted. A terminated worker is the only
+            //    record of what it cost, and the daily-budget check reads
+            //    history, not live state.
+            //  * A row is written BEFORE the rent call, not after, so a
+            //    crash between "vendor started billing" and "we found out
+            //    the id" still leaves a breadcrumb the orphan sweep can act
+            //    on. instance_id is therefore nullable by design.
+            //  * auth_token holds DPAPI ciphertext, same convention as
+            //    settings.apikey:* rows.
+            //  * render_seconds accrues only while a job actually occupies
+            //    the card. Comparing it against wall-clock uptime is what
+            //    tells the user whether they are paying for renders or for
+            //    an idle machine.
+            Exec(c, tx, """
+                CREATE TABLE IF NOT EXISTS gpu_workers (
+                    id               TEXT PRIMARY KEY,
+                    provider_id      TEXT    NOT NULL,
+                    instance_id      TEXT,
+                    name             TEXT    NOT NULL,
+                    profile_key      TEXT    NOT NULL,
+                    status           TEXT    NOT NULL,
+                    stage            TEXT,
+                    stage_detail     TEXT,
+                    gpu_model        TEXT,
+                    price_hour_usd   REAL    NOT NULL DEFAULT 0,
+                    endpoint_url     TEXT,
+                    auth_token       TEXT    NOT NULL DEFAULT '',
+                    created_at       INTEGER NOT NULL,
+                    ready_at         INTEGER,
+                    last_seen_at     INTEGER,
+                    last_job_at      INTEGER,
+                    terminated_at    INTEGER,
+                    terminate_reason TEXT,
+                    render_seconds   REAL    NOT NULL DEFAULT 0,
+                    jobs_done        INTEGER NOT NULL DEFAULT 0,
+                    error_message    TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_gpu_workers_status ON gpu_workers(status, created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_gpu_workers_created ON gpu_workers(created_at DESC);
+                """);
+            SetSchemaVersion(c, tx, 6);
+        }
     }
 
     private static int GetSchemaVersion(IDbConnection c, IDbTransaction tx)

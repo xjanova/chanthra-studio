@@ -111,6 +111,13 @@
                         </Setter.Value>
                     </Setter>
                 </DataTrigger>
+                <DataTrigger Binding="{Binding ActiveView}" Value="Gpu">
+                    <Setter Property="Content">
+                        <Setter.Value>
+                            <views:GpuView />
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding ActiveView}" Value="Usage">
                     <Setter Property="Content">
                         <Setter.Value>

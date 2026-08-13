@@ -23,6 +23,10 @@ public sealed class StudioContext
     public VoiceService VoiceService { get; }
     public LlmService Llm { get; }
     public GpuTelemetryService GpuTelemetry { get; }
+
+    /// <summary>Rented-GPU lifecycle. Distinct from <see cref="GpuTelemetry"/>,
+    /// which reads the local nvidia-smi — this one rents other people's cards.</summary>
+    public ChanthraStudio.Services.Gpu.GpuWorkerService GpuWorkers { get; }
     public SchedulesRepository Schedules { get; }
     public ScheduleService ScheduleService { get; }
     public UsageRepository Usage { get; }
@@ -52,6 +56,9 @@ public sealed class StudioContext
         VoiceService = new VoiceService(this);
         Llm = new LlmService(this);
         GpuTelemetry = new GpuTelemetryService();
+        // Constructed before GenerationService would need it at call time;
+        // the rentgpu route reaches it through this property, not the ctor.
+        GpuWorkers = new ChanthraStudio.Services.Gpu.GpuWorkerService(this);
         Schedules = new SchedulesRepository(Db);
         // ScheduleService subscribes to Generation.ProgressChanged in its
         // ctor, so it has to be constructed AFTER GenerationService above.

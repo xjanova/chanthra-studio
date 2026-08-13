@@ -5,7 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace ChanthraStudio.ViewModels;
 
-public enum AppView { Generate, Seedance, Storyboard, Edit, Voice, Flow, WebStudio, Library, Models, Queue, Schedule, Usage, Settings }
+public enum AppView { Generate, Seedance, Storyboard, Edit, Voice, Flow, WebStudio, Library, Models, Queue, Schedule, Gpu, Usage, Settings }
 
 public sealed class TabItem : ObservableObject
 {

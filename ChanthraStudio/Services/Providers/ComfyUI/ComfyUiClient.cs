@@ -30,13 +30,25 @@ public sealed class ComfyUiClient : IDisposable
     private readonly HttpClient _http;
     private readonly Uri _baseUri;
     private readonly string _clientId;
+    private readonly string? _authToken;
     private bool _disposed;
 
-    public ComfyUiClient(string baseUrl, string? clientId = null)
+    /// <param name="authToken">
+    /// Optional bearer token. Local ComfyUI needs none, but a rented worker
+    /// sits behind an auth proxy on a public port (see
+    /// <c>Services/Gpu/GpuProvisioning.cs</c>) and rejects unauthenticated
+    /// requests — including the WebSocket handshake, which is why the token
+    /// is applied there too rather than only on the HTTP client.
+    /// </param>
+    public ComfyUiClient(string baseUrl, string? clientId = null, string? authToken = null)
     {
         _baseUri = new Uri(baseUrl.TrimEnd('/') + "/");
         _http = new HttpClient { BaseAddress = _baseUri, Timeout = TimeSpan.FromMinutes(2) };
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        _authToken = string.IsNullOrWhiteSpace(authToken) ? null : authToken;
+        if (_authToken is not null)
+            _http.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", _authToken);
         _clientId = clientId ?? Guid.NewGuid().ToString("N");
     }
 
@@ -287,6 +299,11 @@ public sealed class ComfyUiClient : IDisposable
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
         using var ws = new ClientWebSocket();
+        // The token rides in the handshake header, never the query string —
+        // query strings land in proxy and server logs, and this one is a
+        // credential for a machine we're paying for.
+        if (_authToken is not null)
+            ws.Options.SetRequestHeader("Authorization", "Bearer " + _authToken);
         var wsUri = new UriBuilder(_baseUri)
         {
             Scheme = _baseUri.Scheme == "https" ? "wss" : "ws",

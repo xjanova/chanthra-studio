@@ -65,6 +65,12 @@ public partial class App : Application
         // fan out concurrent generations.
         Studio.ScheduleService.Start();
 
+        // Rented-GPU reaper. Starts unconditionally, even when the feature is
+        // switched off, because a machine left running by a previous session
+        // is still billing and this loop is the only thing that will notice.
+        // Its first act is to reconcile any workers the last run left behind.
+        Studio.GpuWorkers.Start();
+
         // Fire and forget — the UI is responsive while the license validates
         // and the update check pings GitHub. The status bar reflects the
         // result via LicenseGuard.LicenseChanged.
@@ -197,6 +203,14 @@ public partial class App : Application
         {
             // Best-effort save on exit — don't block the shutdown if disk is full.
         }
+        // Release rented machines BEFORE disposing anything else. This one
+        // blocks (up to ~25s) on purpose: once this process is gone nothing
+        // of ours can stop the meter, so a slow exit is strictly better than
+        // a card that bills all night. Skipped when the user has turned
+        // terminate-on-exit off, or when nothing is running.
+        try { Studio.GpuWorkers.TerminateAllOnExit(); }
+        catch { /* the rows stay marked live, so the next launch will retry */ }
+        try { Studio.GpuWorkers.Dispose(); } catch { /* dispose is best effort */ }
         try { Studio.GpuTelemetry.Dispose(); } catch { /* dispose is best effort */ }
         try { Studio.ScheduleService.Dispose(); } catch { /* dispose is best effort */ }
         // Drain the activity log buffer before the process exits — the

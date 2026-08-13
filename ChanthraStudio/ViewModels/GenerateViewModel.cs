@@ -19,6 +19,13 @@ public sealed class VideoRouteOption
 {
     public string Id { get; init; } = "";
     public string DisplayName { get; init; } = "";
+
+    // The app-wide ComboBox template drives its closed state from
+    // SelectionBoxItemTemplate, which mirrors ItemTemplate only — a picker
+    // configured with DisplayMemberPath therefore has no template there and
+    // falls back to ToString(), printing the type name. Same workaround as
+    // Models/WebStudio.cs WebTool.
+    public override string ToString() => DisplayName;
 }
 
 public sealed class GenerateViewModel : ObservableObject

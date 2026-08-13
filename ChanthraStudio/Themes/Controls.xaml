@@ -565,6 +565,14 @@
                                 </ControlTemplate>
                             </ToggleButton.Template>
                         </ToggleButton>
+                        <!--
+                            NOTE: SelectionBoxItemTemplate mirrors ItemTemplate only.
+                            A ComboBox styled with this template and configured with
+                            DisplayMemberPath instead of an ItemTemplate has no
+                            template here, so the presenter falls back to ToString()
+                            and shows a type name. Give such pickers an explicit
+                            ItemTemplate (see the ROUTE picker in GenerateView).
+                        -->
                         <ContentPresenter
                             Grid.Column="0"
                             Margin="0,0,8,0"

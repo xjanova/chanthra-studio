@@ -172,6 +172,20 @@
             </ToggleButton>
             <ToggleButton
                 Command="{Binding SwitchViewCommand}"
+                CommandParameter="Gpu"
+                IsChecked="{Binding ActiveView, Converter={StaticResource EnumEquals}, ConverterParameter=Gpu, Mode=OneWay}"
+                Style="{StaticResource SidebarItem}"
+                ToolTip="Rented GPU · เช่าการ์ดมาเรนเดอร์">
+                <Path
+                    Width="19"
+                    Height="19"
+                    Data="{StaticResource IcoChip}"
+                    Stretch="Uniform"
+                    Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                    StrokeThickness="1.4" />
+            </ToggleButton>
+            <ToggleButton
+                Command="{Binding SwitchViewCommand}"
                 CommandParameter="Usage"
                 IsChecked="{Binding ActiveView, Converter={StaticResource EnumEquals}, ConverterParameter=Usage, Mode=OneWay}"
                 Style="{StaticResource SidebarItem}"
