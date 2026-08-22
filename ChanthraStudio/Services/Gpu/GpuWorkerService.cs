@@ -402,20 +402,29 @@ public sealed class GpuWorkerService : IDisposable
         var provider = Provider(g);
 
         progress?.Report(new GpuWarmupProgress("shopping", "Looking for a machine…", 0.02));
-        var offers = await provider.SearchMarketAsync(ApiKey, g.ToFilter(profile), ct);
+        var filter = g.ToFilter(profile);
+        var offers = await provider.SearchMarketAsync(ApiKey, filter, ct);
         if (offers.Count == 0)
             throw new GpuRentalException(
                 $"No machine on the market matches {profile.DisplayName}: " +
                 $"≥{profile.MinVramGb} GB VRAM, ≥{profile.RequiredDiskGb} GB disk, " +
                 $"≥{g.MinDownloadMbps} Mbps, at or under ${g.MaxPricePerHourUsd:0.00}/hr. " +
-                "Raising the price ceiling or lowering the speed floor in the GPU panel usually finds one.");
+                "Raising the price ceiling or lowering the speed floor in the GPU panel usually finds one. " +
+                $"{profile.DisplayName} is one of the heavier profiles — " +
+                "the cheap end of these marketplaces is 8–16 GB cards, so a 24 GB+ profile " +
+                "typically needs a ceiling around $1.00/hr before anything matches.");
 
+        // Ranked cheapest-JOB-first by the provider (GpuCostModel), because
+        // warm-up download time is billed at the same rate as rendering.
         var pick = offers[0];
+        var estimate = GpuCostModel.Estimate(pick, filter);
+        var why = GpuCostModel.ExplainPick(pick, offers, filter);
+        if (!string.IsNullOrEmpty(why)) ActivityLog.Info("gpu", why);
 
         // The cheapest machine can still bust the budget if it runs long
         // enough. Refuse anything whose lifetime cap alone would exceed
         // what's left for today.
-        var worstCase = pick.PricePerHourUsd * (decimal)(g.MaxLifetimeMinutes / 60.0);
+        var worstCase = pick.TotalPricePerHourUsd * (decimal)(g.MaxLifetimeMinutes / 60.0);
         var remaining = g.DailyBudgetUsd - spentToday;
         if (g.DailyBudgetUsd > 0 && worstCase > remaining)
             throw new GpuRentalException(
@@ -429,7 +438,9 @@ public sealed class GpuWorkerService : IDisposable
             ProfileKey = profile.Key,
             Status = GpuWorkerStatus.Renting,
             GpuModel = pick.GpuModel,
-            PricePerHourUsd = pick.PricePerHourUsd,
+            // Total, not the GPU line alone — this figure is what the daily
+            // budget sums and what the panel reports.
+            PricePerHourUsd = pick.TotalPricePerHourUsd,
             CreatedAt = DateTime.UtcNow,
         };
         worker.Name = NamePrefix + worker.Id;
@@ -448,7 +459,7 @@ public sealed class GpuWorkerService : IDisposable
         {
             OfferId = pick.Id,
             Name = worker.Name,
-            DockerImage = profile.DockerImage,
+            DockerImage = string.IsNullOrWhiteSpace(g.DockerImage) ? profile.DockerImage : g.DockerImage,
             GpuCount = 1,
             ExposedPort = GpuProvisioning.ProxyPort,
             StartScript = GpuProvisioning.BuildStartScript(profile, worker.Token, HfToken),
@@ -480,8 +491,10 @@ public sealed class GpuWorkerService : IDisposable
         _repo.Update(worker);
         WorkersChanged?.Invoke();
 
-        var eta = profile.EstimatedWarmupMinutes(pick.DownloadMbps);
-        LastActivity = $"rented {pick.Summary} as {worker.Name} (~{eta} min to warm up)";
+        // One estimate, computed once above, used for both the ETA and the
+        // cost line — two independently-derived numbers would eventually
+        // disagree on screen and neither would be trustworthy.
+        LastActivity = $"rented {pick.Summary} as {worker.Name} — {estimate.Label}";
         return worker;
     }
 

@@ -27,6 +27,16 @@ public sealed class GpuGuardrails
     /// <summary>Which profile to rent when nothing more specific is chosen.</summary>
     public string ProfileKey { get; set; } = "sdxl";
 
+    /// <summary>
+    /// Override the Docker image every profile boots. Empty = use the
+    /// profile's own. Exists for the same reason <see cref="ApiBase"/> does:
+    /// the correct image is a moving target — it tracks ComfyUI's torch floor
+    /// at one end and the drivers marketplace hosts actually run at the other —
+    /// and being stranded between them should cost a settings edit, not a
+    /// release.
+    /// </summary>
+    public string DockerImage { get; set; } = "";
+
     /// <summary>Hard ceiling on hourly rate. Machines above it are never rented.</summary>
     public decimal MaxPricePerHourUsd { get; set; } = 0.60m;
 
@@ -53,6 +63,15 @@ public sealed class GpuGuardrails
     /// warm-up time, so this is a cost setting more than a quality one.</summary>
     public int MinDownloadMbps { get; set; } = 500;
 
+    /// <summary>
+    /// How long a typical run holds the card once it is warm. Not a limit —
+    /// it is what lets the shopper compare a cheap machine with a slow link
+    /// against a pricier one with a fast link, because warm-up is billed at
+    /// the same rate as rendering. Short sessions make download speed
+    /// dominate; long ones amortise it away and favour the low hourly rate.
+    /// </summary>
+    public int TypicalSessionMinutes { get; set; } = 30;
+
     /// <summary>Terminate everything when the app closes. Strongly
     /// recommended: unlike a server, a desktop app that is not running
     /// cannot reap anything, and the meter does not care.</summary>
@@ -69,6 +88,7 @@ public sealed class GpuGuardrails
         g.ProviderId = Text(s, "provider", g.ProviderId);
         g.ApiBase = Text(s, "apiBase", g.ApiBase);
         g.ProfileKey = Text(s, "profile", g.ProfileKey);
+        g.DockerImage = Text(s, "dockerImage", g.DockerImage);
         g.MaxPricePerHourUsd = Money(s, "maxPricePerHourUsd", g.MaxPricePerHourUsd);
         g.DailyBudgetUsd = Money(s, "dailyBudgetUsd", g.DailyBudgetUsd);
         g.MaxConcurrentWorkers = Num(s, "maxConcurrentWorkers", g.MaxConcurrentWorkers, 1, 8);
@@ -76,6 +96,7 @@ public sealed class GpuGuardrails
         g.MaxLifetimeMinutes = Num(s, "maxLifetimeMinutes", g.MaxLifetimeMinutes, 5, 1440);
         g.WarmupTimeoutMinutes = Num(s, "warmupTimeoutMinutes", g.WarmupTimeoutMinutes, 5, 240);
         g.MinDownloadMbps = Num(s, "minDownloadMbps", g.MinDownloadMbps, 0, 10_000);
+        g.TypicalSessionMinutes = Num(s, "typicalSessionMinutes", g.TypicalSessionMinutes, 1, 1440);
         g.TerminateOnExit = Flag(s, "terminateOnExit", g.TerminateOnExit);
         return g;
     }
@@ -86,6 +107,7 @@ public sealed class GpuGuardrails
         s.SetSetting(P + "provider", ProviderId);
         s.SetSetting(P + "apiBase", ApiBase);
         s.SetSetting(P + "profile", ProfileKey);
+        s.SetSetting(P + "dockerImage", DockerImage);
         s.SetSetting(P + "maxPricePerHourUsd", Str(MaxPricePerHourUsd));
         s.SetSetting(P + "dailyBudgetUsd", Str(DailyBudgetUsd));
         s.SetSetting(P + "maxConcurrentWorkers", Str(MaxConcurrentWorkers));
@@ -93,6 +115,7 @@ public sealed class GpuGuardrails
         s.SetSetting(P + "maxLifetimeMinutes", Str(MaxLifetimeMinutes));
         s.SetSetting(P + "warmupTimeoutMinutes", Str(WarmupTimeoutMinutes));
         s.SetSetting(P + "minDownloadMbps", Str(MinDownloadMbps));
+        s.SetSetting(P + "typicalSessionMinutes", Str(TypicalSessionMinutes));
         // "0" is meaningful here — SetSetting drops empty strings, and a
         // bool written as "" would silently read back as the default (true),
         // re-arming terminate-on-exit against the user's wishes.
@@ -107,6 +130,8 @@ public sealed class GpuGuardrails
         MinDiskGb = profile.RequiredDiskGb,
         MaxPricePerHourUsd = MaxPricePerHourUsd,
         MinDownloadMbps = MinDownloadMbps,
+        WeightsGb = profile.TotalWeightsGb,
+        ExpectedWorkMinutes = TypicalSessionMinutes,
     };
 
     private static string Str(decimal v) => v.ToString(CultureInfo.InvariantCulture);

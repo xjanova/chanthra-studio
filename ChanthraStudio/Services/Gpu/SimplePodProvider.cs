@@ -91,7 +91,8 @@ public sealed class SimplePodProvider : IGpuRentalProvider
         {
             var offer = ParseOffer(item);
             if (offer is null) continue;                                  // unparseable price/VRAM → dropped
-            if (offer.PricePerHourUsd > filter.MaxPricePerHourUsd) continue;
+            // The ceiling is on what the meter charges, which includes disk.
+            if (offer.TotalPricePerHourUsd > filter.MaxPricePerHourUsd) continue;
             if (offer.VramGb < filter.MinVramGb) continue;
             if (offer.DiskGb > 0 && offer.DiskGb < filter.MinDiskGb) continue;
             if (filter.MinDownloadMbps > 0 && offer.DownloadMbps > 0
@@ -99,9 +100,10 @@ public sealed class SimplePodProvider : IGpuRentalProvider
             offers.Add(offer);
         }
 
-        return offers
-            .OrderBy(o => o.PricePerHourUsd)
-            .ThenByDescending(o => o.DownloadMbps)
+        // Cheapest JOB first, not cheapest hour — warm-up is billed at the
+        // same rate as rendering, so a slow link on a cheap box routinely
+        // costs more than a fast link on a dearer one. See GpuCostModel.
+        return GpuCostModel.Rank(offers, filter)
             .Take(Math.Max(1, filter.MaxResults))
             .ToList();
     }
@@ -124,6 +126,13 @@ public sealed class SimplePodProvider : IGpuRentalProvider
             VramGb = NormaliseVramGb(vram.Value),
             DiskGb = FirstInt(o, "diskSize", "disk", "diskSpace", "storage") ?? 0,
             PricePerHourUsd = price.Value,
+            // Storage is billed separately here. Missing → 0, which is the
+            // one defaulting we allow on a money field: it is additive, so a
+            // zero understates by exactly the amount the vendor didn't tell
+            // us about, whereas dropping the whole offer would empty a market
+            // over an optional field. See GpuOffer.DiskPricePerHourUsd for
+            // the unit assumption still waiting on a real invoice.
+            DiskPricePerHourUsd = FirstDecimal(o, "pricePerDiskSize", "pricePerDisk", "diskPrice") ?? 0m,
             DownloadMbps = FirstInt(o, "downloadSpeedtest", "downloadSpeed", "download") ?? 0,
             Region = FirstString(o, "region", "country", "location") ?? "",
             Reliability = FirstDouble(o, "sla", "reliability", "uptime") ?? 0,

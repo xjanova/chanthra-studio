@@ -64,6 +64,21 @@ public sealed class GpuFilter
     /// a 40 GB weight pull at 100 Mbps is an hour of paid warm-up.</summary>
     public int MinDownloadMbps { get; set; } = 500;
 
+    /// <summary>How many gigabytes of weights this profile has to pull before
+    /// it can render. Together with each offer's link speed this is what turns
+    /// a sticker price into a job cost — see <see cref="GpuCostModel"/>.</summary>
+    public double WeightsGb { get; set; }
+
+    /// <summary>Warm-up minutes that are not downloading (apt, clone, pip,
+    /// first load into VRAM).</summary>
+    public double FixedWarmupMinutes { get; set; } = GpuCostModel.FixedWarmupMinutes;
+
+    /// <summary>How long we expect to hold the card once it is ready. This is
+    /// the knob that decides cheap-and-slow versus fast-and-pricier: a long
+    /// session amortises warm-up and favours the low hourly rate, a short one
+    /// makes download speed dominate.</summary>
+    public double ExpectedWorkMinutes { get; set; } = 30;
+
     public int MaxResults { get; set; } = 40;
 }
 
@@ -75,12 +90,34 @@ public sealed class GpuOffer
     public int GpuCount { get; set; } = 1;
     public int VramGb { get; set; }
     public int DiskGb { get; set; }
+    /// <summary>The GPU line item, USD/hour. NOT the whole bill — see
+    /// <see cref="TotalPricePerHourUsd"/>.</summary>
     public decimal PricePerHourUsd { get; set; }
+
+    /// <summary>
+    /// The vendor's separate charge for the disk allocation, USD/hour.
+    ///
+    /// Read as a flat per-hour figure for the allocation, which is what the
+    /// observed magnitudes (~$0.05) look like. <b>Unverified against a real
+    /// invoice</b> — if it turns out to be per-GB-per-hour instead, this is
+    /// the one place to multiply by <see cref="DiskGb"/>. Counting it at all
+    /// is the conservative choice: a budget that overstates cost terminates
+    /// early, a budget that understates it produces a surprise bill.
+    /// </summary>
+    public decimal DiskPricePerHourUsd { get; set; }
+
+    /// <summary>Everything the meter charges per hour. All budget arithmetic
+    /// and every price ceiling must use this, not the GPU line alone.</summary>
+    public decimal TotalPricePerHourUsd => PricePerHourUsd + DiskPricePerHourUsd;
+
     public int DownloadMbps { get; set; }
     public string Region { get; set; } = "";
     public double Reliability { get; set; }
 
-    public string Summary => $"{GpuModel} · {VramGb} GB · ${PricePerHourUsd:0.00}/hr · {DownloadMbps} Mbps";
+    /// <summary>Speed reads "?" rather than "0 Mbps" when the vendor did not
+    /// report one — zero would read as a measurement of a very slow link.</summary>
+    public string Summary => $"{GpuModel} · {VramGb} GB · ${TotalPricePerHourUsd:0.00}/hr · "
+                           + (DownloadMbps > 0 ? $"{DownloadMbps} Mbps" : "? Mbps");
 }
 
 /// <summary>The order we place with the marketplace.</summary>

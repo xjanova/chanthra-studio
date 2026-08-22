@@ -59,12 +59,27 @@ public sealed class GpuModelProfile
     public List<GpuWeightFile> Files { get; set; } = new();
 
     /// <summary>
-    /// CUDA 12.8 runtime: the first release that supports Blackwell (RTX 5090)
-    /// while still running on the driver versions most marketplace hosts have.
-    /// Newer runtimes strand you on older hosts; older ones can't use the
-    /// newest cards.
+    /// Torch 2.9.1 on CUDA 13.0.
+    ///
+    /// <b>The previous value — <c>pytorch/pytorch:2.6.0-cuda12.8-cudnn9-runtime</c>
+    /// — does not exist.</b> Docker Hub 404s it: <c>pytorch/pytorch</c> has no
+    /// CUDA 12.8 build before torch 2.7.0. Every rental would have paid for a
+    /// machine that could never pull its image. It was never caught because the
+    /// vendor API had not been called with a real key.
+    ///
+    /// The replacement is chosen against two published floors rather than
+    /// taste. ComfyUI's README: <i>"torch 2.7 is minimally supported… Using a
+    /// cu130 or above version of pytorch is required on Nvidia 20 series and
+    /// above."</i> Every card worth renting is 20-series or above, so cu130 is
+    /// the floor, not the luxury option. 2.9.1 rather than the newest tag
+    /// because the old comment's instinct was right — a very new runtime
+    /// strands you on hosts with older drivers, and the marketplace's cheap end
+    /// is not where fresh drivers live.
+    ///
+    /// Overridable per profile, and via the <c>gpu:dockerImage</c> setting, so
+    /// the next time this floor moves it is an edit rather than a build.
     /// </summary>
-    public const string DefaultImage = "pytorch/pytorch:2.6.0-cuda12.8-cudnn9-runtime";
+    public const string DefaultImage = "pytorch/pytorch:2.9.1-cuda13.0-cudnn9-runtime";
 
     [JsonIgnore]
     public double TotalWeightsGb => Files.Sum(f => f.SizeGb);
@@ -106,6 +121,7 @@ public static class GpuModelCatalog
     private const string HfFluxText = "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main";
     private const string HfHunyuan = "https://huggingface.co/Comfy-Org/HunyuanVideo_repackaged/resolve/main/split_files";
     private const string HfWan = "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files";
+    private const string HfAceStep = "https://huggingface.co/Comfy-Org/ACE-Step_ComfyUI_repackaged/resolve/main";
 
     private static readonly List<GpuModelProfile> BuiltIn = new()
     {
@@ -181,6 +197,23 @@ public static class GpuModelCatalog
                 new() { Url = $"{HfHunyuan}/vae/hunyuan_video_vae_bf16.safetensors", Folder = "vae", FileName = "hunyuan_video_vae_bf16.safetensors", SizeGb = 0.46 },
                 new() { Url = $"{HfHunyuan}/text_encoders/llava_llama3_fp8_scaled.safetensors", Folder = "text_encoders", FileName = "llava_llama3_fp8_scaled.safetensors", SizeGb = 8.47 },
                 new() { Url = $"{HfHunyuan}/text_encoders/clip_l.safetensors", Folder = "text_encoders", FileName = "clip_l.safetensors", SizeGb = 0.23 },
+            },
+        },
+        new GpuModelProfile
+        {
+            Key = "music",
+            DisplayName = "ACE-Step · text → music",
+            Description = "Full songs with vocals from a tag list, lyrics optional. One 7 GB file and an 8 GB card — the cheapest useful box in the catalog after sd15.",
+            MinVramGb = 8,
+            Workflows = { "ace_step_text2music" },
+            Files =
+            {
+                // One all-in-one checkpoint: reading the safetensors header shows
+                // vae.*, model.* and text_encoders.* all present, so
+                // CheckpointLoaderSimple alone yields MODEL/CLIP/VAE and there is
+                // no separate encoder or VAE to pull. Apache-2.0, ungated,
+                // verified 200 with content-length 7,699,743,341.
+                new() { Url = $"{HfAceStep}/all_in_one/ace_step_v1_3.5b.safetensors", Folder = "checkpoints", FileName = "ace_step_v1_3.5b.safetensors", SizeGb = 7.17 },
             },
         },
     };

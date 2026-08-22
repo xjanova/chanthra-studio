@@ -31,12 +31,12 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="FontFamily" Value="{StaticResource FontMono}" />
-            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
             <Setter Property="CaretBrush" Value="{StaticResource BrushGoldHi}" />
         </Style>
         <Style x:Key="GpuCaption" TargetType="TextBlock" BasedOn="{StaticResource TextSecondary}">
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="12.5" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
     </UserControl.Resources>
@@ -59,7 +59,7 @@
                         <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
                         <Run Text="Rented GPU" />
                     </TextBlock>
-                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12"
+                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="13.5"
                                Text="เช่าการ์ดจากตลาด → ติดตั้ง ComfyUI ให้อัตโนมัติ → เรนเดอร์ → คืนเครื่อง · คิดเงินเป็นวินาที ทุกวินาทีที่เครื่องเปิดอยู่" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
@@ -155,15 +155,15 @@
                                         Style="{StaticResource ChipRadio}"
                                         ToolTip="{Binding Description}">
                                         <StackPanel>
-                                            <TextBlock FontFamily="{StaticResource FontDisplay}" FontSize="12.5" Text="{Binding DisplayName}" TextWrapping="Wrap" />
-                                            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextMono}" FontSize="10" Foreground="{StaticResource BrushText3}" Text="{Binding SpecLabel}" TextWrapping="Wrap" />
+                                            <TextBlock FontFamily="{StaticResource FontDisplay}" FontSize="14" Text="{Binding DisplayName}" TextWrapping="Wrap" />
+                                            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextMono}" FontSize="11.5" Foreground="{StaticResource BrushText3}" Text="{Binding SpecLabel}" TextWrapping="Wrap" />
                                         </StackPanel>
                                     </RadioButton>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" TextWrapping="Wrap" Text="{Binding SelectedProfileHint}" />
+                        <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMono}" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}" TextWrapping="Wrap" Text="{Binding SelectedProfileHint}" />
 
                         <!--  Market preview  -->
                         <Grid Margin="0,14,0,0">
@@ -184,11 +184,11 @@
                                             <ColumnDefinition Width="110" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText1}" Text="{Binding GpuModel}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="1" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}" Text="{Binding VramGb, StringFormat={}{0} GB}" />
-                                        <TextBlock Grid.Column="2" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushGoldHi}" Text="{Binding PricePerHourUsd, StringFormat={}${0:0.000}/hr}" />
-                                        <TextBlock Grid.Column="3" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}" Text="{Binding DownloadMbps, StringFormat={}{0} Mbps}" />
-                                        <TextBlock Grid.Column="4" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText4}" Text="{Binding Region}" />
+                                        <TextBlock Grid.Column="0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding GpuModel}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}" Text="{Binding VramGb, StringFormat={}{0} GB}" />
+                                        <TextBlock Grid.Column="2" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushGoldHi}" Text="{Binding PricePerHourUsd, StringFormat={}${0:0.000}/hr}" />
+                                        <TextBlock Grid.Column="3" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}" Text="{Binding DownloadMbps, StringFormat={}{0} Mbps}" />
+                                        <TextBlock Grid.Column="4" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText4}" Text="{Binding Region}" />
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -207,7 +207,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock FontFamily="{StaticResource FontDisplay}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="Allow renting" />
+                                <TextBlock FontFamily="{StaticResource FontDisplay}" FontSize="14" Foreground="{StaticResource BrushText1}" Text="Allow renting" />
                                 <TextBlock Margin="0,2,0,0" Style="{StaticResource GpuCaption}" Text="{Binding ArmedLabel}" />
                             </StackPanel>
                             <ToggleButton Grid.Column="1" VerticalAlignment="Center" IsChecked="{Binding Enabled}" Style="{StaticResource ToggleSwitch}" />
@@ -221,7 +221,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock FontFamily="{StaticResource FontDisplay}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="Release everything when the app closes" />
+                                <TextBlock FontFamily="{StaticResource FontDisplay}" FontSize="14" Foreground="{StaticResource BrushText1}" Text="Release everything when the app closes" />
                                 <TextBlock Margin="0,2,0,0" Style="{StaticResource GpuCaption}"
                                            Text="แนะนำให้เปิดไว้ — ถ้าปิดแอปแล้วเครื่องยังเช่าอยู่ จะไม่มีอะไรคอยปิดให้เลย มิเตอร์เดินต่อทั้งคืน" />
                             </StackPanel>
@@ -281,6 +281,15 @@
                             <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource GpuCaption}"
                                        Text="ต้องมากกว่าเวลาโหลด weights ของโปรไฟล์ที่หนักที่สุด ไม่งั้นจะไปฆ่าเครื่องที่กำลังโหลดอยู่ดีๆ" />
                         </StackPanel>
+
+                        <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
+                            <TextBlock VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="TYPICAL SESSION · MIN" />
+                            <Border Width="80" Margin="10,0,0,0" Style="{StaticResource GpuFieldBox}">
+                                <TextBox Style="{StaticResource GpuFieldText}" Text="{Binding TypicalSessionMinutes, UpdateSourceTrigger=LostFocus}" />
+                            </Border>
+                            <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource GpuCaption}"
+                                       Text="ไม่ใช่ลิมิต — ใช้เลือกเครื่องด้วยต้นทุนทั้งงาน ตั้งสั้น = เลือกเน็ตเร็ว · ตั้งยาว = เลือกราคาถูก" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -294,14 +303,14 @@
                                 <Border HorizontalAlignment="Left" Background="{StaticResource BrushSliderFill}" CornerRadius="2"
                                         Width="{Binding BudgetFraction, Converter={StaticResource MultiplyConverter}, ConverterParameter=260}" />
                             </Border>
-                            <TextBlock Margin="0,6,0,0" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}" Text="{Binding BudgetRemainingLabel}" />
+                            <TextBlock Margin="0,6,0,0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}" Text="{Binding BudgetRemainingLabel}" />
                         </StackPanel>
                     </Border>
                     <Border Margin="0,0,12,0" Padding="20,16" Style="{StaticResource SurfaceCard}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="BILLED · LAST 30 RENTALS" />
                             <TextBlock Margin="0,6,0,0" FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="32" Foreground="{StaticResource BrushGoldHi}" Text="{Binding TotalCostLabel}" />
-                            <TextBlock Margin="0,6,0,0" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}" Text="ทุกวินาทีที่เครื่องเปิด รวม warm-up และตอนว่าง" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,6,0,0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}" Text="ทุกวินาทีที่เครื่องเปิด รวม warm-up และตอนว่าง" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
                     <Border Margin="0,0,12,0" Padding="20,16" Style="{StaticResource SurfaceCard}">
@@ -312,7 +321,7 @@
                                 <Border HorizontalAlignment="Left" Background="{StaticResource BrushSliderFill}" CornerRadius="2"
                                         Width="{Binding UtilisationFraction, Converter={StaticResource MultiplyConverter}, ConverterParameter=260}" />
                             </Border>
-                            <TextBlock Margin="0,6,0,0" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}">
+                            <TextBlock Margin="0,6,0,0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}">
                                 <Run Text="utilisation " /><Run Text="{Binding UtilisationLabel, Mode=OneWay}" />
                             </TextBlock>
                         </StackPanel>
@@ -321,7 +330,7 @@
                         <StackPanel>
                             <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="OVERHEAD" />
                             <TextBlock Margin="0,6,0,0" FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="32" Foreground="{StaticResource BrushWarn}" Text="{Binding OverheadLabel}" />
-                            <TextBlock Margin="0,6,0,0" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}" Text="{Binding OverheadHint}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,6,0,0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}" Text="{Binding OverheadHint}" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
                 </UniformGrid>
@@ -357,21 +366,21 @@
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0">
-                                                <TextBlock FontFamily="{StaticResource FontDisplay}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="{Binding GpuModel}" />
-                                                <TextBlock Margin="0,3,0,0" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushGoldHi}" Text="{Binding StatusLabel}" />
-                                                <TextBlock Margin="0,2,0,0" Style="{StaticResource TextMono}" FontSize="10" Foreground="{StaticResource BrushText4}" Text="{Binding Name}" />
+                                                <TextBlock FontFamily="{StaticResource FontDisplay}" FontSize="14" Foreground="{StaticResource BrushText1}" Text="{Binding GpuModel}" />
+                                                <TextBlock Margin="0,3,0,0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushGoldHi}" Text="{Binding StatusLabel}" />
+                                                <TextBlock Margin="0,2,0,0" Style="{StaticResource TextMono}" FontSize="11.5" Foreground="{StaticResource BrushText4}" Text="{Binding Name}" />
                                             </StackPanel>
                                             <StackPanel Grid.Column="1">
                                                 <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="UPTIME" />
-                                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding UptimeLabel}" />
+                                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextMono}" FontSize="13.5" Foreground="{StaticResource BrushText1}" Text="{Binding UptimeLabel}" />
                                             </StackPanel>
                                             <StackPanel Grid.Column="2">
                                                 <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="COST" />
-                                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushGoldHi}" Text="{Binding CostLabel}" />
+                                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextMono}" FontSize="13.5" Foreground="{StaticResource BrushGoldHi}" Text="{Binding CostLabel}" />
                                             </StackPanel>
                                             <StackPanel Grid.Column="3">
                                                 <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="RATE" />
-                                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText2}" Text="{Binding PricePerHourUsd, StringFormat={}${0:0.000}/hr}" />
+                                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextMono}" FontSize="13.5" Foreground="{StaticResource BrushText2}" Text="{Binding PricePerHourUsd, StringFormat={}${0:0.000}/hr}" />
                                             </StackPanel>
                                             <Button Grid.Column="4" Padding="12,6" VerticalAlignment="Center" Content="Release"
                                                     Style="{StaticResource ButtonPill}"
@@ -383,7 +392,7 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <TextBlock Margin="0,6,0,0" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}" TextWrapping="Wrap"
+                        <TextBlock Margin="0,6,0,0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}" TextWrapping="Wrap"
                                    Text="{Binding LastActivity}"
                                    Visibility="{Binding LastActivity, Converter={StaticResource NotNullOrEmpty}}" />
                     </StackPanel>
@@ -423,12 +432,12 @@
                                             <ColumnDefinition Width="70" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}" Text="{Binding CreatedAt, StringFormat={}{0:MM-dd HH:mm}}" />
-                                        <TextBlock Grid.Column="1" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText1}" Text="{Binding GpuModel}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="2" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}" Text="{Binding UptimeLabel}" />
-                                        <TextBlock Grid.Column="3" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushGoldHi}" Text="{Binding CostLabel}" />
-                                        <TextBlock Grid.Column="4" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText2}" Text="{Binding JobsDone}" />
-                                        <TextBlock Grid.Column="5" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText4}" Text="{Binding TerminateReason}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}" Text="{Binding CreatedAt, StringFormat={}{0:MM-dd HH:mm}}" />
+                                        <TextBlock Grid.Column="1" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding GpuModel}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="2" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}" Text="{Binding UptimeLabel}" />
+                                        <TextBlock Grid.Column="3" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushGoldHi}" Text="{Binding CostLabel}" />
+                                        <TextBlock Grid.Column="4" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText2}" Text="{Binding JobsDone}" />
+                                        <TextBlock Grid.Column="5" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText4}" Text="{Binding TerminateReason}" TextTrimming="CharacterEllipsis" />
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

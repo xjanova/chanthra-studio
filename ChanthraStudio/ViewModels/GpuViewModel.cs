@@ -204,6 +204,18 @@ public sealed class GpuViewModel : ObservableObject, IDisposable
         set { if (TryInt(value, 0, 10000, out var v)) { _guard.MinDownloadMbps = v; Persist(); } OnPropertyChanged(); }
     }
 
+    /// <summary>
+    /// Not a limit — the length of a typical run, used to rank offers by what
+    /// the whole job costs instead of by hourly rate. Lower it and machines
+    /// with fast links win (warm-up dominates a short session); raise it and
+    /// the cheap hourly rate wins (warm-up amortises away).
+    /// </summary>
+    public string TypicalSessionMinutes
+    {
+        get => _guard.TypicalSessionMinutes.ToString(CultureInfo.InvariantCulture);
+        set { if (TryInt(value, 1, 1440, out var v)) { _guard.TypicalSessionMinutes = v; Persist(); } OnPropertyChanged(); }
+    }
+
     private void Persist()
     {
         if (_loading || _ctx is null) return;
