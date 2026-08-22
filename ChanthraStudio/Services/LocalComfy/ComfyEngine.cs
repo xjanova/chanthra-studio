@@ -55,6 +55,7 @@ public sealed class ComfyEngine : IDisposable
     public ComfyEngine(AppSettings settings)
     {
         _settings = settings;
+        ComfyPaths.Configure(settings);
         Stamp = ComfyInstaller.ReadStamp(Root);
         State = Stamp is null ? ComfyEngineState.NotInstalled : ComfyEngineState.Stopped;
         _host.Output += line => Output?.Invoke(line);
@@ -63,6 +64,43 @@ public sealed class ComfyEngine : IDisposable
     // --------------------------------------------------------------- settings
 
     public string Root => ComfyPaths.Root(_settings);
+
+    /// <summary>Where weights are kept — see <see cref="ComfyPaths"/> for why
+    /// this is a different drive's decision from the engine's.</summary>
+    public string ModelsRoot => ComfyPaths.ModelsDir();
+
+    /// <summary>
+    /// Move the engine folder. Only meaningful before installing: an existing
+    /// install is not relocated, it is simply no longer the one we look at, so
+    /// the caller should say so rather than let the engine appear to vanish.
+    /// </summary>
+    public void SetRoot(string path)
+    {
+        _settings.SetSetting(ComfyPaths.RootSettingKey, path ?? "");
+        _settings.Save();
+        Stamp = ComfyInstaller.ReadStamp(Root);
+        State = Stamp is null ? ComfyEngineState.NotInstalled : ComfyEngineState.Stopped;
+        Changed?.Invoke();
+    }
+
+    public void SetModelsRoot(string path)
+    {
+        ComfyPaths.SetModelsRoot(_settings, path);
+        Changed?.Invoke();
+    }
+
+    /// <summary>Free space on the drive holding a path, in GB. -1 when it
+    /// cannot be measured (network paths, junctions).</summary>
+    public static double FreeGb(string path)
+    {
+        try
+        {
+            var rootPath = System.IO.Path.GetPathRoot(System.IO.Path.GetFullPath(path));
+            if (string.IsNullOrEmpty(rootPath)) return -1;
+            return new System.IO.DriveInfo(rootPath).AvailableFreeSpace / 1073741824.0;
+        }
+        catch { return -1; }
+    }
 
     public int PreferredPort
     {
@@ -215,6 +253,15 @@ public sealed class ComfyEngine : IDisposable
 
             LastError = "";
             Set(ComfyEngineState.Starting, "starting", "กำลังเปิดเอนจิน…", 0.05);
+
+            // Rewrite the model-paths config on every start, not just at
+            // install. The models root is a setting the user can change after
+            // the engine is installed, and a file written once at install time
+            // would keep pointing at the old drive — with the symptom being an
+            // engine that reports no checkpoints while they are plainly there.
+            try { ComfyInstaller.WriteModelPathsConfig(Root); }
+            catch (Exception ex) { ActivityLog.Warn("comfy", "could not refresh extra_model_paths.yaml: " + ex.Message); }
+
             _host.Start(Root, PreferredPort, VramMode);
 
             var deadline = DateTime.UtcNow.AddMinutes(5);

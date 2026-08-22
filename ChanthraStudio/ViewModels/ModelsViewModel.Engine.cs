@@ -122,6 +122,9 @@ public sealed partial class ModelsViewModel : IDisposable
                      nameof(EngineBusy), nameof(EngineVersionLabel), nameof(EngineUrlLabel),
                      nameof(CanInstall), nameof(CanStart), nameof(CanStop),
                      nameof(ShowStartButton), nameof(EngineLog),
+                     nameof(EngineRootText), nameof(ModelsRootText),
+                     nameof(EngineRootLabel), nameof(EngineRootWarning),
+                     nameof(EngineSpaceLabel), nameof(ModelsSpaceLabel),
                  })
             OnPropertyChanged(n);
     }
@@ -148,6 +151,52 @@ public sealed partial class ModelsViewModel : IDisposable
     public string EngineRootLabel => _engine?.Root ?? ComfyPaths.DefaultRoot();
 
     public bool EngineRootWarning => !ComfyPaths.IsAsciiSafe(EngineRootLabel);
+
+    /// <summary>Editable engine folder. Changing it after an install points
+    /// the studio at a different folder rather than moving the old one.</summary>
+    public string EngineRootText
+    {
+        get => _engine?.Root ?? ComfyPaths.DefaultRoot();
+        set
+        {
+            if (_engine is null || string.IsNullOrWhiteSpace(value)) { OnPropertyChanged(); return; }
+            _engine.SetRoot(value.Trim());
+            OnEngineChanged();
+        }
+    }
+
+    public string ModelsRootText
+    {
+        get => _engine?.ModelsRoot ?? "";
+        set
+        {
+            if (_engine is null || string.IsNullOrWhiteSpace(value)) { OnPropertyChanged(); return; }
+            _engine.SetModelsRoot(value.Trim());
+            foreach (var b in Bundles) b.Refresh();
+            OnEngineChanged();
+        }
+    }
+
+    /// <summary>
+    /// Free space on each target drive.
+    ///
+    /// Shown because the two folders routinely belong on different drives and
+    /// the consequence of getting it wrong is discovered 20 GB into a
+    /// download. The engine needs roughly 9 GB while it unpacks; a single
+    /// video profile is 33 GB.
+    /// </summary>
+    public string EngineSpaceLabel => SpaceLabel(EngineRootText, 9);
+    public string ModelsSpaceLabel => SpaceLabel(ModelsRootText, 15);
+
+    private static string SpaceLabel(string path, double wantGb)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return "";
+        var free = ComfyEngine.FreeGb(path);
+        if (free < 0) return "วัดพื้นที่ว่างไม่ได้";
+        return free < wantGb
+            ? $"เหลือ {free:0.0} GB — น้อยไป ควรมีอย่างน้อย {wantGb:0} GB"
+            : $"เหลือ {free:0.0} GB";
+    }
 
     // ------------------------------------------------------------------ state
 

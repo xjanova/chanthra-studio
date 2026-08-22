@@ -170,7 +170,31 @@
                                 </Border>
                                 <TextBlock Margin="0,6,0,0" Style="{StaticResource TextHint}"
                                            Text="ดาวน์โหลดราว 2 GB · มี Python และ torch มาให้ครบในตัว ไม่ต้องลงอะไรเพิ่ม และไม่แตะระบบนอกโฟลเดอร์นี้" />
-                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}" Text="{Binding EngineRootLabel}" />
+                            </StackPanel>
+
+                            <!--  Both folders are editable and both show free space:
+                                  they routinely belong on different drives, and the
+                                  cost of getting it wrong is found 20 GB into a
+                                  download.  -->
+                            <StackPanel Margin="0,12,0,0">
+                                <TextBlock Style="{StaticResource TextFieldLabel}" Text="โฟลเดอร์เอนจิน" />
+                                <Border Margin="0,5,0,0" Padding="10,6" Style="{StaticResource SurfaceInset}">
+                                    <TextBox Background="Transparent" BorderThickness="0" FontFamily="{StaticResource FontMono}" FontSize="12.5"
+                                             Foreground="{StaticResource BrushText1}" CaretBrush="{StaticResource BrushGoldHi}"
+                                             IsEnabled="{Binding EngineInstalled, Converter={StaticResource InvBoolToVis}}"
+                                             Text="{Binding EngineRootText, UpdateSourceTrigger=LostFocus}" />
+                                </Border>
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}" Text="{Binding EngineSpaceLabel}" />
+
+                                <TextBlock Margin="0,10,0,0" Style="{StaticResource TextFieldLabel}" Text="โฟลเดอร์โมเดล" />
+                                <Border Margin="0,5,0,0" Padding="10,6" Style="{StaticResource SurfaceInset}">
+                                    <TextBox Background="Transparent" BorderThickness="0" FontFamily="{StaticResource FontMono}" FontSize="12.5"
+                                             Foreground="{StaticResource BrushText1}" CaretBrush="{StaticResource BrushGoldHi}"
+                                             Text="{Binding ModelsRootText, UpdateSourceTrigger=LostFocus}" />
+                                </Border>
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}" Text="{Binding ModelsSpaceLabel}" />
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}"
+                                           Text="ย้ายได้ทีหลัง — เอนจินอ่านตำแหน่งใหม่ทุกครั้งที่เปิด (ไฟล์ที่โหลดไว้แล้วต้องย้ายตามเอง)" />
                             </StackPanel>
 
                             <!--  Progress while installing or starting  -->

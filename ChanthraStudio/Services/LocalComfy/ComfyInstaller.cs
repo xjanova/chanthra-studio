@@ -68,20 +68,32 @@ public sealed class ComfyInstaller
         // over a previous install would leave a half-old, half-new tree behind
         // if it failed part-way — and that tree would still look installed.
         var staging = Path.Combine(root, "staging");
-        SafeDelete(staging);
-        progress?.Report(new ComfyInstallProgress("extract", "กำลังแตกไฟล์…", 0.55));
-        ExtractSevenZip(archive, staging, progress, ct);
 
-        var portableSource = FindPortableRoot(staging)
-            ?? throw new InvalidOperationException(
-                "The downloaded archive did not contain a ComfyUI portable folder — "
-                + "the release layout may have changed.");
+        // A previous attempt that got as far as a complete extraction leaves
+        // 5 GB of unpacked files behind. Re-extracting them costs four minutes
+        // to produce byte-identical output, so reuse them.
+        var portableSource = FindPortableRoot(staging);
+        if (portableSource is null)
+        {
+            SafeDelete(staging);
+            progress?.Report(new ComfyInstallProgress("extract", "กำลังแตกไฟล์…", 0.55));
+            ExtractSevenZip(archive, staging, progress, ct);
+
+            portableSource = FindPortableRoot(staging)
+                ?? throw new InvalidOperationException(
+                    "The downloaded archive did not contain a ComfyUI portable folder — "
+                    + "the release layout may have changed.");
+        }
+        else
+        {
+            progress?.Report(new ComfyInstallProgress("extract", "ใช้ไฟล์ที่แตกไว้แล้ว", 0.9));
+        }
 
         var target = ComfyPaths.PortableDir(root);
         progress?.Report(new ComfyInstallProgress("configure", "กำลังติดตั้ง…", 0.92));
         SafeDelete(target);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        Directory.Move(portableSource, target);
+        MoveDirectory(portableSource, target);
         SafeDelete(staging);
 
         if (!File.Exists(ComfyPaths.PythonExe(root)))
@@ -380,7 +392,7 @@ public sealed class ComfyInstaller
     /// what lets the rented-GPU route and the local one agree about what a
     /// model is called.
     /// </summary>
-    private static void WriteModelPathsConfig(string root)
+    public static void WriteModelPathsConfig(string root)
     {
         var models = ComfyPaths.ModelsDir();
         var kinds = new[]
@@ -402,6 +414,48 @@ public sealed class ComfyInstaller
 
         File.WriteAllText(Path.Combine(ComfyPaths.ComfyDir(root), "extra_model_paths.yaml"),
             string.Join(Environment.NewLine, lines) + Environment.NewLine);
+    }
+
+    /// <summary>
+    /// Rename the extracted tree into place, surviving the fact that something
+    /// else is very likely reading it.
+    ///
+    /// <b>Observed, not theoretical:</b> a real install failed here with
+    /// "Access to the path … is denied" on a plain <see cref="Directory.Move"/>
+    /// immediately after unpacking. Nothing was wrong with the files — 56,000
+    /// of them, including python.exe and a pile of DLLs, had just landed on
+    /// disk, and the machine's antivirus was still walking them. The handle is
+    /// transient, so the first answer is to wait and ask again.
+    ///
+    /// When the directory rename keeps failing, the children are moved one at
+    /// a time instead: a lock on the top folder does not usually extend to
+    /// everything inside it, and moving parts is still a rename rather than a
+    /// five-gigabyte copy.
+    /// </summary>
+    private static void MoveDirectory(string source, string target)
+    {
+        const int attempts = 5;
+        for (var i = 0; i < attempts; i++)
+        {
+            try
+            {
+                Directory.Move(source, target);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (i == attempts - 1) break;
+                ActivityLog.Warn("comfy", $"move attempt {i + 1} failed ({ex.Message}) — retrying");
+                Thread.Sleep(TimeSpan.FromSeconds(2 * (i + 1)));
+            }
+        }
+
+        ActivityLog.Warn("comfy", "directory rename kept failing — moving contents individually");
+        Directory.CreateDirectory(target);
+        foreach (var dir in Directory.GetDirectories(source))
+            Directory.Move(dir, Path.Combine(target, Path.GetFileName(dir)));
+        foreach (var file in Directory.GetFiles(source))
+            File.Move(file, Path.Combine(target, Path.GetFileName(file)));
     }
 
     private static void SafeDelete(string dir)

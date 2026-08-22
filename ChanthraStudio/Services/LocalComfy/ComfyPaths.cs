@@ -21,6 +21,37 @@ public static class ComfyPaths
     /// wants it on another drive is not stuck with our guess.</summary>
     public const string RootSettingKey = "comfy:engineRoot";
 
+    /// <summary>Settings key for where model weights live.</summary>
+    public const string ModelsSettingKey = "comfy:modelsRoot";
+
+    /// <summary>
+    /// Overrides <see cref="ModelsDir"/> when the user puts weights on another
+    /// drive.
+    ///
+    /// <b>Why this is separate from the engine root.</b> The engine is about
+    /// 4.5 GB and can be reinstalled in minutes. The weights are the expensive
+    /// part — a single video profile is 33 GB — and the drive with room for
+    /// them is frequently not the drive the app is installed on. Forcing them
+    /// alongside the app fills whatever disk it happens to live on, and the
+    /// first symptom is a render failing halfway through a download.
+    /// </summary>
+    private static string? _modelsRootOverride;
+
+    /// <summary>Read the configured roots. Call once at startup.</summary>
+    public static void Configure(AppSettings settings)
+    {
+        var models = settings.GetSetting(ModelsSettingKey);
+        _modelsRootOverride = string.IsNullOrWhiteSpace(models) ? null : models;
+    }
+
+    /// <summary>Point the model folder somewhere else, and persist it.</summary>
+    public static void SetModelsRoot(AppSettings settings, string? path)
+    {
+        _modelsRootOverride = string.IsNullOrWhiteSpace(path) ? null : path;
+        settings.SetSetting(ModelsSettingKey, path ?? "");
+        settings.Save();
+    }
+
     /// <summary>
     /// The engine root: the app's own data folder when that path is plain
     /// ASCII, and a short drive-root folder when it is not.
@@ -80,7 +111,7 @@ public static class ComfyPaths
     /// </summary>
     public static string ModelsDir()
     {
-        var p = Path.Combine(AppPaths.MediaFolder, "models");
+        var p = _modelsRootOverride ?? Path.Combine(AppPaths.MediaFolder, "models");
         Directory.CreateDirectory(p);
         return p;
     }
