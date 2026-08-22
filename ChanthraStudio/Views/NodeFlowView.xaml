@@ -181,90 +181,121 @@
                     Margin="12,0,12,12"
                     VerticalScrollBarVisibility="Auto">
                     <StackPanel>
+
+                        <!--  ── Templates ──
+                              The reason to open this editor at all: a working
+                              graph to start from, rather than a sampler and a
+                              VAE decode to assemble by hand.  -->
                         <TextBlock
                             Margin="0,0,0,6"
                             FontFamily="{StaticResource FontMono}"
                             FontSize="12.5"
                             Foreground="{StaticResource BrushText4}"
-                            Text="LOADERS" />
-                        <Button
-                            Command="{Binding AddNodeCommand}"
-                            CommandParameter="LoadCheckpoint"
-                            Content="◆  Load Checkpoint"
-                            Style="{StaticResource PaletteItem}" />
-                        <Button
-                            Command="{Binding AddNodeCommand}"
-                            CommandParameter="LoraLoader"
-                            Content="◆  Load LoRA"
-                            Style="{StaticResource PaletteItem}" />
-                        <Button
-                            Command="{Binding AddNodeCommand}"
-                            CommandParameter="LoadImage"
-                            Content="◆  Load Image"
-                            Style="{StaticResource PaletteItem}" />
+                            Text="เทมเพลตพร้อมใช้" />
+                        <ItemsControl ItemsSource="{Binding Templates}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:GraphTemplateVm}">
+                                    <Button
+                                        Margin="0,0,0,6"
+                                        Padding="10,8"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        Command="{Binding DataContext.LoadTemplateCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource ButtonPill}"
+                                        ToolTip="{Binding Description}">
+                                        <StackPanel>
+                                            <TextBlock
+                                                FontFamily="{StaticResource FontUI}"
+                                                FontSize="13"
+                                                FontWeight="Medium"
+                                                Foreground="{StaticResource BrushText1}"
+                                                Text="{Binding DisplayName}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <TextBlock
+                                                Margin="0,2,0,0"
+                                                FontFamily="{StaticResource FontMono}"
+                                                FontSize="11.5"
+                                                Foreground="{StaticResource BrushText3}"
+                                                Text="{Binding Spec}"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
 
+                        <!--  ── Every node the engine can run ──  -->
+                        <Grid Margin="0,14,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                Grid.Column="0"
+                                VerticalAlignment="Center"
+                                FontFamily="{StaticResource FontMono}"
+                                FontSize="12.5"
+                                Foreground="{StaticResource BrushText4}"
+                                Text="โหนดทั้งหมด" />
+                            <Button
+                                Grid.Column="1"
+                                Width="28"
+                                Padding="0,2"
+                                Command="{Binding RefreshCatalogCommand}"
+                                Content="↻"
+                                Style="{StaticResource ButtonPill}"
+                                ToolTip="ดึงรายการโหนดจากเอนจินอีกครั้ง" />
+                        </Grid>
+                        <Border
+                            Padding="10,0"
+                            Background="{StaticResource BrushBgInset}"
+                            BorderBrush="{StaticResource BrushLineHairline}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                            <TextBox
+                                Height="30"
+                                Style="{StaticResource SearchTextBox}"
+                                Text="{Binding PaletteQuery, UpdateSourceTrigger=PropertyChanged, Delay=150}"
+                                ToolTip="ค้นหาชื่อโหนด หรือหมวด เช่น lora, controlnet, upscale" />
+                        </Border>
                         <TextBlock
-                            Margin="0,12,0,6"
+                            Margin="0,6,0,6"
                             FontFamily="{StaticResource FontMono}"
-                            FontSize="12.5"
-                            Foreground="{StaticResource BrushText4}"
-                            Text="CONDITIONING" />
-                        <Button
-                            Command="{Binding AddNodeCommand}"
-                            CommandParameter="CLIPTextEncode"
-                            Content="✦  CLIP Text Encode"
-                            Style="{StaticResource PaletteItem}" />
-                        <Button
-                            Command="{Binding AddNodeCommand}"
-                            CommandParameter="ControlNetApply"
-                            Content="✦  ControlNet Apply"
-                            Style="{StaticResource PaletteItem}" />
-
-                        <TextBlock
-                            Margin="0,12,0,6"
-                            FontFamily="{StaticResource FontMono}"
-                            FontSize="12.5"
-                            Foreground="{StaticResource BrushText4}"
-                            Text="LATENT" />
-                        <Button
-                            Command="{Binding AddNodeCommand}"
-                            CommandParameter="EmptyLatentImage"
-                            Content="❍  Empty Latent"
-                            Style="{StaticResource PaletteItem}" />
-                        <Button
-                            Command="{Binding AddNodeCommand}"
-                            CommandParameter="KSampler"
-                            Content="❍  K Sampler"
-                            Style="{StaticResource PaletteItem}" />
-
-                        <TextBlock
-                            Margin="0,12,0,6"
-                            FontFamily="{StaticResource FontMono}"
-                            FontSize="12.5"
-                            Foreground="{StaticResource BrushText4}"
-                            Text="OUTPUT" />
-                        <Button
-                            Command="{Binding AddNodeCommand}"
-                            CommandParameter="VAEDecode"
-                            Content="◐  VAE Decode"
-                            Style="{StaticResource PaletteItem}" />
-                        <Button
-                            Command="{Binding AddNodeCommand}"
-                            CommandParameter="SaveImage"
-                            Content="◐  Save Image"
-                            Style="{StaticResource PaletteItem}" />
-
-                        <TextBlock
-                            Margin="0,12,0,6"
-                            FontFamily="{StaticResource FontMono}"
-                            FontSize="12.5"
-                            Foreground="{StaticResource BrushText4}"
-                            Text="VIDEO" />
-                        <Button
-                            Command="{Binding AddNodeCommand}"
-                            CommandParameter="AnimateDiff"
-                            Content="▶  AnimateDiff"
-                            Style="{StaticResource PaletteItem}" />
+                            FontSize="11.5"
+                            Foreground="{StaticResource BrushText3}"
+                            TextWrapping="Wrap"
+                            Text="{Binding CatalogStatus}" />
+                        <ItemsControl ItemsSource="{Binding PaletteResults}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button
+                                        Margin="0,0,0,4"
+                                        Padding="10,6"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        Command="{Binding DataContext.AddCatalogNodeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource ButtonPill}"
+                                        ToolTip="{Binding Description}">
+                                        <StackPanel>
+                                            <TextBlock
+                                                FontFamily="{StaticResource FontUI}"
+                                                FontSize="12.5"
+                                                Foreground="{StaticResource BrushText1}"
+                                                Text="{Binding DisplayName}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <TextBlock
+                                                FontFamily="{StaticResource FontMono}"
+                                                FontSize="11"
+                                                Foreground="{StaticResource BrushText4}"
+                                                Text="{Binding Category}"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
@@ -348,8 +379,12 @@
                     </ScrollViewer>
 
                     <!--  Status pill — shows the most recent Save/Load/Run/Wire message  -->
+                    <!--  Capped, because a long status message is still a status
+                          message: without a ceiling it grew across the toolbar
+                          and pushed Auto-arrange off the left edge.  -->
                     <Border
                         Grid.Column="1"
+                        MaxWidth="360"
                         Margin="14,0"
                         Padding="10,4"
                         VerticalAlignment="Center"
@@ -381,6 +416,8 @@
                             FontFamily="{StaticResource FontMono}"
                             FontSize="13"
                             Foreground="{StaticResource BrushText1}"
+                            TextTrimming="CharacterEllipsis"
+                            ToolTip="{Binding StatusMessage}"
                             Text="{Binding StatusMessage}" />
                     </Border>
 

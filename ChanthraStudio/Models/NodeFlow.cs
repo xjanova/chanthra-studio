@@ -20,7 +20,21 @@ public sealed class NodeSocket : ObservableObject
 {
     public string Id { get; init; } = "";
     public string Label { get; init; } = "";
+
+    /// <summary>Coarse bucket used for the wire and socket colour.</summary>
     public SocketType Type { get; init; }
+
+    /// <summary>
+    /// The server's own type string — "MODEL", "CONDITIONING", "MASK", or
+    /// whatever a custom node pack invents.
+    ///
+    /// Kept alongside <see cref="Type"/> because the colour bucket is lossy:
+    /// IMAGE and MASK share one, and connecting them is not valid. Empty on
+    /// sockets that predate the schema-driven palette, which the compatibility
+    /// check treats as "allow" so older graphs stay editable.
+    /// </summary>
+    public string TypeName { get; init; } = "";
+
     public bool IsInput { get; init; }
 
     // 0-based index used for vertical layout inside the node card

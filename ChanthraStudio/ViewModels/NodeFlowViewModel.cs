@@ -21,7 +21,7 @@ namespace ChanthraStudio.ViewModels;
 /// automatically because <see cref="RecomputeWires"/> is called from
 /// the view's drag handler.
 /// </summary>
-public sealed class NodeFlowViewModel : ObservableObject
+public sealed partial class NodeFlowViewModel : ObservableObject
 {
     public ObservableCollection<FlowNode> Nodes { get; } = new();
     public ObservableCollection<FlowWire> Wires { get; } = new();
@@ -105,6 +105,13 @@ public sealed class NodeFlowViewModel : ObservableObject
     {
         if (fromSocket.IsInput || !toSocket.IsInput) return false;
         if (ReferenceEquals(fromNode, toNode)) return false;
+        if (!NodeFactory.TypesCompatible(fromSocket, toSocket))
+        {
+            // Refusing here beats letting ComfyUI reject the whole graph at
+            // submit with a message naming a node id.
+            ShowStatus($"ต่อไม่ได้ · {fromSocket.TypeName} → {toSocket.TypeName} คนละชนิด", "warn");
+            return false;
+        }
         var dupe = Wires.FirstOrDefault(w =>
             w.FromNodeId == fromNode.Id && w.FromSocketId == fromSocket.Id &&
             w.ToNodeId == toNode.Id && w.ToSocketId == toSocket.Id);
@@ -213,6 +220,7 @@ public sealed class NodeFlowViewModel : ObservableObject
             OnPropertyChanged(nameof(CanRedo));
         };
 
+        InitPalette();
         RecomputeWires();
     }
 
@@ -241,8 +249,12 @@ public sealed class NodeFlowViewModel : ObservableObject
             var info = await client.GetObjectInfoAsync();
             if (info is null) return;
             _schema = info;
+            _catalog = ComfyNodeCatalog.Parse(info);
+            // Cache it so the palette survives the engine being stopped.
+            _ = ComfyNodeCatalog.FetchAsync(url);
             ApplySchemaToAll();
-            ShowStatus("อ่านรายการโหนดจากเอนจินแล้ว — ช่องที่มีตัวเลือกจะกลายเป็นดรอปดาวน์", "ok");
+            ApplyPaletteFilter();
+            ShowStatus($"อ่านรายการโหนดจากเอนจินแล้ว · {_catalog.Nodes.Count} โหนด — ช่องที่มีตัวเลือกกลายเป็นดรอปดาวน์", "ok");
         }
         catch
         {
