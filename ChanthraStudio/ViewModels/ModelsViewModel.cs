@@ -15,9 +15,17 @@ namespace ChanthraStudio.ViewModels;
 /// LoRAs, UNETs (Flux/Hunyuan/WAN), VAEs, CLIP encoders, CLIP-Vision.
 /// Drives the <c>ModelsView</c> sidebar.
 /// </summary>
-public sealed class ModelsViewModel : ObservableObject
+public sealed partial class ModelsViewModel : ObservableObject
 {
     private readonly StudioContext? _ctx;
+
+    /// <summary>
+    /// False for the design-time instance the XAML constructs. The view uses
+    /// this to decide whether to replace its DataContext — testing "has this
+    /// been populated yet" instead let seeded demo data masquerade as a live
+    /// ViewModel forever.
+    /// </summary>
+    public bool IsLive => _ctx is not null;
 
     public ObservableCollection<ModelGroup> Groups { get; } = new();
 
@@ -48,6 +56,19 @@ public sealed class ModelsViewModel : ObservableObject
     private string _totalLabel = "—";
     public string TotalLabel { get => _totalLabel; set => SetProperty(ref _totalLabel, value); }
 
+    /// <summary>False when the server listed nothing — for either reason.</summary>
+    public bool HasModels => Groups.Any(g => g.TotalCount > 0);
+
+    /// <summary>
+    /// Which kind of empty this is. "No models" and "no server" look identical
+    /// on screen and have completely different fixes, so the panel says which
+    /// one it is rather than leaving the user to guess.
+    /// </summary>
+    public string EmptyModelsHint => StatusKind == "err"
+        ? "ต่อกับเซิร์ฟเวอร์ ComfyUI ไม่ได้ — เปิด ComfyUI แล้วกด Refresh หรือแก้ URL ในหน้า Settings "
+          + "(ถ้ายังไม่มีเครื่อง ใช้เส้นทาง Rented GPU ได้ สตูดิโอจะติดตั้งและโหลดโมเดลให้เอง)"
+        : "ต่อเซิร์ฟเวอร์ได้แล้ว แต่ยังไม่มีไฟล์โมเดลอยู่ในเครื่อง — วางไฟล์ไว้ใน ComfyUI/models/ แล้วกด Refresh";
+
     public IRelayCommand RefreshCommand { get; }
 
     // Cache of the unfiltered lists so re-filtering is cheap.
@@ -59,6 +80,8 @@ public sealed class ModelsViewModel : ObservableObject
     {
         _ctx = ctx;
         RefreshCommand = new RelayCommand(async () => await RefreshAsync(), () => !_isRefreshing);
+        InitComfyCommands();
+        InitEngine();
         if (_ctx is null)
         {
             // Design-time placeholders so the XAML preview isn't empty.
@@ -67,6 +90,9 @@ public sealed class ModelsViewModel : ObservableObject
         else
         {
             ServerUrl = _ctx.Settings.ComfyUiUrl;
+            // Settings load from the database, not from the server, so they
+            // must be on screen whether or not ComfyUI is reachable.
+            LoadComfySettings();
             _ = RefreshAsync();
         }
     }
@@ -85,6 +111,10 @@ public sealed class ModelsViewModel : ObservableObject
             {
                 ServerStatus = $"unreachable · {probe.Status}";
                 StatusKind = "err";
+                // Not just "0 queued": this early return used to skip the queue
+                // read entirely, leaving the card showing its "—" placeholder
+                // as though the number were still loading.
+                QueueLabel = "unreachable";
                 _raw.Clear();
                 ApplyFilter();
                 return;
@@ -99,6 +129,19 @@ public sealed class ModelsViewModel : ObservableObject
             _raw["CLIP encoders"] = await client.GetAvailableClipsAsync();
             _raw["CLIP Vision"] = await client.GetAvailableClipVisionAsync();
 
+            // Populate the pickers from what this server actually accepts.
+            var (samplers, schedulers) = await client.GetSamplerOptionsAsync();
+            Replace(Samplers, samplers);
+            Replace(Schedulers, schedulers);
+            Replace(CheckpointChoices, _raw["Checkpoints"]);
+            Replace(LoraChoices, _raw["LoRA"]);
+
+            // A saved value the server has never heard of would sit in the
+            // combo box looking selected while failing validation at submit.
+            if (samplers.Count > 0 && !samplers.Contains(SamplerName)) SamplerName = samplers[0];
+            if (schedulers.Count > 0 && !schedulers.Contains(Scheduler)) Scheduler = schedulers[0];
+
+            await RefreshQueueAsync();
             ApplyFilter();
         }
         catch (Exception ex)
@@ -110,6 +153,14 @@ public sealed class ModelsViewModel : ObservableObject
         {
             IsRefreshing = false;
         }
+    }
+
+    /// <summary>Refill an observable collection in place — rebinding the whole
+    /// collection would drop the ComboBox's current selection.</summary>
+    private static void Replace(ObservableCollection<string> target, IEnumerable<string> items)
+    {
+        target.Clear();
+        foreach (var i in items) target.Add(i);
     }
 
     private void ApplyFilter()
@@ -133,6 +184,8 @@ public sealed class ModelsViewModel : ObservableObject
             Groups.Add(group);
         }
         TotalLabel = $"{total} model{(total == 1 ? "" : "s")} installed";
+        OnPropertyChanged(nameof(HasModels));
+        OnPropertyChanged(nameof(EmptyModelsHint));
     }
 
     private void SeedDesignTime()

@@ -78,20 +78,20 @@ internal abstract class StubPostingProvider : IPostingProvider
 internal sealed class ComfyUiVideoProvider : StubVideoProvider
 {
     public override string Id => "comfyui";
-    public override string DisplayName => "ComfyUI · local GPU";
-    public override string ApiKeyHint => "Server URL in Settings · no key needed";
+    public override string DisplayName => "ComfyUI · การ์ดจอเครื่องนี้";
+    public override string ApiKeyHint => "ไม่ต้องใช้คีย์ — ติดตั้งเอนจินในหน้า ComfyUI";
     public override bool RequiresApiKey => false;
 
     /// <summary>
     /// ComfyUI route IS wired — it just bypasses the IVideoProvider interface
     /// and goes through ComfyUiClient directly from GenerationService. We
-    /// keep this shell so Settings renders a row for the local-GPU route.
+    /// keep this shell so Settings renders a row for the local route.
     /// </summary>
     public override bool IsImplemented => true;
 
     public override Task<ProviderHealth> ProbeAsync(string apiKey, CancellationToken ct = default)
         => Task.FromResult(new ProviderHealth(true, "local",
-            "Connect via Settings → ComfyUI URL; the generation orchestrator probes the server live before each submit."));
+            "ใช้เอนจิน ComfyUI ที่สตูดิโอติดตั้งเอง (หน้า ComfyUI) หรือชี้ไปเซิร์ฟเวอร์ที่มีอยู่แล้วผ่าน Settings → ComfyUI URL"));
 }
 
 internal sealed class RentedGpuVideoProvider : StubVideoProvider

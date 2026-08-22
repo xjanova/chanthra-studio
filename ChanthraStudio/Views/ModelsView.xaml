@@ -41,7 +41,7 @@
                 <StackPanel Grid.Column="0">
                     <TextBlock Style="{StaticResource TextPanelHeader}">
                         <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
-                        <Run Text="Models" />
+                        <Run Text="ComfyUI · โมเดล และค่าเรนเดอร์" />
                     </TextBlock>
                     <Grid Margin="0,8,0,0">
                         <Grid.ColumnDefinitions>
@@ -74,7 +74,7 @@
                             </Border.Style>
                             <TextBlock
                                 FontFamily="{StaticResource FontMono}"
-                                FontSize="10"
+                                FontSize="11.5"
                                 Foreground="{StaticResource BrushText1}"
                                 Text="{Binding ServerStatus}" />
                         </Border>
@@ -117,8 +117,502 @@
             </Grid>
         </Border>
 
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="660" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!--  ============ Render settings ============
+
+                  Everything the studio may rewrite inside a workflow. Each
+                  group is off by default and leaves the graph's own values
+                  alone; a group whose nodes the selected workflow does not
+                  have is disabled outright rather than left to do nothing.  -->
+            <ScrollViewer x:Name="SettingsScroller" Grid.Column="0" Padding="32,18,16,18" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+
+                    <!--  ============ The studio's own engine ============
+                          Install ComfyUI, run it, stop it. No terminal, no
+                          separate download, no server URL to know about.  -->
+                    <Border Padding="18,15" Style="{StaticResource SurfaceCard}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource TextCardTitle}" Text="เอนจิน ComfyUI ของสตูดิโอ" />
+                                <Border Grid.Column="1" Padding="9,3" CornerRadius="99" Background="{StaticResource BrushBgInset}">
+                                    <TextBlock Style="{StaticResource TextMono}" Text="{Binding EngineStateLabel}"
+                                               Foreground="{Binding EngineStateBrushKey, Converter={StaticResource ResourceLookup}}" />
+                                </Border>
+                            </Grid>
+
+                            <TextBlock Margin="0,6,0,0" Style="{StaticResource TextHint}" Text="{Binding GpuLabel}" />
+                            <TextBlock Margin="0,2,0,0" Style="{StaticResource TextHint}" Text="{Binding EngineVersionLabel}"
+                                       Visibility="{Binding EngineVersionLabel, Converter={StaticResource NotNullOrEmpty}}" />
+
+                            <!--  A non-ASCII engine path is the classic cause of an
+                                  install that looks like a broken GPU.  -->
+                            <Border Margin="0,10,0,0" Padding="10,7" CornerRadius="6"
+                                    Background="#1FE0B056" BorderBrush="#40E0B056" BorderThickness="1"
+                                    Visibility="{Binding EngineRootWarning, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Style="{StaticResource TextHint}" Foreground="{StaticResource BrushGoldHi}"
+                                           Text="โฟลเดอร์ปลายทางมีตัวอักษรที่ไม่ใช่ภาษาอังกฤษ — Python ในเอนจินอาจทำงานผิดพลาด สตูดิโอจะย้ายไปโฟลเดอร์ที่ปลอดภัยให้เอง" />
+                            </Border>
+
+                            <!--  Not installed: pick a build and go  -->
+                            <StackPanel Margin="0,12,0,0" Visibility="{Binding EngineInstalled, Converter={StaticResource InvBoolToVis}}">
+                                <TextBlock Style="{StaticResource TextFieldLabel}" Text="เลือกรุ่นให้ตรงกับการ์ดจอ" />
+                                <Border Margin="0,5,0,0" Padding="10,6" Style="{StaticResource SurfaceInset}">
+                                    <ComboBox ItemsSource="{Binding Flavours}" SelectedItem="{Binding SelectedFlavour, Mode=TwoWay}" />
+                                </Border>
+                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextHint}"
+                                           Text="ดาวน์โหลดราว 2 GB · มี Python และ torch มาให้ครบในตัว ไม่ต้องลงอะไรเพิ่ม และไม่แตะระบบนอกโฟลเดอร์นี้" />
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}" Text="{Binding EngineRootLabel}" />
+                            </StackPanel>
+
+                            <!--  Progress while installing or starting  -->
+                            <StackPanel Margin="0,12,0,0" Visibility="{Binding EngineBusy, Converter={StaticResource BoolToVis}}">
+                                <Border Height="6" CornerRadius="3" Background="{StaticResource BrushBgInset}">
+                                    <Border HorizontalAlignment="Left" CornerRadius="3"
+                                            Background="{StaticResource BrushGold}"
+                                            Width="{Binding EngineProgressPct, Converter={StaticResource PercentToWidth}, ConverterParameter=560}" />
+                                </Border>
+                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextHint}" Text="{Binding EngineDetail}" />
+                            </StackPanel>
+
+                            <StackPanel Margin="0,12,0,0" Orientation="Horizontal">
+                                <Button Padding="14,6" Command="{Binding InstallEngineCommand}" Style="{StaticResource ButtonPillGold}"
+                                        Content="⬇ ติดตั้งเอนจิน" IsEnabled="{Binding CanInstall}"
+                                        Visibility="{Binding EngineInstalled, Converter={StaticResource InvBoolToVis}}" />
+                                <Button Padding="14,6" Command="{Binding StartEngineCommand}" Style="{StaticResource ButtonPillGold}"
+                                        Content="▶ เปิดเอนจิน" IsEnabled="{Binding CanStart}"
+                                        Visibility="{Binding ShowStartButton, Converter={StaticResource BoolToVis}}" />
+                                <Button Padding="14,6" Command="{Binding StopEngineCommand}" Style="{StaticResource ButtonPill}"
+                                        Content="⏹ หยุดเอนจิน" IsEnabled="{Binding CanStop}"
+                                        Visibility="{Binding EngineRunning, Converter={StaticResource BoolToVis}}" />
+                                <Button Margin="8,0,0,0" Padding="14,6" Command="{Binding CancelInstallCommand}" Style="{StaticResource ButtonPill}"
+                                        Content="ยกเลิก" Visibility="{Binding EngineBusy, Converter={StaticResource BoolToVis}}" />
+                                <Button Margin="8,0,0,0" Padding="14,6" Command="{Binding UninstallEngineCommand}" Style="{StaticResource ButtonPill}"
+                                        Content="ลบเอนจิน" Visibility="{Binding EngineInstalled, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+
+                            <!--  Runtime knobs  -->
+                            <StackPanel Margin="0,14,0,0" Visibility="{Binding EngineInstalled, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="โหมด VRAM" />
+                                    <Border Width="150" Margin="8,0,0,0" Padding="10,5" Style="{StaticResource SurfaceInset}">
+                                        <ComboBox ItemsSource="{Binding VramModes}" SelectedItem="{Binding VramMode, Mode=TwoWay}" />
+                                    </Border>
+                                    <TextBlock Margin="16,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="พอร์ต" />
+                                    <Border Width="84" Margin="8,0,0,0" Padding="10,5" Style="{StaticResource SurfaceInset}">
+                                        <TextBox Background="Transparent" BorderThickness="0" FontFamily="{StaticResource FontMono}" FontSize="13"
+                                                 Foreground="{StaticResource BrushText1}" CaretBrush="{StaticResource BrushGoldHi}"
+                                                 Text="{Binding EnginePortText, UpdateSourceTrigger=LostFocus}" />
+                                    </Border>
+                                    <TextBlock Margin="16,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding EngineUrlLabel}" />
+                                </StackPanel>
+
+                                <StackPanel Margin="0,12,0,0" Orientation="Horizontal">
+                                    <ToggleButton VerticalAlignment="Center" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding UseOwnEngine, Mode=TwoWay}" />
+                                    <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="ใช้เอนจินนี้สำหรับเส้นทาง ComfyUI" />
+                                </StackPanel>
+                                <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                                    <ToggleButton VerticalAlignment="Center" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding AutoStartEngine, Mode=TwoWay}" />
+                                    <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="เปิดเองอัตโนมัติเมื่อสั่งเรนเดอร์" />
+                                </StackPanel>
+
+                                <StackPanel Margin="0,12,0,0" Orientation="Horizontal">
+                                    <TextBlock VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="คิวงาน" />
+                                    <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding QueueLabel}" />
+                                    <Button Margin="16,0,0,0" Padding="12,5" Command="{Binding InterruptCommand}" Content="⏹ หยุดงานที่รันอยู่" Style="{StaticResource ButtonPill}" />
+                                    <Button Margin="8,0,0,0" Padding="12,5" Command="{Binding FreeMemoryCommand}" Content="⌫ คืน VRAM" Style="{StaticResource ButtonPill}" />
+                                </StackPanel>
+
+                                <TextBlock Margin="0,12,0,4" Style="{StaticResource TextFieldLabel}" Text="log ล่าสุด" />
+                                <Border Padding="10,8" MaxHeight="150" Style="{StaticResource SurfaceInset}">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <TextBlock Style="{StaticResource TextMono}" FontSize="11.5" TextWrapping="NoWrap" Text="{Binding EngineLog}" />
+                                    </ScrollViewer>
+                                </Border>
+                            </StackPanel>
+
+                            <TextBlock Margin="0,12,0,0" Style="{StaticResource TextHint}" Text="{Binding ServerStatus}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!--  ============ Model bundles ============
+                          The same verified catalog the rented-GPU route
+                          installs, downloaded to this machine instead.  -->
+                    <Border Margin="0,14,0,0" Padding="18,15" Style="{StaticResource SurfaceCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TextCardTitle}" Text="ชุดโมเดล" />
+                            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}"
+                                       Text="เก็บไว้นอกโฟลเดอร์เอนจิน — ลบหรืออัปเกรดเอนจินได้โดยไม่ต้องโหลดโมเดลใหม่" />
+                            <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding Bundles}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,8" Padding="12,10" Style="{StaticResource SurfaceInset}">
+                                            <StackPanel>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock Style="{StaticResource TextFieldLabel}" Text="{Binding DisplayName}" />
+                                                        <TextBlock Margin="0,3,0,0" Style="{StaticResource TextHint}" Text="{Binding Description}" />
+                                                        <TextBlock Margin="0,3,0,0" Style="{StaticResource TextMono}" Text="{Binding SizeLabel}" />
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1" VerticalAlignment="Top" Padding="12,5"
+                                                            Command="{Binding DataContext.DownloadBundleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="⬇ โหลด" Style="{StaticResource ButtonPill}"
+                                                            IsEnabled="{Binding CanDownload}" />
+                                                </Grid>
+                                                <Border Margin="0,8,0,0" Height="4" CornerRadius="2" Background="{StaticResource BrushBgBase}"
+                                                        Visibility="{Binding Busy, Converter={StaticResource BoolToVis}}">
+                                                    <Border HorizontalAlignment="Left" CornerRadius="2" Background="{StaticResource BrushGold}"
+                                                            Width="{Binding ProgressPct, Converter={StaticResource PercentToWidth}, ConverterParameter=530}" />
+                                                </Border>
+                                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextHint}" Text="{Binding Status}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!--  Workflow + capabilities  -->
+                    <Border Margin="0,14,0,0" Padding="18,15" Style="{StaticResource SurfaceCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TextCardTitle}" Text="เวิร์กโฟลว์ที่ใช้อยู่" />
+                            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}"
+                                       Text="เลือกที่นี่ = เปลี่ยนตัวเดียวกับใน Composer" />
+                            <Border Margin="0,10,0,0" Padding="10,6" Style="{StaticResource SurfaceInset}">
+                                <ComboBox ItemsSource="{Binding WorkflowChoices}"
+                                          SelectedItem="{Binding SelectedWorkflow, Mode=TwoWay}"
+                                          DisplayMemberPath="DisplayName" />
+                            </Border>
+                            <TextBlock Margin="0,8,0,0" Style="{StaticResource TextHint}" Text="{Binding CapsLabel}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!--  Sampler  -->
+                    <Border Margin="0,14,0,0" Padding="18,15" Style="{StaticResource SurfaceCard}"
+                            IsEnabled="{Binding CanSample}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource TextCardTitle}" Text="ตัวสุ่มภาพ (Sampler)" />
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding OverrideSampler, Mode=TwoWay}" />
+                            </Grid>
+                            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}"
+                                       Text="ปิดไว้ = ใช้ค่าที่เวิร์กโฟลว์ตั้งมาเอง เปิดเมื่ออยากคุมเอง" />
+
+                            <StackPanel Margin="0,12,0,0" IsEnabled="{Binding OverrideSampler}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,7,0">
+                                        <TextBlock Style="{StaticResource TextFieldLabel}" Text="Sampler" />
+                                        <Border Margin="0,5,0,0" Padding="10,6" Style="{StaticResource SurfaceInset}">
+                                            <ComboBox ItemsSource="{Binding Samplers}" SelectedItem="{Binding SamplerName, Mode=TwoWay}" />
+                                        </Border>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="7,0,0,0">
+                                        <TextBlock Style="{StaticResource TextFieldLabel}" Text="Scheduler" />
+                                        <Border Margin="0,5,0,0" Padding="10,6" Style="{StaticResource SurfaceInset}">
+                                            <ComboBox ItemsSource="{Binding Schedulers}" SelectedItem="{Binding Scheduler, Mode=TwoWay}" />
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="Steps" />
+                                    <Slider Grid.Column="1" Minimum="1" Maximum="80" SmallChange="1" LargeChange="5" Style="{StaticResource GoldSlider}" Value="{Binding Steps, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Steps, StringFormat={}{0:F0}}" />
+                                </Grid>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="CFG" />
+                                    <Slider Grid.Column="1" Minimum="1" Maximum="20" SmallChange="0.1" LargeChange="1" Style="{StaticResource GoldSlider}" Value="{Binding Cfg, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Cfg, StringFormat={}{0:F1}}" />
+                                </Grid>
+                                <Grid Margin="0,8,0,0" IsEnabled="{Binding Caps.HasDenoise, FallbackValue=True}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="Denoise" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.1" Style="{StaticResource GoldSlider}" Value="{Binding Denoise, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding Denoise, StringFormat={}{0:F2}}" />
+                                </Grid>
+
+                                <Button Margin="0,12,0,0" HorizontalAlignment="Left" Padding="12,5" Command="{Binding ResetSamplerCommand}" Content="↺ ค่ามาตรฐาน" Style="{StaticResource ButtonPill}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!--  Size  -->
+                    <Border Margin="0,14,0,0" Padding="18,15" Style="{StaticResource SurfaceCard}"
+                            IsEnabled="{Binding CanSize}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource TextCardTitle}" Text="ขนาดภาพ" />
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding OverrideSize, Mode=TwoWay}" />
+                            </Grid>
+                            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}"
+                                       Text="ปิดไว้ = ใช้อัตราส่วน + ปุ่ม HD จากหน้า Composer" />
+
+                            <StackPanel Margin="0,12,0,0" IsEnabled="{Binding OverrideSize}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="กว้าง" />
+                                    <Border Width="86" Margin="8,0,0,0" Padding="10,6" Style="{StaticResource SurfaceInset}">
+                                        <TextBox Background="Transparent" BorderThickness="0" FontFamily="{StaticResource FontMono}" FontSize="13" Foreground="{StaticResource BrushText1}" CaretBrush="{StaticResource BrushGoldHi}"
+                                                 Text="{Binding WidthText, UpdateSourceTrigger=LostFocus}" />
+                                    </Border>
+                                    <TextBlock Margin="14,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="สูง" />
+                                    <Border Width="86" Margin="8,0,0,0" Padding="10,6" Style="{StaticResource SurfaceInset}">
+                                        <TextBox Background="Transparent" BorderThickness="0" FontFamily="{StaticResource FontMono}" FontSize="13" Foreground="{StaticResource BrushText1}" CaretBrush="{StaticResource BrushGoldHi}"
+                                                 Text="{Binding HeightText, UpdateSourceTrigger=LostFocus}" />
+                                    </Border>
+                                    <TextBlock Margin="14,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextHint}" Text="{Binding SizeNote}" />
+                                </StackPanel>
+
+                                <Grid Margin="0,12,0,0" IsEnabled="{Binding Caps.SupportsBatch, FallbackValue=True}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="จำนวนต่อครั้ง" />
+                                    <Slider Grid.Column="1" Minimum="1" Maximum="8" SmallChange="1" LargeChange="1" Style="{StaticResource GoldSlider}" Value="{Binding BatchSize, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding BatchSize, StringFormat={}{0:F0}}" />
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!--  Seed  -->
+                    <Border Margin="0,14,0,0" Padding="18,15" Style="{StaticResource SurfaceCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TextCardTitle}" Text="Seed" />
+                            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}"
+                                       Text="เลขเดิม = ได้ภาพเดิม · สุ่มแล้วยังเก็บเลขล่าสุดไว้เสมอ จะได้ย้อนกลับไปทำซ้ำได้" />
+                            <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
+                                <RadioButton GroupName="seedMode" Margin="0,0,6,0" Content="คงที่" Style="{StaticResource ChipRadio}" IsChecked="{Binding SeedFixed, Mode=TwoWay}" />
+                                <RadioButton GroupName="seedMode" Margin="0,0,6,0" Content="สุ่มทุกครั้ง" Style="{StaticResource ChipRadio}" IsChecked="{Binding SeedRandom, Mode=TwoWay}" />
+                                <RadioButton GroupName="seedMode" Margin="0,0,6,0" Content="+1 ทุกครั้ง" Style="{StaticResource ChipRadio}" IsChecked="{Binding SeedIncrement, Mode=TwoWay}" />
+                            </StackPanel>
+                            <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
+                                <TextBlock VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="เลขล่าสุด" />
+                                <Border Width="180" Margin="8,0,0,0" Padding="10,6" Style="{StaticResource SurfaceInset}">
+                                    <TextBox Background="Transparent" BorderThickness="0" FontFamily="{StaticResource FontMono}" FontSize="13" Foreground="{StaticResource BrushText1}" CaretBrush="{StaticResource BrushGoldHi}"
+                                             Text="{Binding SeedText, UpdateSourceTrigger=LostFocus}" />
+                                </Border>
+                                <Button Margin="8,0,0,0" Padding="12,5" Command="{Binding RandomiseSeedCommand}" Content="🎲" Style="{StaticResource ButtonPill}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!--  Checkpoint  -->
+                    <Border Margin="0,14,0,0" Padding="18,15" Style="{StaticResource SurfaceCard}"
+                            IsEnabled="{Binding CanCheckpoint}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource TextCardTitle}" Text="โมเดลหลัก (Checkpoint)" />
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding OverrideCheckpoint, Mode=TwoWay}" />
+                            </Grid>
+                            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}"
+                                       Text="รายชื่อมาจากเซิร์ฟเวอร์จริง ไม่ได้พิมพ์เดา" />
+                            <Border Margin="0,10,0,0" Padding="10,6" Style="{StaticResource SurfaceInset}" IsEnabled="{Binding OverrideCheckpoint}">
+                                <ComboBox ItemsSource="{Binding CheckpointChoices}" SelectedItem="{Binding CheckpointName, Mode=TwoWay}" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!--  LoRA stack  -->
+                    <Border Margin="0,14,0,0" Padding="18,15" Style="{StaticResource SurfaceCard}"
+                            IsEnabled="{Binding CanLora}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource TextCardTitle}" Text="LoRA" />
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding OverrideLoras, Mode=TwoWay}" />
+                            </Grid>
+                            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}"
+                                       Text="ใส่ได้เท่าจำนวนช่อง LoraLoader ที่เวิร์กโฟลว์มีอยู่ ช่องที่ไม่ได้ใช้จะถูกตั้งความแรงเป็น 0 ให้เอง" />
+
+                            <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding LoraStack}" IsEnabled="{Binding OverrideLoras}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,8" Padding="10,8" Style="{StaticResource SurfaceInset}">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <ToggleButton VerticalAlignment="Center" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding Enabled, Mode=TwoWay}" />
+                                                    <ComboBox Width="330" Margin="10,0,0,0"
+                                                              ItemsSource="{Binding DataContext.LoraChoices, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                              SelectedItem="{Binding Name, Mode=TwoWay}" />
+                                                    <Button Margin="10,0,0,0" Padding="10,4"
+                                                            Command="{Binding DataContext.RemoveLoraCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="✕" Style="{StaticResource ButtonPill}" />
+                                                </StackPanel>
+                                                <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                                                    <TextBlock VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="model" />
+                                                    <Slider Margin="8,0,0,0" Minimum="0" Maximum="2" SmallChange="0.05" Style="{StaticResource GoldSlider}" Value="{Binding ModelStrength, Mode=TwoWay}" />
+                                                    <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding ModelStrength, StringFormat={}{0:F2}}" />
+                                                    <TextBlock Margin="18,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="clip" />
+                                                    <Slider Margin="8,0,0,0" Minimum="0" Maximum="2" SmallChange="0.05" Style="{StaticResource GoldSlider}" Value="{Binding ClipStrength, Mode=TwoWay}" />
+                                                    <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding ClipStrength, StringFormat={}{0:F2}}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Button HorizontalAlignment="Left" Padding="12,5" Command="{Binding AddLoraCommand}" Content="+ เพิ่ม LoRA" Style="{StaticResource ButtonPill}" IsEnabled="{Binding OverrideLoras}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!--  Clip skip  -->
+                    <Border Margin="0,14,0,0" Padding="18,15" Style="{StaticResource SurfaceCard}"
+                            IsEnabled="{Binding CanClipSkip}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource TextCardTitle}" Text="Clip skip" />
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding OverrideClipSkip, Mode=TwoWay}" />
+                            </Grid>
+                            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}"
+                                       Text="ต้องมีโหนด CLIPSetLastLayer ในเวิร์กโฟลว์ถึงจะใช้ได้ · โมเดลสาย anime มักใช้ 2" />
+                            <Grid Margin="0,10,0,0" IsEnabled="{Binding OverrideClipSkip}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="ข้ามกี่ชั้น" />
+                                <Slider Grid.Column="1" Minimum="1" Maximum="12" SmallChange="1" LargeChange="1" Style="{StaticResource GoldSlider}" Value="{Binding ClipSkip, Mode=TwoWay}" />
+                                <TextBlock Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding ClipSkip, StringFormat={}{0:F0}}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!--  Video  -->
+                    <Border Margin="0,14,0,0" Padding="18,15" Style="{StaticResource SurfaceCard}"
+                            IsEnabled="{Binding CanVideo}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource TextCardTitle}" Text="วิดีโอ · ความยาว / เฟรมเรต" />
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding OverrideVideo, Mode=TwoWay}" />
+                            </Grid>
+                            <StackPanel Margin="0,10,0,0" IsEnabled="{Binding OverrideVideo}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="จำนวนเฟรม" />
+                                    <Slider Grid.Column="1" Minimum="9" Maximum="241" SmallChange="4" LargeChange="16" Style="{StaticResource GoldSlider}" Value="{Binding VideoFrames, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding VideoFrames, StringFormat={}{0:F0}}" />
+                                </Grid>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextFieldLabel}" Text="fps" />
+                                    <Slider Grid.Column="1" Minimum="6" Maximum="60" SmallChange="1" LargeChange="6" Style="{StaticResource GoldSlider}" Value="{Binding VideoFps, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding VideoFps, StringFormat={}{0:F0}}" />
+                                </Grid>
+                                <TextBlock Margin="0,8,0,0" Style="{StaticResource TextHint}" Text="{Binding VideoNote}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!--  What will actually be written  -->
+                    <Border Margin="0,14,0,24" Padding="18,15" Style="{StaticResource SurfaceCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource TextCardTitle}" Text="จะเขียนอะไรลงกราฟบ้าง" />
+                            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}"
+                                       Text="คำนวณจากเวิร์กโฟลว์จริง ไม่ใช่คำสัญญา — บรรทัดที่ขึ้น — คือของที่เวิร์กโฟลว์นี้ไม่มีโหนดรองรับ" />
+                            <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding PatchPreview}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,0,0,5">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="20" />
+                                                <ColumnDefinition Width="120" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Style="{StaticResource TextMono}" Text="{Binding Icon}" />
+                                            <TextBlock Grid.Column="1" Style="{StaticResource TextMono}" Text="{Binding Field}" />
+                                            <TextBlock Grid.Column="2" Margin="0,0,10,0" Style="{StaticResource TextMonoGold}" Text="{Binding Value}" />
+                                            <TextBlock Grid.Column="3" Style="{StaticResource TextHint}" Text="{Binding Note}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
         <!--  Groups  -->
-        <ScrollViewer Grid.Row="1" Padding="32,18,32,18" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Column="1" Padding="16,18,32,18" VerticalScrollBarVisibility="Auto">
+          <StackPanel>
+            <!--  An empty inventory has two very different causes and the user
+                  can only act on one of them, so say which it is.  -->
+            <Border Padding="18,15" Style="{StaticResource SurfaceCard}"
+                    Visibility="{Binding HasModels, Converter={StaticResource InvBoolToVis}}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource TextCardTitle}" Text="ยังไม่เห็นโมเดล" />
+                    <TextBlock Margin="0,6,0,0" Style="{StaticResource TextHint}" Text="{Binding EmptyModelsHint}" />
+                </StackPanel>
+            </Border>
+
             <ItemsControl ItemsSource="{Binding Groups}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type m:ModelGroup}">
@@ -135,7 +629,7 @@
                                     <TextBlock
                                         Grid.Column="0"
                                         FontFamily="{StaticResource FontDisplay}"
-                                        FontSize="15"
+                                        FontSize="16"
                                         FontStyle="Italic"
                                         FontWeight="Medium"
                                         Foreground="{StaticResource BrushText1}"
@@ -168,7 +662,7 @@
                                                 CornerRadius="4">
                                                 <TextBlock
                                                     FontFamily="{StaticResource FontMono}"
-                                                    FontSize="10.5"
+                                                    FontSize="12"
                                                     Foreground="{StaticResource BrushText1}"
                                                     Text="{Binding}" />
                                             </Border>
@@ -181,6 +675,8 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+          </StackPanel>
         </ScrollViewer>
+        </Grid>
     </Grid>
 </UserControl>

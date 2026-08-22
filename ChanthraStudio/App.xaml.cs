@@ -211,6 +211,10 @@ public partial class App : Application
         try { Studio.GpuWorkers.TerminateAllOnExit(); }
         catch { /* the rows stay marked live, so the next launch will retry */ }
         try { Studio.GpuWorkers.Dispose(); } catch { /* dispose is best effort */ }
+        // Stop our own ComfyUI. The job object would kill it anyway when this
+        // process dies, but an orderly stop lets torch release the GPU instead
+        // of the driver having to reclaim it, and it keeps the log readable.
+        try { Studio.ComfyEngine.Dispose(); } catch { /* dispose is best effort */ }
         try { Studio.GpuTelemetry.Dispose(); } catch { /* dispose is best effort */ }
         try { Studio.ScheduleService.Dispose(); } catch { /* dispose is best effort */ }
         // Drain the activity log buffer before the process exits — the

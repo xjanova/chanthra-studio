@@ -106,6 +106,72 @@ public sealed class ComfyUiClient : IDisposable
         => ExtractInputChoices(await GetObjectInfoAsync(ct), "CLIPVisionLoader", "clip_name");
 
     /// <summary>
+    /// The sampler and scheduler names this server accepts, read from
+    /// KSampler's own schema.
+    ///
+    /// Read rather than hard-coded on purpose: custom node packs add samplers,
+    /// mainline adds and renames them between versions, and a stale built-in
+    /// list offers the user a value that fails validation at submit — with an
+    /// error naming a node number rather than the dropdown they touched.
+    /// </summary>
+    public async Task<(List<string> Samplers, List<string> Schedulers)> GetSamplerOptionsAsync(
+        CancellationToken ct = default)
+    {
+        var info = await GetObjectInfoAsync(ct);
+        return (ExtractInputChoices(info, "KSampler", "sampler_name"),
+                ExtractInputChoices(info, "KSampler", "scheduler"));
+    }
+
+    /// <summary>
+    /// How many prompts are running and how many are waiting. Returns
+    /// <c>(-1, -1)</c> when the server cannot be reached, which the caller must
+    /// distinguish from a genuinely empty queue — "0 queued" on a dead server
+    /// is the kind of reassuring lie that costs an hour of debugging.
+    /// </summary>
+    public async Task<(int Running, int Pending)> GetQueueAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var resp = await _http.GetAsync("queue", ct);
+            if (!resp.IsSuccessStatusCode) return (-1, -1);
+            var json = JsonNode.Parse(await resp.Content.ReadAsStringAsync(ct)) as JsonObject;
+            var running = (json?["queue_running"] as JsonArray)?.Count ?? 0;
+            var pending = (json?["queue_pending"] as JsonArray)?.Count ?? 0;
+            return (running, pending);
+        }
+        catch
+        {
+            return (-1, -1);
+        }
+    }
+
+    /// <summary>
+    /// Ask ComfyUI to unload models and free VRAM.
+    ///
+    /// Useful on a shared local card: ComfyUI holds the last checkpoint
+    /// resident, so switching to another GPU app without this means either
+    /// restarting ComfyUI or running out of memory.
+    /// </summary>
+    public async Task<bool> FreeMemoryAsync(bool unloadModels = true, CancellationToken ct = default)
+    {
+        try
+        {
+            var payload = new JsonObject
+            {
+                ["unload_models"] = unloadModels,
+                ["free_memory"] = true,
+            };
+            using var content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json");
+            using var resp = await _http.PostAsync("free", content, ct);
+            return resp.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Walks <c>info[nodeType].input.required[inputName]</c> — the first
     /// element is conventionally an array of valid values for combobox-style
     /// inputs. Returns empty if the node or input doesn't exist.

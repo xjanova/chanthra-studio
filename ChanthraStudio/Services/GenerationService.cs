@@ -480,9 +480,15 @@ public sealed class GenerationService
     private async Task<string> SubmitToComfyUiAsync(
         Shot shot, string? workflowOverride, CancellationToken ct, ComfyEndpoint? endpoint = null)
     {
-        var url = endpoint?.Url ?? _ctx.Settings.ComfyUiUrl;
+        // A rented worker brings its own URL. Otherwise this is the local
+        // route, which means the studio's own engine — started here if it is
+        // installed and merely stopped, so the first render of a session does
+        // not fail on a server the user was never told to run.
+        var url = endpoint?.Url ?? await _ctx.ComfyEngine.ResolveUrlForRenderAsync(ct);
         if (string.IsNullOrWhiteSpace(url))
-            throw new InvalidOperationException("ComfyUI server URL is empty — set it in Settings.");
+            throw new InvalidOperationException(
+                "ยังไม่มีเอนจิน ComfyUI — ติดตั้งเอนจินของสตูดิโอในหน้า ComfyUI "
+                + "หรือใส่ URL ของเซิร์ฟเวอร์ที่มีอยู่แล้วในหน้า Settings");
 
         // NOTE: client lifecycle is owned by the listener task — do NOT use a
         // `using` here. Disposing it kills the listener's WebSocket and HTTP
@@ -534,14 +540,28 @@ public sealed class GenerationService
             workflow
                 .SetPositivePrompt(augmentedPrompt)
                 .SetNegativePrompt(shot.NegativePrompt)
-                .SetSeed(shot.Seed.A)
-                .SetSize(baseW, baseH)
                 .SetFilenamePrefix($"chanthra/shot{shot.Number}");
 
-            // HD 4K also bumps quality: more steps + slightly higher CFG so
-            // the extra pixels carry detail instead of just upscaling noise.
-            if (shot.Hd4k)
+            var comfy = ComfyRenderSettings.Load(_ctx.Settings);
+
+            // HD 4K bumps quality: more steps + slightly higher CFG so the extra
+            // pixels carry detail instead of just upscaling noise. Skipped once
+            // the user has taken the sampler over — silently overriding their 12
+            // steps with 36 because a different toggle is on is exactly the
+            // behaviour the override switches exist to end.
+            if (shot.Hd4k && !comfy.OverrideSampler)
                 workflow.SetSteps(36).SetCfg(7.5);
+
+            // Seed, size, sampler, LoRAs, clip skip and video length all land
+            // here, and the report says which of them the workflow could
+            // actually accept.
+            var seed = comfy.NextSeed(shot.Seed.A);
+            var patched = workflow.Apply(comfy, seed, baseW, baseH);
+            comfy.LastSeed = seed;
+            comfy.PersistLastSeed(_ctx.Settings);
+
+            foreach (var line in patched.Where(l => !l.Applied))
+                ActivityLog.Warn("comfy", $"{line.Field} ({line.Value}) not applied — {line.Note}");
 
             // If the workflow uses LoadImage AND the shot has a reference image
             // attached, upload it to ComfyUI's input/ folder and patch the

@@ -24,6 +24,14 @@ public sealed class StudioContext
     public LlmService Llm { get; }
     public GpuTelemetryService GpuTelemetry { get; }
 
+    /// <summary>
+    /// The studio's own ComfyUI — installed, started and stopped by this app.
+    /// The local render route talks to this rather than expecting the user to
+    /// have set up a server; <see cref="AppSettings.ComfyUiUrl"/> remains as
+    /// the escape hatch for someone who already has one.
+    /// </summary>
+    public LocalComfy.ComfyEngine ComfyEngine { get; }
+
     /// <summary>Rented-GPU lifecycle. Distinct from <see cref="GpuTelemetry"/>,
     /// which reads the local nvidia-smi — this one rents other people's cards.</summary>
     public ChanthraStudio.Services.Gpu.GpuWorkerService GpuWorkers { get; }
@@ -56,6 +64,7 @@ public sealed class StudioContext
         VoiceService = new VoiceService(this);
         Llm = new LlmService(this);
         GpuTelemetry = new GpuTelemetryService();
+        ComfyEngine = new LocalComfy.ComfyEngine(Settings);
         // Constructed before GenerationService would need it at call time;
         // the rentgpu route reaches it through this property, not the ctor.
         GpuWorkers = new ChanthraStudio.Services.Gpu.GpuWorkerService(this);

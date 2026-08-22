@@ -186,6 +186,14 @@ public sealed class WorkflowDescriptor
     public string Description { get; init; } = "";   // first line of `// header` comment, if any
     public bool IsBuiltin { get; init; }             // shipped under bin/Assets/Workflows
     public string Spec { get; init; } = "";          // short uppercase mono caption (e.g. "SD1.5 · text→image")
+
+    /// <summary>
+    /// The app-wide ComboBox template drives its closed state from
+    /// SelectionBoxItemTemplate, which mirrors ItemTemplate only — so a picker
+    /// using DisplayMemberPath falls back to ToString() and renders the type
+    /// name. Same convention as WebTool, WebSite and VideoRouteOption.
+    /// </summary>
+    public override string ToString() => string.IsNullOrEmpty(DisplayName) ? Name : DisplayName;
 }
 
 /// <summary>Generation job row — submission record for any provider.</summary>
