@@ -35,10 +35,21 @@ namespace ChanthraStudio.Services.Gpu;
 /// </summary>
 public sealed class SimplePodProvider : IGpuRentalProvider
 {
-    /// <summary>SimplePod runs on the SimpleMining API host (shared lineage).
-    /// Overridable via the <c>gpu:apiBase</c> setting so a vendor move
-    /// doesn't require a new build.</summary>
-    public const string DefaultApiBase = "https://api.simplemining.net";
+    /// <summary>
+    /// The vendor's API host.
+    ///
+    /// <b>Corrected against a working implementation.</b> This was
+    /// <c>api.simplemining.net</c>, inferred from shared lineage with
+    /// SimpleMining and never checked — which would have failed the first real
+    /// rental no matter what key was pasted in. The owner's aixman service has
+    /// actually called this API and enumerated the market, and it uses
+    /// <c>api.simplepod.ai</c> (see its <c>src/lib/gpu/simplepod.ts</c>, whose
+    /// own docs link is <c>api.simplepod.ai/docs_ai.html</c>).
+    ///
+    /// Still overridable via the <c>gpu:apiBase</c> setting so a vendor move
+    /// doesn't require a new build.
+    /// </summary>
+    public const string DefaultApiBase = "https://api.simplepod.ai";
 
     private readonly string _apiBase;
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
