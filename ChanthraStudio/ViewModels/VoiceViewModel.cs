@@ -15,6 +15,15 @@ public sealed class VoiceProviderOption
     public IVoiceProvider Provider { get; init; } = null!;
     public string Id => Provider.Id;
     public string DisplayName => Provider.DisplayName;
+
+    /// <summary>
+    /// The app-wide ComboBox template drives its closed state from
+    /// SelectionBoxItemTemplate, which mirrors ItemTemplate only — so a picker
+    /// configured with DisplayMemberPath falls back to ToString() and shows the
+    /// type name. Same convention as <see cref="Models.WebTool"/> and
+    /// <see cref="VideoRouteOption"/>.
+    /// </summary>
+    public override string ToString() => DisplayName;
 }
 
 public sealed class MusicProviderOption
@@ -22,6 +31,9 @@ public sealed class MusicProviderOption
     public IMusicProvider Provider { get; init; } = null!;
     public string Id => Provider.Id;
     public string DisplayName => Provider.DisplayName;
+
+    /// <inheritdoc cref="VoiceProviderOption.ToString"/>
+    public override string ToString() => DisplayName;
 }
 
 /// <summary>
@@ -121,8 +133,30 @@ public sealed class VoiceViewModel : ObservableObject
     public MusicProviderOption? SelectedMusicProvider
     {
         get => _selectedMusicProvider;
-        set => SetProperty(ref _selectedMusicProvider, value);
+        set
+        {
+            if (!SetProperty(ref _selectedMusicProvider, value)) return;
+            OnPropertyChanged(nameof(IsAceStepRoute));
+            OnPropertyChanged(nameof(MusicRouteHint));
+        }
     }
+
+    /// <summary>
+    /// True for the two ComfyUI routes, which take a tag list plus optional
+    /// sung lyrics rather than a model slug. Drives the lyrics editor's
+    /// visibility — showing a lyrics box for MusicGen, which cannot sing,
+    /// would be an offer the route can't honour.
+    /// </summary>
+    public bool IsAceStepRoute
+        => _selectedMusicProvider?.Id is "comfyui-music" or "rentgpu-music";
+
+    /// <summary>One line telling the user what this route will cost them.</summary>
+    public string MusicRouteHint => _selectedMusicProvider?.Id switch
+    {
+        "comfyui-music" => "ฟรี — รันบนการ์ดตัวเอง ต้องมี ace_step_v1_3.5b.safetensors ใน models/checkpoints",
+        "rentgpu-music" => "เช่าการ์ด 8GB — สตูดิโอโหลด ACE-Step (7.17 GB) ให้เอง คิดเงินตามเวลาที่เครื่องเปิด",
+        _ => "คิดเงินต่อวินาทีของเพลงที่ได้ ผ่านบัญชี Replicate",
+    };
 
     private string _musicModel = "meta/musicgen";
     /// <summary>Replicate model slug for music (owner/name).</summary>
@@ -139,8 +173,21 @@ public sealed class VoiceViewModel : ObservableObject
     public double MusicDuration
     {
         get => _musicDuration;
-        set => SetProperty(ref _musicDuration, Math.Clamp(value, 4, 120));
+        set => SetProperty(ref _musicDuration, Math.Clamp(value, 4, 240));
     }
+
+    private string _musicLyrics = "";
+    /// <summary>
+    /// Sung lyrics for the ACE-Step routes. Empty = instrumental, which is a
+    /// real choice rather than a missing value, so it is passed through as an
+    /// empty string rather than skipped.
+    /// </summary>
+    public string MusicLyrics { get => _musicLyrics; set => SetProperty(ref _musicLyrics, value); }
+
+    private string _musicStage = "";
+    /// <summary>Warm-up stage text while a card is being rented for music.
+    /// Empty when nothing is warming up.</summary>
+    public string MusicStage { get => _musicStage; set => SetProperty(ref _musicStage, value); }
 
     private string _scriptText = "ราชินีจันทรา ดวงประจำวันที่ปลายเดือน — เปิดประตูแห่งโชคลาภและความรัก";
     public string ScriptText
@@ -323,10 +370,16 @@ public sealed class VoiceViewModel : ObservableObject
 
         IsGenerating = true;
         ShowToast($"Generating music via {SelectedMusicProvider.DisplayName}…", "info");
+
+        // Renting a card for music runs the same 10-40 minute warm-up as a
+        // render. Without a live stage line the user sees a spinner, assumes it
+        // hung, cancels, and pays for the download twice.
+        var warmup = new Progress<Services.Gpu.GpuWarmupProgress>(p => MusicStage = p.Message);
         try
         {
             var take = await _ctx.VoiceService.GenerateMusicAsync(
-                SelectedMusicProvider.Id, MusicModel, MusicPrompt, MusicDuration);
+                SelectedMusicProvider.Id, MusicModel, MusicPrompt, MusicDuration,
+                default, IsAceStepRoute ? MusicLyrics : null, warmup);
             MusicTakes.Insert(0, take);
             OnPropertyChanged(nameof(HasMusicTakes));
             ShowToast($"Music ready · {take.FileName}", "ok");
@@ -338,6 +391,7 @@ public sealed class VoiceViewModel : ObservableObject
         finally
         {
             IsGenerating = false;
+            MusicStage = "";
         }
     }
 

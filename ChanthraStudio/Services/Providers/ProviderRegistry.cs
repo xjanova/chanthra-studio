@@ -64,6 +64,8 @@ public sealed class ProviderRegistry
 
         Music = new IMusicProvider[]
         {
+            new ComfyUiMusicProvider(),
+            new RentedGpuMusicProvider(),
             new ReplicateMusicProvider(),
         };
     }

@@ -86,9 +86,42 @@ public sealed class Workflow
     {
         // First CLIPTextEncode (node 6 in the default workflow) is the positive prompt.
         var inputs = InputsOf("CLIPTextEncode");
-        if (inputs is not null) inputs["text"] = text;
+        if (inputs is not null) { inputs["text"] = text; return this; }
+
+        // Audio graphs have no CLIPTextEncode at all — ACE-Step takes its
+        // description as a comma-separated tag list on a different node, and
+        // without this branch the prompt silently never reached the model:
+        // every song would have come out sounding like the bundled example.
+        var ace = InputsOf("TextEncodeAceStepAudio");
+        if (ace is not null) ace["tags"] = text;
         return this;
     }
+
+    /// <summary>Lyrics for a music workflow. Empty leaves the graph's own —
+    /// an instrumental is an empty string, which is meaningful, so callers
+    /// pass null to mean "don't touch".</summary>
+    public Workflow SetLyrics(string? lyrics)
+    {
+        if (lyrics is null) return this;
+        var ace = InputsOf("TextEncodeAceStepAudio");
+        if (ace is not null) ace["lyrics"] = lyrics;
+        return this;
+    }
+
+    /// <summary>Length of a generated audio clip. No-op on non-audio graphs.</summary>
+    public Workflow SetAudioSeconds(double seconds)
+    {
+        var inputs = InputsOf("EmptyAceStepLatentAudio") ?? InputsOf("EmptyLatentAudio");
+        if (inputs is not null) inputs["seconds"] = seconds;
+        return this;
+    }
+
+    /// <summary>True when this graph produces audio rather than pixels.</summary>
+    public bool ProducesAudio()
+        => InputsOf("VAEDecodeAudio") is not null
+        || InputsOf("SaveAudioMP3") is not null
+        || InputsOf("SaveAudio") is not null
+        || InputsOf("SaveAudioAdvanced") is not null;
 
     /// <summary>
     /// Replace the SECOND CLIPTextEncode node's text — convention is positive
@@ -261,8 +294,10 @@ public sealed class Workflow
         foreach (var (nodeId, node) in outputs)
         {
             if (node is not JsonObject obj) continue;
-            // ComfyUI puts file lists under "images", "gifs", "videos" depending on the saver.
-            foreach (var key in new[] { "images", "gifs", "videos" })
+            // ComfyUI puts file lists under "images", "gifs", "videos" or
+            // "audio" depending on the saver. Missing "audio" here would make a
+            // music render report success with nothing to download.
+            foreach (var key in new[] { "images", "gifs", "videos", "audio" })
             {
                 if (obj[key] is not JsonArray arr) continue;
                 foreach (var item in arr)

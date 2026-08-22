@@ -148,6 +148,24 @@ public sealed class MusicRequest
 
     public double DurationSec { get; set; } = 30.0;
     public int? Seed { get; set; }
+
+    /// <summary>Optional sung lyrics. Null leaves the workflow's own value
+    /// alone; an empty string explicitly means "instrumental". Only the
+    /// ComfyUI/ACE-Step route reads this.</summary>
+    public string? Lyrics { get; set; }
+
+    /// <summary>ComfyUI base URL for the ComfyUI music routes. Filled by
+    /// <see cref="VoiceService"/> from settings, or from a rented worker's
+    /// endpoint. Ignored by cloud providers.</summary>
+    public string ServerUrl { get; set; } = "";
+
+    /// <summary>Bearer token for a rented worker's auth proxy. Empty for a
+    /// local server, which has no proxy in front of it.</summary>
+    public string? AuthToken { get; set; }
+
+    /// <summary>Which bundled workflow to run. Empty picks the ACE-Step
+    /// default.</summary>
+    public string WorkflowName { get; set; } = "";
 }
 
 public sealed class PostRequest

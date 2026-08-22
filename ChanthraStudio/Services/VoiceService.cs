@@ -125,20 +125,30 @@ public sealed class VoiceService
     /// </summary>
     public async Task<VoiceTake> GenerateMusicAsync(
         string providerId, string modelSlug, string prompt, double durationSec,
-        CancellationToken ct = default)
+        CancellationToken ct = default, string? lyrics = null,
+        IProgress<Gpu.GpuWarmupProgress>? warmup = null)
     {
         var provider = _ctx.Providers.Music.FirstOrDefault(p => p.Id == providerId)
             ?? throw new InvalidOperationException($"Unknown music provider: {providerId}");
 
-        // The Replicate music provider shares the api key with the video
-        // provider — they're the same Replicate account. Look up "replicate"
-        // first, fall back to the provider's own id (so a future Suno
-        // provider with its own key still works).
-        var apiKey = _ctx.Settings["replicate"];
-        if (string.IsNullOrWhiteSpace(apiKey)) apiKey = _ctx.Settings[providerId];
-        if (string.IsNullOrWhiteSpace(apiKey))
-            throw new InvalidOperationException(
-                $"No API key for {provider.DisplayName} — paste your r8_… token in Settings.");
+        var isComfy = provider is Providers.Music.ComfyUiMusicProvider;
+        var isRented = providerId == "rentgpu-music";
+
+        // Only the cloud routes need a key. Demanding one for a local GPU
+        // would make the free route the only one you cannot use.
+        var apiKey = "";
+        if (!isComfy)
+        {
+            // The Replicate music provider shares the api key with the video
+            // provider — they're the same Replicate account. Look up "replicate"
+            // first, fall back to the provider's own id (so a future Suno
+            // provider with its own key still works).
+            apiKey = _ctx.Settings["replicate"];
+            if (string.IsNullOrWhiteSpace(apiKey)) apiKey = _ctx.Settings[providerId];
+            if (string.IsNullOrWhiteSpace(apiKey))
+                throw new InvalidOperationException(
+                    $"No API key for {provider.DisplayName} — paste your r8_… token in Settings.");
+        }
 
         var slugSafe = string.IsNullOrEmpty(modelSlug) ? "default" : modelSlug.Replace('/', '_');
         var fileName = $"music_{DateTime.Now:yyyyMMdd_HHmmss}_{Sanitise(slugSafe)}.mp3";
@@ -150,16 +160,55 @@ public sealed class VoiceService
             Model = modelSlug,
             Prompt = prompt,
             DurationSec = durationSec,
+            Lyrics = lyrics,
         };
-        var path = await provider.GenerateAsync(req, destPath, ct);
+
+        Gpu.GpuWorker? worker = null;
+        if (isRented)
+        {
+            // Same lifecycle as a rented render: the worker is marked busy for
+            // the duration so the reaper cannot release the card out from under
+            // a song that is still being sampled.
+            worker = await _ctx.GpuWorkers.EnsureWorkerAsync("music", warmup, ct);
+            if (string.IsNullOrWhiteSpace(worker.EndpointUrl))
+                throw new Gpu.GpuRentalException(
+                    $"{worker.Name} is ready but published no endpoint — release it from the GPU panel and try again.");
+            req.ServerUrl = worker.EndpointUrl!;
+            req.AuthToken = worker.Token;
+            _ctx.GpuWorkers.MarkJobStarted(worker.Id);
+        }
+        else if (isComfy)
+        {
+            // Same resolution the render route uses: the studio's own engine
+            // when that is the chosen one, started if it is merely stopped.
+            req.ServerUrl = await _ctx.ComfyEngine.ResolveUrlForRenderAsync(ct);
+        }
+
+        string path;
+        var startedAt = DateTime.UtcNow;
+        try
+        {
+            path = await provider.GenerateAsync(req, destPath, ct);
+        }
+        finally
+        {
+            // Report the seconds actually held, including a failed run: the
+            // vendor charged for them either way, and a cost record that only
+            // counts successes reads lower than the invoice.
+            if (worker is not null)
+                _ctx.GpuWorkers.MarkJobFinished(worker.Id, (DateTime.UtcNow - startedAt).TotalSeconds);
+        }
 
         // Music is billed per second of OUTPUT — that's the duration
         // we requested. Replicate music models all live in the
         // "replicate" catalog by slug, not under "replicate-music",
         // so we look up against "replicate" for the pricing match.
+        // The ComfyUI routes are not metered here: local GPU time is free, and
+        // rented time is already counted against the worker's own cost record,
+        // so adding it again would double-count the same minutes.
         try
         {
-            _ctx.Tracker.RecordSeconds("replicate", modelSlug, durationSec, "music");
+            if (!isComfy) _ctx.Tracker.RecordSeconds("replicate", modelSlug, durationSec, "music");
         }
         catch { }
 
