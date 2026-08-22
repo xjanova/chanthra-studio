@@ -283,13 +283,20 @@
                 Background="{StaticResource BrushSurface02}"
                 BorderBrush="{StaticResource BrushLineHairline}"
                 BorderThickness="0,0,0,1">
+                <!--  The left group scrolls and the right group does not: at a
+                      narrow window the editing tools can slide out of reach, but
+                      Run, Save and Load must never be the buttons that get
+                      clipped off the end.  -->
                 <Grid Margin="14,8">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <ScrollViewer Grid.Column="0" Margin="0,0,10,0"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled">
+                    <StackPanel Orientation="Horizontal">
                         <Button
                             Margin="0,0,8,0"
                             Command="{Binding AutoArrangeCommand}"
@@ -338,6 +345,7 @@
                             Content="reset"
                             Style="{StaticResource ButtonPill}" />
                     </StackPanel>
+                    </ScrollViewer>
 
                     <!--  Status pill — shows the most recent Save/Load/Run/Wire message  -->
                     <Border
@@ -658,12 +666,16 @@
                                                         Background="{StaticResource BrushBgInset}"
                                                         CornerRadius="3">
                                                         <Grid>
+                                                            <!--  Auto rather than a fixed 80: "sampler_name"
+                                                                  is wider than that at the current type size and
+                                                                  was overlapping its own value.  -->
                                                             <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="80" />
+                                                                <ColumnDefinition Width="Auto" MinWidth="72" />
                                                                 <ColumnDefinition Width="*" />
                                                             </Grid.ColumnDefinitions>
                                                             <TextBlock
                                                                 Grid.Column="0"
+                                                                Margin="0,0,8,0"
                                                                 FontFamily="{StaticResource FontMono}"
                                                                 FontSize="12.5"
                                                                 Foreground="{StaticResource BrushText3}"
@@ -777,12 +789,17 @@
                                             FontSize="13"
                                             Foreground="{StaticResource BrushText3}"
                                             Text="{Binding Label}" />
+                                        <!--  Free text when the server gave no options for this
+                                              input, a picker when it did. A checkpoint or sampler
+                                              name typed by hand is a failed render waiting for a
+                                              typo.  -->
                                         <Border
                                             Margin="0,3,0,0"
                                             Background="{StaticResource BrushBgInset}"
                                             BorderBrush="{StaticResource BrushLineHairline}"
                                             BorderThickness="1"
-                                            CornerRadius="3">
+                                            CornerRadius="3"
+                                            Visibility="{Binding HasChoices, Converter={StaticResource InvBoolToVis}}">
                                             <TextBox
                                                 Padding="6,4"
                                                 FontFamily="{StaticResource FontMono}"
@@ -797,6 +814,18 @@
                                                 GotFocus="Param_GotFocus"
                                                 TextChanged="Param_TextChanged"
                                                 LostFocus="Param_LostFocus" />
+                                        </Border>
+                                        <Border
+                                            Margin="0,3,0,0"
+                                            Padding="4,2"
+                                            Background="{StaticResource BrushBgInset}"
+                                            BorderBrush="{StaticResource BrushLineHairline}"
+                                            BorderThickness="1"
+                                            CornerRadius="3"
+                                            Visibility="{Binding HasChoices, Converter={StaticResource BoolToVis}}">
+                                            <ComboBox
+                                                ItemsSource="{Binding Choices}"
+                                                SelectedItem="{Binding Value, Mode=TwoWay}" />
                                         </Border>
                                     </StackPanel>
                                 </DataTemplate>

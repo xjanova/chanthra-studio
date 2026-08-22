@@ -621,6 +621,77 @@ public sealed class GenerationService
     }
 
     /// <summary>
+    /// Submit a graph the user built by hand in the Node Flow editor.
+    ///
+    /// <b>Why this goes through here rather than posting straight to /prompt.</b>
+    /// The editor used to do exactly that: submit, print a prompt id, and tell
+    /// the user to go and look in ComfyUI's output folder. So a graph you had
+    /// just built produced nothing you could see inside the studio — no
+    /// progress, no thumbnail, no Library row, no way to cancel. Routing it
+    /// through the same listener as every other render means the outputs come
+    /// back to the same place as everything else, and the Queue can stop it.
+    ///
+    /// Nothing is patched into the graph — no prompt augmentation, no aspect
+    /// sizing, no render-settings override. The point of the node editor is
+    /// that the user controls every input, so this submits exactly what is on
+    /// the canvas.
+    /// </summary>
+    /// <param name="nodes">API-format graph, already converted.</param>
+    /// <param name="label">What to call it in the Library and Queue.</param>
+    public async Task<string> SubmitGraphAsync(JsonObject nodes, string label, CancellationToken ct = default)
+    {
+        var url = await _ctx.ComfyEngine.ResolveUrlForRenderAsync(ct);
+        if (string.IsNullOrWhiteSpace(url))
+            throw new InvalidOperationException(
+                "ยังไม่มีเอนจิน ComfyUI — ติดตั้งเอนจินของสตูดิโอในหน้า ComfyUI ก่อน");
+
+        // Owned by the listener from the moment it starts; see the note in
+        // SubmitToComfyUiAsync about not disposing this early.
+        var client = new ComfyUiClient(url);
+        try
+        {
+            var probe = await client.ProbeAsync(ct);
+            if (!probe.Ok)
+            {
+                client.Dispose();
+                throw new ComfyUiException($"ComfyUI not reachable at {url} — {probe.Status}");
+            }
+
+            var shot = new Shot
+            {
+                Id = Guid.NewGuid().ToString("N")[..12],
+                Number = DateTime.Now.ToString("HHmmss"),
+                Title = string.IsNullOrWhiteSpace(label) ? "Node graph" : label,
+                Prompt = $"node flow · {label}",
+                Description = "Built in the Node Flow editor.",
+                Status = ShotStatus.Generating,
+            };
+
+            var promptId = await client.SubmitPromptAsync(nodes, ct);
+            _ctx.Shots.Insert(shot);
+            WriteJobRow(shot.Id, promptId, "queued");
+
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            _running[promptId] = cts;
+            _promptToShot[promptId] = shot.Id;
+            _promptToEndpoint[promptId] = new ComfyEndpoint(url, null, null);
+
+            _ = Task.Run(async () =>
+            {
+                try { await RunListenerAsync(shot, promptId, client, cts.Token); }
+                finally { client.Dispose(); }
+            });
+
+            return promptId;
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Cancel every running job whose <see cref="Shot.Id"/> matches. The
     /// composer's per-shot cancel button drives this — auto-schedules
     /// (6.6/7.8) can fan out multiple concurrent jobs, so killing only

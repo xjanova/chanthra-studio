@@ -49,9 +49,23 @@ public static class NodeFlowConverter
         _ => kind.ToString(),
     };
 
+    /// <summary>
+    /// True when the class type is one of the ten curated palette entries.
+    ///
+    /// <see cref="KindFor"/> has to return something for everything, so its
+    /// fallback is a guess. This is how a caller tells a real match from that
+    /// guess — without it, "is this a LoraLoader?" and "did we fail to
+    /// recognise this?" are the same answer.
+    /// </summary>
+    public static bool IsKnown(string classType) => classType is
+        "CheckpointLoaderSimple" or "CLIPTextEncode" or "KSampler" or "VAEDecode"
+        or "SaveImage" or "EmptyLatentImage" or "LoadImage" or "LoraLoader"
+        or "ControlNetApply" or "AnimateDiffSimpleEvolved";
+
     /// <summary>Reverse lookup for loading existing workflow files back into
     /// the editor. Anything we can't match falls back to LoraLoader so the
-    /// node still renders.</summary>
+    /// node still renders — check <see cref="IsKnown"/> before trusting it,
+    /// and keep the original class type on the node.</summary>
     public static NodeKind KindFor(string classType) => classType switch
     {
         "CheckpointLoaderSimple"     => NodeKind.LoadCheckpoint,
@@ -103,7 +117,13 @@ public static class NodeFlowConverter
 
             var entry = new JsonObject
             {
-                ["class_type"] = ClassTypeFor(node.Kind),
+                // The node's own class_type wins. Deriving it from Kind is only
+                // correct for the ten curated palette entries; for anything
+                // loaded from a real workflow it would rewrite the node as
+                // whatever Kind the reverse lookup guessed.
+                ["class_type"] = string.IsNullOrEmpty(node.ClassType)
+                    ? ClassTypeFor(node.Kind)
+                    : node.ClassType,
                 ["inputs"]     = inputs,
                 // Non-standard sidecar — ComfyUI ignores it, we use it to
                 // restore positions when loading the file back into the editor.
@@ -130,12 +150,19 @@ public static class NodeFlowConverter
             if (value is not JsonObject obj) continue;
             var classType = obj["class_type"]?.GetValue<string>() ?? "";
             var kind = KindFor(classType);
+            var known = IsKnown(classType);
             var node = new FlowNode
             {
                 Id = id,
-                Title = obj["_title"]?.GetValue<string>() ?? kind.ToString(),
+                // Show the real node name. Falling back to the enum meant every
+                // unrecognised node was labelled "LoraLoader" on the canvas.
+                Title = obj["_title"]?.GetValue<string>()
+                        ?? (string.IsNullOrEmpty(classType) ? kind.ToString() : classType),
                 Kind = kind,
-                AccentKey = AccentForKind(kind),
+                ClassType = classType,
+                // Unknown nodes get a neutral accent rather than borrowing the
+                // colour of whatever the fallback guessed them to be.
+                AccentKey = known ? AccentForKind(kind) : "BrushClipPlum",
                 Width = 230,
             };
             if (obj["_pos"] is JsonArray pos && pos.Count >= 2)

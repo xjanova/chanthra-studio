@@ -216,6 +216,66 @@ public sealed class NodeFlowViewModel : ObservableObject
         RecomputeWires();
     }
 
+    /// <summary>
+    /// Ask the engine what each node's inputs actually accept, and turn the
+    /// matching parameter boxes into pickers.
+    ///
+    /// <b>Deliberately does not start the engine.</b> Opening this tab should
+    /// not trigger a multi-gigabyte install or a two-minute cold start — if
+    /// nothing is listening the params stay free text, which is exactly how
+    /// they behaved before, and the status line says so once.
+    /// </summary>
+    public async Task RefreshSchemaAsync()
+    {
+        var studio = (System.Windows.Application.Current as App)?.Studio;
+        if (studio is null) return;
+
+        var url = studio.ComfyEngine.IsRunning
+            ? studio.ComfyEngine.BaseUrl
+            : studio.Settings.ComfyUiUrl;
+        if (string.IsNullOrWhiteSpace(url)) return;
+
+        try
+        {
+            using var client = new ComfyUiClient(url);
+            var info = await client.GetObjectInfoAsync();
+            if (info is null) return;
+            _schema = info;
+            ApplySchemaToAll();
+            ShowStatus("อ่านรายการโหนดจากเอนจินแล้ว — ช่องที่มีตัวเลือกจะกลายเป็นดรอปดาวน์", "ok");
+        }
+        catch
+        {
+            // Unreachable engine is the normal case before it is installed.
+        }
+    }
+
+    /// <summary>Cached /object_info, so adding a node later still gets pickers
+    /// without another round trip.</summary>
+    private System.Text.Json.Nodes.JsonObject? _schema;
+
+    private void ApplySchemaToAll()
+    {
+        foreach (var n in Nodes) ApplySchema(n);
+    }
+
+    private void ApplySchema(FlowNode node)
+    {
+        if (_schema is null) return;
+        var classType = string.IsNullOrEmpty(node.ClassType)
+            ? NodeFlowConverter.ClassTypeFor(node.Kind)
+            : node.ClassType;
+
+        foreach (var p in node.Params)
+        {
+            var choices = ComfyUiClient.ExtractInputChoices(_schema, classType, p.Label);
+            // Only replace a list we actually got. Clearing on a miss would
+            // turn a working picker back into a text box the moment a node
+            // type is missing from a different server.
+            if (choices.Count > 0) p.SetChoices(choices);
+        }
+    }
+
     private void SaveGraph()
     {
         try
@@ -251,6 +311,7 @@ public sealed class NodeFlowViewModel : ObservableObject
             foreach (var n in loaded.Nodes) Nodes.Add(n);
             foreach (var w in loaded.Wires) Wires.Add(w);
             GraphName = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName);
+            ApplySchemaToAll();
             RecomputeWires();
             Selected = Nodes.FirstOrDefault();
             _undo.Clear();   // fresh history — can't undo past a load
@@ -277,27 +338,49 @@ public sealed class NodeFlowViewModel : ObservableObject
             ShowStatus("Run requires the app's StudioContext — not available at design time.", "warn");
             return;
         }
-        var url = studio.Settings.ComfyUiUrl;
-        if (string.IsNullOrWhiteSpace(url))
+        if (Nodes.Count == 0)
         {
-            ShowStatus("ComfyUI URL is empty — set it in Settings.", "warn");
+            ShowStatus("กราฟว่างเปล่า — ลากโหนดจากพาเลตต์มาก่อน", "warn");
             return;
         }
+
+        // Refuse a graph with no output node here rather than letting ComfyUI
+        // reject it: the server's error names a missing node id, which is not
+        // something the user can act on from this canvas.
+        var hasSaver = Nodes.Any(n => Saver(n));
+        if (!hasSaver)
+        {
+            ShowStatus("กราฟนี้ไม่มีโหนดบันทึกผล (SaveImage / SaveAudio / VHS_VideoCombine) — เรนเดอร์ไปก็ไม่ได้ไฟล์", "warn");
+            return;
+        }
+
         try
         {
-            ShowStatus("Submitting graph to ComfyUI…", "info");
+            ShowStatus("กำลังส่งกราฟให้เอนจิน…", "info");
             var graph = new FlowGraph();
             foreach (var n in Nodes) graph.Nodes.Add(n);
             foreach (var w in Wires) graph.Wires.Add(w);
             var nodesJson = NodeFlowConverter.ToComfyApi(graph);
 
-            using var client = new ComfyUiClient(url);
-            var promptId = await client.SubmitPromptAsync(nodesJson);
-            ShowStatus($"Queued · prompt_id {promptId[..System.Math.Min(8, promptId.Length)]} — check ComfyUI's output folder", "ok");
+            // Goes through the generation service so the run behaves like every
+            // other render: progress, cancel from the Queue, outputs downloaded
+            // into the Library. The engine starts itself if it is not up.
+            var promptId = await studio.Generation.SubmitGraphAsync(nodesJson, GraphName);
+            ShowStatus($"เข้าคิวแล้ว · {promptId[..System.Math.Min(8, promptId.Length)]} — ผลจะไปโผล่ในหน้า Library เมื่อเรนเดอร์เสร็จ", "ok");
         }
         catch (Exception ex)
         {
-            ShowStatus($"Run failed: {ex.Message}", "err");
+            ShowStatus($"รันไม่สำเร็จ: {ex.Message}", "err");
+        }
+
+        static bool Saver(FlowNode n)
+        {
+            var ct = string.IsNullOrEmpty(n.ClassType)
+                ? NodeFlowConverter.ClassTypeFor(n.Kind)
+                : n.ClassType;
+            return ct.StartsWith("Save", StringComparison.Ordinal)
+                || ct.Contains("VideoCombine", StringComparison.Ordinal)
+                || ct.StartsWith("PreviewImage", StringComparison.Ordinal);
         }
     }
 
@@ -455,7 +538,7 @@ public sealed class NodeFlowViewModel : ObservableObject
     /// <summary>Full-fidelity, immutable clone of the graph for the undo stack.</summary>
     public GraphSnap CaptureSnapshot() => new(
         Nodes.Select(n => new NodeSnap(
-            n.Id, n.Title, n.Kind, n.AccentKey, n.X, n.Y, n.Width,
+            n.Id, n.Title, n.Kind, n.ClassType, n.AccentKey, n.X, n.Y, n.Width,
             n.Inputs.Select(s => new SocketSnap(s.Id, s.Label, s.Type, s.IsInput, s.Row)).ToList(),
             n.Outputs.Select(s => new SocketSnap(s.Id, s.Label, s.Type, s.IsInput, s.Row)).ToList(),
             n.Params.Select(p => new ParamSnap(p.Label, p.Value, p.Editor)).ToList())).ToList(),
@@ -470,7 +553,7 @@ public sealed class NodeFlowViewModel : ObservableObject
         {
             var node = new FlowNode
             {
-                Id = ns.Id, Title = ns.Title, Kind = ns.Kind,
+                Id = ns.Id, Title = ns.Title, Kind = ns.Kind, ClassType = ns.ClassType,
                 AccentKey = ns.AccentKey, X = ns.X, Y = ns.Y, Width = ns.Width,
             };
             foreach (var s in ns.Inputs) node.Inputs.Add(new NodeSocket { Id = s.Id, Label = s.Label, Type = s.Type, IsInput = s.IsInput, Row = s.Row });
@@ -483,6 +566,10 @@ public sealed class NodeFlowViewModel : ObservableObject
 
         _pendingFrom = null;
         Selected = snap.SelectedId is null ? null : Nodes.FirstOrDefault(n => n.Id == snap.SelectedId);
+        // The snapshot stores each param's value, not its option list, so
+        // rebuilt nodes come back as plain text boxes unless the schema is
+        // re-applied. Undo should not quietly downgrade the editor.
+        ApplySchemaToAll();
         RecomputeWires();
     }
 
@@ -495,7 +582,9 @@ public sealed class NodeFlowViewModel : ObservableObject
         var copy = new FlowNode
         {
             Id = $"n{Nodes.Count + 1}_{Guid.NewGuid().ToString("N")[..4]}",
-            Title = src.Title, Kind = src.Kind, AccentKey = src.AccentKey,
+            // ClassType too: without it a duplicated node that came from a
+            // loaded workflow would be emitted as whatever Kind guessed.
+            Title = src.Title, Kind = src.Kind, ClassType = src.ClassType, AccentKey = src.AccentKey,
             X = src.X + 30, Y = src.Y + 30, Width = src.Width,
         };
         foreach (var s in src.Inputs) copy.Inputs.Add(new NodeSocket { Id = s.Id, Label = s.Label, Type = s.Type, IsInput = s.IsInput, Row = s.Row });
@@ -538,7 +627,7 @@ public sealed class NodeFlowViewModel : ObservableObject
 
     // Immutable snapshot value types for the undo stack.
     public sealed record GraphSnap(List<NodeSnap> Nodes, List<WireSnap> Wires, string? SelectedId);
-    public sealed record NodeSnap(string Id, string Title, NodeKind Kind, string AccentKey,
+    public sealed record NodeSnap(string Id, string Title, NodeKind Kind, string ClassType, string AccentKey,
         double X, double Y, double Width, List<SocketSnap> Inputs, List<SocketSnap> Outputs, List<ParamSnap> Params);
     public sealed record SocketSnap(string Id, string Label, SocketType Type, bool IsInput, int Row);
     public sealed record ParamSnap(string Label, string Value, string Editor);
@@ -746,6 +835,9 @@ public sealed class NodeFlowViewModel : ObservableObject
             Width = 230,
         };
         SeedSocketsForKind(n, kind);
+        // Give the new node real pickers straight away rather than leaving it
+        // with the palette's guessed defaults until the next refresh.
+        ApplySchema(n);
         Nodes.Add(n);
         Selected = n;
         RecomputeWires();

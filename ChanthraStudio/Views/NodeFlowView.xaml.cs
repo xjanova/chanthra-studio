@@ -35,6 +35,12 @@ public partial class NodeFlowView : UserControl
         // we can finish a wire-drag even if the user releases over empty
         // canvas (the Viewport handlers only fire when the down landed there).
         AddHandler(PreviewMouseLeftButtonUpEvent, new MouseButtonEventHandler(GlobalMouseLeftButtonUp), handledEventsToo: true);
+
+        // Ask the engine what its nodes accept, so parameters that have a fixed
+        // set of values become pickers instead of boxes to type a filename
+        // into. Fire and forget: it does not start the engine, and an
+        // unreachable one simply leaves the fields as free text.
+        Loaded += (_, _) => _ = Vm?.RefreshSchemaAsync();
     }
 
     private NodeFlowViewModel? Vm => DataContext as NodeFlowViewModel;
