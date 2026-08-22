@@ -83,7 +83,7 @@
                     </Border.Style>
                     <TextBlock
                         FontFamily="{StaticResource FontMono}"
-                        FontSize="10"
+                        FontSize="11.5"
                         Foreground="{StaticResource BrushText1}"
                         Text="{Binding TempLabel}" />
                 </Border>
@@ -139,7 +139,7 @@
                     </Border.Style>
                     <TextBlock
                         FontFamily="{StaticResource FontMono}"
-                        FontSize="10"
+                        FontSize="11.5"
                         Foreground="{StaticResource BrushText1}"
                         Text="{Binding LicenseLabel}" />
                 </Border>
@@ -169,7 +169,7 @@
                     </Border.Style>
                     <TextBlock
                         FontFamily="{StaticResource FontMono}"
-                        FontSize="10"
+                        FontSize="11.5"
                         Foreground="{StaticResource BrushText1}"
                         Text="{Binding BudgetLabel}"
                         ToolTip="Monthly spending vs the budget set in Settings · click to open Usage" />

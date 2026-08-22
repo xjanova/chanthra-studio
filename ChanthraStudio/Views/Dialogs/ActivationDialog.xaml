@@ -87,7 +87,7 @@
                         Grid.Row="1"
                         Margin="0,6,0,18"
                         FontFamily="{StaticResource FontThai}"
-                        FontSize="12"
+                        FontSize="13.5"
                         Foreground="{StaticResource BrushText2}"
                         TextWrapping="Wrap"
                         Text="ใส่ License key ที่ซื้อจาก xman4289.com เพื่อเปิดใช้งานระบบอัพเดทอัตโนมัติและฟีเจอร์เต็มของ Chanthra Studio" />
@@ -112,7 +112,7 @@
                                 Background="Transparent"
                                 BorderThickness="0"
                                 FontFamily="{StaticResource FontMono}"
-                                FontSize="13"
+                                FontSize="14"
                                 Foreground="{StaticResource BrushText1}"
                                 CaretBrush="{StaticResource BrushGoldHi}"
                                 Text="{Binding LicenseKey, UpdateSourceTrigger=PropertyChanged}" />
@@ -121,7 +121,7 @@
                                 Margin="14,0,0,0"
                                 VerticalAlignment="Center"
                                 FontFamily="{StaticResource FontMono}"
-                                FontSize="13"
+                                FontSize="14"
                                 Foreground="{StaticResource BrushText4}"
                                 IsHitTestVisible="False"
                                 Text="CHS-XXXX-XXXX-XXXX">
@@ -161,12 +161,12 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" FontFamily="{StaticResource FontMono}" FontSize="9" Foreground="{StaticResource BrushText4}" Text="STATUS" />
+                                <TextBlock Grid.Column="0" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText4}" Text="STATUS" />
                                 <TextBlock
                                     Grid.Column="1"
                                     HorizontalAlignment="Right"
                                     FontFamily="{StaticResource FontMono}"
-                                    FontSize="11"
+                                    FontSize="12.5"
                                     Foreground="{StaticResource BrushText1}"
                                     Text="{Binding Current.DisplayLine}" />
                             </Grid>
@@ -175,7 +175,7 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" FontFamily="{StaticResource FontMono}" FontSize="9" Foreground="{StaticResource BrushText4}" Text="MACHINE ID" />
+                                <TextBlock Grid.Column="0" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText4}" Text="MACHINE ID" />
                                 <Grid Grid.Column="1" HorizontalAlignment="Right">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -185,7 +185,7 @@
                                         Grid.Column="0"
                                         Margin="0,0,8,0"
                                         FontFamily="{StaticResource FontMono}"
-                                        FontSize="11"
+                                        FontSize="12.5"
                                         Foreground="{StaticResource BrushText2}"
                                         Text="{Binding MachineId}"
                                         TextTrimming="CharacterEllipsis" />
@@ -205,7 +205,7 @@
                         Grid.Row="4"
                         Margin="2,12,0,0"
                         FontFamily="{StaticResource FontMono}"
-                        FontSize="10.5"
+                        FontSize="12"
                         Foreground="{StaticResource BrushGoldHi}"
                         Text="{Binding StatusMessage}"
                         TextWrapping="Wrap" />
@@ -218,11 +218,11 @@
                         Background="#0FFFFFFF"
                         CornerRadius="6">
                         <StackPanel>
-                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="9" Foreground="{StaticResource BrushText4}" Text="HOW IT WORKS" />
+                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText4}" Text="HOW IT WORKS" />
                             <TextBlock
                                 Margin="0,4,0,0"
                                 FontFamily="{StaticResource FontThai}"
-                                FontSize="11"
+                                FontSize="12.5"
                                 Foreground="{StaticResource BrushText2}"
                                 TextWrapping="Wrap">
                                 <Run Text="• " /><Run Foreground="{StaticResource BrushGold}" Text="ซื้อ key " /><Run Text="ผ่านปุ่ม “ซื้อ key” → จะเปิดหน้าร้านที่ xman4289.com" /><LineBreak />

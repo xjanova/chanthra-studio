@@ -41,7 +41,7 @@
             CornerRadius="99"
             Effect="{StaticResource ShadowGoldGlowSoft}"
             Visibility="{Binding Toast, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}">
-            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="11.5" Foreground="{StaticResource BrushText1}" Text="{Binding Toast}" />
+            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="{Binding Toast}" />
         </Border>
 
         <!--  Header  -->
@@ -61,7 +61,7 @@
                         <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
                         <Run Text="Auto-schedule" />
                     </TextBlock>
-                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12"
+                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="13.5"
                                Text="แอปจะรันคลิปอัตโนมัติตามเวลาที่ตั้ง · ติ๊ก auto-post ก็โพสต์ขึ้น Facebook / webhook ทันทีหลังเรนเดอร์เสร็จ · placeholder รองรับ {date} {time} {dow} {hour} {minute} {iso}" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
@@ -122,7 +122,7 @@
                                                     </Style.Triggers>
                                                 </Style>
                                             </Border.Style>
-                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="9.5" Foreground="{StaticResource BrushText1}">
+                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText1}">
                                                 <Run Text="{Binding IsEnabled, Converter={StaticResource StringEquals}, ConverterParameter=True, FallbackValue=OFF}" />
                                             </TextBlock>
                                         </Border>
@@ -133,7 +133,7 @@
                                                       Style="{StaticResource ToggleSwitch}" />
                                     </Grid>
 
-                                    <TextBlock Grid.Row="1" Margin="0,8,0,0" Style="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" MaxHeight="36" TextTrimming="CharacterEllipsis" Text="{Binding PromptTemplate}" />
+                                    <TextBlock Grid.Row="1" Margin="0,8,0,0" Style="{StaticResource TextSecondary}" FontSize="12.5" TextWrapping="Wrap" MaxHeight="36" TextTrimming="CharacterEllipsis" Text="{Binding PromptTemplate}" />
 
                                     <Grid Grid.Row="2" Margin="0,10,0,0">
                                         <Grid.ColumnDefinitions>
@@ -166,7 +166,7 @@
                                     <!--  Next 5 fires — small mono row so the user can verify the spec at a glance  -->
                                     <StackPanel Grid.Row="3" Margin="0,8,0,0" Orientation="Horizontal">
                                         <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="UPCOMING" />
-                                        <TextBlock Margin="8,0,0,0" FontFamily="{StaticResource FontMono}" FontSize="9.5" Foreground="{StaticResource BrushText3}"
+                                        <TextBlock Margin="8,0,0,0" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText3}"
                                                    Text="{Binding NextFiresPreviewLabel}"
                                                    TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
@@ -181,7 +181,7 @@
             <Border Grid.Column="1" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1,0,0,0" Background="{StaticResource BrushSurface02}">
                 <ScrollViewer Padding="22,18,22,22" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
-                        <TextBlock Style="{StaticResource TextPanelHeader}" FontSize="14">
+                        <TextBlock Style="{StaticResource TextPanelHeader}" FontSize="15">
                             <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
                             <Run Text="Editor" />
                         </TextBlock>
@@ -203,7 +203,7 @@
                             <StackPanel Grid.Row="0" Margin="0,0,0,12">
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Text="NAME" />
                                 <Border Margin="0,4,0,0" Padding="10,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
-                                    <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontUI}" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding Selected.Name, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontUI}" FontSize="13.5" Foreground="{StaticResource BrushText1}" Text="{Binding Selected.Name, UpdateSourceTrigger=PropertyChanged}" />
                                 </Border>
                             </StackPanel>
 
@@ -211,7 +211,7 @@
                             <StackPanel Grid.Row="1" Margin="0,0,0,12">
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Text="PROMPT TEMPLATE · use {date} {time} {dow}" />
                                 <Border Margin="0,4,0,0" Padding="10,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
-                                    <TextBox MinHeight="72" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontThai}" FontSize="12" Foreground="{StaticResource BrushText1}" AcceptsReturn="True" TextWrapping="Wrap" Text="{Binding Selected.PromptTemplate, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox MinHeight="72" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontThai}" FontSize="13.5" Foreground="{StaticResource BrushText1}" AcceptsReturn="True" TextWrapping="Wrap" Text="{Binding Selected.PromptTemplate, UpdateSourceTrigger=PropertyChanged}" />
                                 </Border>
                             </StackPanel>
 
@@ -219,7 +219,7 @@
                             <StackPanel Grid.Row="2" Margin="0,0,0,12">
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Text="NEGATIVE PROMPT" />
                                 <Border Margin="0,4,0,0" Padding="10,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
-                                    <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText2}" AcceptsReturn="True" TextWrapping="Wrap" Text="{Binding Selected.NegativePrompt, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushText2}" AcceptsReturn="True" TextWrapping="Wrap" Text="{Binding Selected.NegativePrompt, UpdateSourceTrigger=PropertyChanged}" />
                                 </Border>
                             </StackPanel>
 
@@ -243,7 +243,7 @@
                                 <StackPanel Grid.Column="1">
                                     <TextBlock Style="{StaticResource TextMonoUpper}" Text="SPEC · 08:00,18:00 OR 60 (minutes)" />
                                     <Border Margin="0,4,0,0" Padding="10,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
-                                        <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushGoldHi}" Text="{Binding Selected.Spec, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="13.5" Foreground="{StaticResource BrushGoldHi}" Text="{Binding Selected.Spec, UpdateSourceTrigger=PropertyChanged}" />
                                     </Border>
                                 </StackPanel>
                             </Grid>
@@ -268,7 +268,7 @@
                                 <StackPanel Grid.Column="1">
                                     <TextBlock Style="{StaticResource TextMonoUpper}" Text="WORKFLOW · NAME OR REPLICATE SLUG" />
                                     <Border Margin="0,4,0,0" Padding="10,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
-                                        <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding Selected.Workflow, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="13.5" Foreground="{StaticResource BrushText1}" Text="{Binding Selected.Workflow, UpdateSourceTrigger=PropertyChanged}" />
                                     </Border>
                                 </StackPanel>
                             </Grid>
@@ -327,7 +327,7 @@
                                         Content="✦  Save" Style="{StaticResource ButtonPillGold}" />
                             </Grid>
 
-                            <TextBlock Grid.Row="8" Margin="0,12,0,0" FontFamily="{StaticResource FontMono}" FontSize="10" Foreground="{StaticResource BrushText3}" TextWrapping="Wrap">
+                            <TextBlock Grid.Row="8" Margin="0,12,0,0" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText3}" TextWrapping="Wrap">
                                 <Run Text="next fire " />
                                 <Run Foreground="{StaticResource BrushGoldHi}" Text="{Binding Selected.NextFireLabel, Mode=OneWay}" />
                                 <Run Text="  ·  " />
@@ -336,7 +336,7 @@
                         </Grid>
 
                         <TextBlock Margin="0,40,0,0"
-                                   FontFamily="{StaticResource FontMono}" FontSize="10.5"
+                                   FontFamily="{StaticResource FontMono}" FontSize="12"
                                    Foreground="{StaticResource BrushText3}"
                                    TextWrapping="Wrap"
                                    Visibility="{Binding Selected, Converter={StaticResource NotNullOrEmpty}, ConverterParameter=invert, FallbackValue=Visible}"

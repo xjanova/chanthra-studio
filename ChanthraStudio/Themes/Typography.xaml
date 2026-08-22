@@ -4,16 +4,30 @@
 
     <!--  ============================================================
           Type system
-          Display:  Cormorant Garamond (brand, panel headers, italics)
-          UI:       IBM Plex Sans (body / labels / buttons)
-          Thai:     IBM Plex Sans Thai (mixed runs use UI as fallback)
-          Mono:     IBM Plex Mono (timecodes, seeds, status)
+          Display:  Cormorant Garamond — brand moments only (wordmark,
+                    panel headers, the Summon CTA, watermark). A display
+                    serif below ~16px reads thin and blurry on Windows,
+                    so it is deliberately kept out of body and label roles.
+          UI:       IBM Plex Sans, falling back to IBM Plex Sans Thai
+          Thai:     alias of UI — kept so existing references still resolve
+          Mono:     IBM Plex Mono, falling back to IBM Plex Sans Thai
+
+          Every family carries a Thai fallback. IBM Plex Mono has no Thai
+          coverage, and the Thai captions under mono labels were falling
+          back to whichever system font Windows chose — which is why they
+          did not match the rest of the app.
+
+          Scale note: this app's dominant label style is TextMonoUpper,
+          used 200+ times. It used to be 9px in the dimmest colour on the
+          ramp (2.4:1 against the background — below any legibility
+          threshold, not merely small). The sizes below start at 11.5 and
+          the dim end of the text ramp was lifted to match; see Colors.xaml.
           ============================================================  -->
 
     <FontFamily x:Key="FontDisplay">pack://application:,,,/Assets/Fonts/#Cormorant Garamond</FontFamily>
-    <FontFamily x:Key="FontUI">pack://application:,,,/Assets/Fonts/#IBM Plex Sans</FontFamily>
-    <FontFamily x:Key="FontThai">pack://application:,,,/Assets/Fonts/#IBM Plex Sans Thai, pack://application:,,,/Assets/Fonts/#IBM Plex Sans</FontFamily>
-    <FontFamily x:Key="FontMono">pack://application:,,,/Assets/Fonts/#IBM Plex Mono</FontFamily>
+    <FontFamily x:Key="FontUI">pack://application:,,,/Assets/Fonts/#IBM Plex Sans, pack://application:,,,/Assets/Fonts/#IBM Plex Sans Thai</FontFamily>
+    <FontFamily x:Key="FontThai">pack://application:,,,/Assets/Fonts/#IBM Plex Sans, pack://application:,,,/Assets/Fonts/#IBM Plex Sans Thai</FontFamily>
+    <FontFamily x:Key="FontMono">pack://application:,,,/Assets/Fonts/#IBM Plex Mono, pack://application:,,,/Assets/Fonts/#IBM Plex Sans Thai</FontFamily>
 
     <!--  ============================================================
           Style presets
@@ -21,7 +35,7 @@
 
     <Style x:Key="TextDisplay" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource FontDisplay}" />
-        <Setter Property="FontSize" Value="14.5" />
+        <Setter Property="FontSize" Value="17" />
         <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
@@ -38,37 +52,50 @@
 
     <Style x:Key="TextBody" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource FontThai}" />
-        <Setter Property="FontSize" Value="13" />
-        <Setter Property="LineHeight" Value="20" />
+        <Setter Property="FontSize" Value="14.5" />
+        <!--  24 rather than the old 20: Thai stacks vowels above and tone
+              marks above those, and a 1.4 ratio is where those stop
+              colliding with the line before.  -->
+        <Setter Property="LineHeight" Value="24" />
         <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
         <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
     </Style>
 
     <Style
         x:Key="TextLabel"
         BasedOn="{StaticResource TextBody}"
         TargetType="TextBlock">
-        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="LineHeight" Value="20" />
         <Setter Property="Foreground" Value="{StaticResource BrushText3}" />
     </Style>
 
-    <Style x:Key="TextSecondary" BasedOn="{StaticResource TextBody}" TargetType="TextBlock">
+    <Style
+        x:Key="TextSecondary"
+        BasedOn="{StaticResource TextBody}"
+        TargetType="TextBlock">
         <Setter Property="Foreground" Value="{StaticResource BrushText2}" />
     </Style>
 
+    <!--  Small mono styles use Display formatting: at 11–12px it snaps
+          stems to whole pixels, which is the difference between "crisp"
+          and "slightly smeared" on a non-HiDPI monitor.  -->
     <Style x:Key="TextMono" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource FontMono}" />
-        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="Foreground" Value="{StaticResource BrushText3}" />
-        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
     </Style>
 
     <Style
         x:Key="TextMonoUpper"
         BasedOn="{StaticResource TextMono}"
         TargetType="TextBlock">
-        <Setter Property="FontSize" Value="9" />
+        <Setter Property="FontSize" Value="11.5" />
         <Setter Property="Foreground" Value="{StaticResource BrushText3}" />
     </Style>
 
@@ -81,38 +108,82 @@
 
     <Style x:Key="TextSectionDivider" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource FontMono}" />
-        <Setter Property="FontSize" Value="9.5" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="Foreground" Value="{StaticResource BrushText3}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
     </Style>
 
     <Style x:Key="TextWordmarkBrand" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource FontDisplay}" />
-        <Setter Property="FontSize" Value="14.5" />
+        <Setter Property="FontSize" Value="18" />
         <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
     </Style>
 
     <Style x:Key="TextSummonCta" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource FontDisplay}" />
         <Setter Property="FontStyle" Value="Italic" />
         <Setter Property="FontWeight" Value="Medium" />
-        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontSize" Value="18.5" />
         <Setter Property="Foreground" Value="#FF1A0D05" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
     </Style>
 
     <Style x:Key="TextPanelHeader" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource FontDisplay}" />
-        <Setter Property="FontSize" Value="14.5" />
+        <Setter Property="FontSize" Value="21" />
         <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
     </Style>
 
     <Style x:Key="TextWatermark" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource FontDisplay}" />
         <Setter Property="FontStyle" Value="Italic" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="13.5" />
         <Setter Property="Foreground" Value="#8CF0E7D4" />
+    </Style>
+
+    <!--  ============================================================
+          Form vocabulary — sans, not mono.
+
+          The panels built before this had one label style (9px uppercase
+          mono) doing the work of section heading, field label and hint at
+          once. Dense settings screens need those three to look different
+          from each other, and a settings form is the one place where a
+          terminal face costs more legibility than it buys character.
+          ============================================================  -->
+
+    <Style x:Key="TextCardTitle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource FontUI}" />
+        <Setter Property="FontSize" Value="15.5" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
+    </Style>
+
+    <Style x:Key="TextFieldLabel" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource FontUI}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="Foreground" Value="{StaticResource BrushText2}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
+    </Style>
+
+    <Style x:Key="TextHint" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource FontUI}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="LineHeight" Value="19" />
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+        <Setter Property="Foreground" Value="{StaticResource BrushText3}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
     </Style>
 
 </ResourceDictionary>

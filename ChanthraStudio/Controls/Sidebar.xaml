@@ -231,7 +231,7 @@
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     FontFamily="{StaticResource FontDisplay}"
-                    FontSize="14"
+                    FontSize="15"
                     FontStyle="Italic"
                     FontWeight="Medium"
                     Foreground="#FF1A0D05"

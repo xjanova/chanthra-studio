@@ -15,7 +15,7 @@
         <!--  Single / multiline input field  -->
         <Style x:Key="FieldBox" TargetType="TextBox">
             <Setter Property="FontFamily" Value="{StaticResource FontUI}" />
-            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontSize" Value="14" />
             <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
             <Setter Property="CaretBrush" Value="{StaticResource BrushGoldHi}" />
             <Setter Property="Padding" Value="9,7" />
@@ -55,7 +55,7 @@
                             BorderBrush="{StaticResource BrushLineHairline}"
                             BorderThickness="1"
                             CornerRadius="99">
-                            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="12" Foreground="{StaticResource BrushText2}" Text="{Binding Label}" />
+                            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13.5" Foreground="{StaticResource BrushText2}" Text="{Binding Label}" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -136,8 +136,8 @@
                                             <ControlTemplate TargetType="Button">
                                                 <Border x:Name="bd" Padding="12,10" Background="{StaticResource BrushBgSurface}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="9">
                                                     <StackPanel>
-                                                        <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" FontWeight="Medium" Foreground="{StaticResource BrushText1}" Text="{Binding Name}" />
-                                                        <TextBlock Margin="0,3,0,0" Style="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Text="{Binding Blurb}" />
+                                                        <TextBlock FontFamily="{StaticResource FontUI}" FontSize="14" FontWeight="Medium" Foreground="{StaticResource BrushText1}" Text="{Binding Name}" />
+                                                        <TextBlock Margin="0,3,0,0" Style="{StaticResource TextSecondary}" FontSize="12.5" TextWrapping="Wrap" Text="{Binding Blurb}" />
                                                     </StackPanel>
                                                 </Border>
                                                 <ControlTemplate.Triggers>
@@ -176,7 +176,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Border Grid.Column="0" Padding="9,7" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
-                                <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText3}" TextTrimming="CharacterEllipsis" Text="{Binding ReferenceImageLabel}" />
+                                <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushText3}" TextTrimming="CharacterEllipsis" Text="{Binding ReferenceImageLabel}" />
                             </Border>
                             <Button Grid.Column="1" Width="30" Height="30" Margin="6,0,0,0" Command="{Binding BrowseReferenceCommand}" Style="{StaticResource ButtonIcon}" ToolTip="Browse">
                                 <Path Width="13" Height="13" Data="{StaticResource IcoPaperclip}" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
@@ -195,7 +195,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Border Grid.Column="0" Padding="9,7" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
-                                <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText3}" TextTrimming="CharacterEllipsis" Text="{Binding SceneImageLabel}" />
+                                <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushText3}" TextTrimming="CharacterEllipsis" Text="{Binding SceneImageLabel}" />
                             </Border>
                             <Button Grid.Column="1" Width="30" Height="30" Margin="6,0,0,0" Command="{Binding BrowseSceneCommand}" Style="{StaticResource ButtonIcon}" ToolTip="Browse">
                                 <Path Width="13" Height="13" Data="{StaticResource IcoPaperclip}" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
@@ -214,7 +214,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Border Grid.Column="0" Padding="9,7" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
-                                <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText3}" TextTrimming="CharacterEllipsis" Text="{Binding OutfitImageLabel}" />
+                                <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushText3}" TextTrimming="CharacterEllipsis" Text="{Binding OutfitImageLabel}" />
                             </Border>
                             <Button Grid.Column="1" Width="30" Height="30" Margin="6,0,0,0" Command="{Binding BrowseOutfitCommand}" Style="{StaticResource ButtonIcon}" ToolTip="Browse">
                                 <Path Width="13" Height="13" Data="{StaticResource IcoPaperclip}" Stretch="Uniform" Stroke="{StaticResource BrushText3}" StrokeThickness="1.4" />
@@ -275,7 +275,7 @@
         <DockPanel Grid.Column="1" LastChildFill="True">
             <StackPanel Margin="26,20,26,8" DockPanel.Dock="Top">
                 <TextBlock FontFamily="{StaticResource FontDisplay}" FontSize="22" FontStyle="Italic" Foreground="{StaticResource BrushText1}" Text="{Binding BoardTitle}" />
-                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12.5" Text="แต่ละคลิป: ก๊อปปี้พร้อมต์ · export ComfyUI · หรือส่งเข้า Queue ตามเครื่องที่เลือก" />
+                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="14" Text="แต่ละคลิป: ก๊อปปี้พร้อมต์ · export ComfyUI · หรือส่งเข้า Queue ตามเครื่องที่เลือก" />
             </StackPanel>
 
             <ScrollViewer Margin="26,4,18,18" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
@@ -286,7 +286,7 @@
                             Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}" Text="✦ ยังไม่มีสตอรี่บอร์ด" />
-                            <TextBlock Margin="0,8,0,0" Style="{StaticResource TextSecondary}" FontSize="12.5" TextWrapping="Wrap"
+                            <TextBlock Margin="0,8,0,0" Style="{StaticResource TextSecondary}" FontSize="14" TextWrapping="Wrap"
                                        Text="เลือกเทมเพลตทางซ้าย (เทมเพลตแรก 'เลิกจน' มีตัวอย่างพร้อมใช้) หรือพิมพ์คอนเซ็ปต์เองแล้วกด ✦ Generate storyboard" />
                         </StackPanel>
                     </Border>
@@ -304,10 +304,10 @@
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="150" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" VerticalAlignment="Center" FontFamily="{StaticResource FontUI}" FontSize="14" FontWeight="Medium" Foreground="{StaticResource BrushText1}" Text="{Binding Header}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="0" VerticalAlignment="Center" FontFamily="{StaticResource FontUI}" FontSize="15" FontWeight="Medium" Foreground="{StaticResource BrushText1}" Text="{Binding Header}" TextTrimming="CharacterEllipsis" />
 
                                             <Border Grid.Column="1" x:Name="statusPill" Margin="8,0" Padding="8,3" VerticalAlignment="Center" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="99">
-                                                <TextBlock x:Name="statusText" Style="{StaticResource TextMono}" FontSize="10" Foreground="{StaticResource BrushText3}" Text="{Binding StatusLabel}" />
+                                                <TextBlock x:Name="statusText" Style="{StaticResource TextMono}" FontSize="11.5" Foreground="{StaticResource BrushText3}" Text="{Binding StatusLabel}" />
                                             </Border>
 
                                             <Border Grid.Column="2" Padding="9,2" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
@@ -323,7 +323,7 @@
                                         </Grid>
 
                                         <!--  Visual  -->
-                                        <TextBlock Margin="0,10,0,0" Style="{StaticResource TextSecondary}" FontSize="12.5" TextWrapping="Wrap" Text="{Binding Visual}" />
+                                        <TextBlock Margin="0,10,0,0" Style="{StaticResource TextSecondary}" FontSize="14" TextWrapping="Wrap" Text="{Binding Visual}" />
 
                                         <!--  Camera + SFX  -->
                                         <StackPanel Margin="0,8,0,0">
@@ -344,8 +344,8 @@
                                                             <ColumnDefinition Width="Auto" />
                                                             <ColumnDefinition Width="*" />
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0" Margin="0,0,7,0" Foreground="{StaticResource BrushGold}" Text="“" FontFamily="{StaticResource FontDisplay}" FontSize="15" />
-                                                        <TextBlock Grid.Column="1" FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" TextWrapping="Wrap" Text="{Binding Text}" />
+                                                        <TextBlock Grid.Column="0" Margin="0,0,7,0" Foreground="{StaticResource BrushGold}" Text="“" FontFamily="{StaticResource FontDisplay}" FontSize="16" />
+                                                        <TextBlock Grid.Column="1" FontFamily="{StaticResource FontUI}" FontSize="14" Foreground="{StaticResource BrushText1}" TextWrapping="Wrap" Text="{Binding Text}" />
                                                     </Grid>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
@@ -357,7 +357,7 @@
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Border Style="{StaticResource CardChip}">
-                                                        <TextBlock Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushGoldHi}" Text="{Binding}" />
+                                                        <TextBlock Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushGoldHi}" Text="{Binding}" />
                                                     </Border>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
@@ -443,7 +443,7 @@
 
                 <!--  Footer: status + board actions  -->
                 <StackPanel DockPanel.Dock="Bottom">
-                    <TextBlock Margin="2,0,2,8" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource BrushGoldHi}"
+                    <TextBlock Margin="2,0,2,8" FontSize="12.5" TextWrapping="Wrap" Foreground="{StaticResource BrushGoldHi}"
                                Text="{Binding StatusMessage}"
                                Visibility="{Binding StatusMessage, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}" />
                     <StackPanel Visibility="{Binding HasSpec, Converter={StaticResource BoolToVis}}">
@@ -452,12 +452,12 @@
                         <Border Margin="0,0,0,10" Padding="14" Background="{StaticResource BrushBgSurface}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="10">
                             <StackPanel>
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}" Text="⚡ AUTO PILOT" />
-                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap"
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12.5" TextWrapping="Wrap"
                                            Text="สร้างทุกคลิป → รวมเป็นไฟล์เดียว → โพสต์ขึ้น Facebook Page อัตโนมัติ" />
 
                                 <CheckBox Margin="0,10,0,0" Foreground="{StaticResource BrushText1}" IsChecked="{Binding AutoPostFacebook, Mode=TwoWay}"
                                           Content="โพสต์ขึ้น Facebook เมื่อเสร็จ" />
-                                <TextBlock Margin="22,3,0,0" FontFamily="{StaticResource FontMono}" FontSize="10" Foreground="{StaticResource BrushText4}"
+                                <TextBlock Margin="22,3,0,0" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText4}"
                                            TextWrapping="Wrap" Text="{Binding FacebookTargetLabel}" />
 
                                 <!--  Idle → launch  -->
@@ -477,17 +477,17 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource BrushGoldHi}"
+                                        <TextBlock Grid.Column="0" VerticalAlignment="Center" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}"
                                                    TextWrapping="Wrap" Text="{Binding AutoPilotStatus}" />
                                         <Button Grid.Column="1" Padding="9,5" Margin="8,0,0,0" VerticalAlignment="Center"
                                                 Command="{Binding CancelAutoPilotCommand}" Style="{StaticResource ButtonPill}" ToolTip="ยกเลิกรอบนี้">
-                                            <TextBlock FontSize="11" Text="✕ ยกเลิก" />
+                                            <TextBlock FontSize="12.5" Text="✕ ยกเลิก" />
                                         </Button>
                                     </Grid>
                                 </StackPanel>
 
                                 <!--  Last-run result while idle  -->
-                                <TextBlock Margin="0,8,0,0" FontSize="10.5" Foreground="{StaticResource BrushText3}" TextWrapping="Wrap"
+                                <TextBlock Margin="0,8,0,0" FontSize="12" Foreground="{StaticResource BrushText3}" TextWrapping="Wrap"
                                            Text="{Binding AutoPilotStatus}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -528,7 +528,7 @@
                 <Grid Margin="0,14,0,12">
                     <Border Padding="16" VerticalAlignment="Top" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="10"
                             Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Style="{StaticResource TextSecondary}" FontSize="12" TextWrapping="Wrap" Text="คำโพสต์ Facebook + แฮชแท็ก จะปรากฏที่นี่หลังสร้างสตอรี่บอร์ด" />
+                        <TextBlock Style="{StaticResource TextSecondary}" FontSize="13.5" TextWrapping="Wrap" Text="คำโพสต์ Facebook + แฮชแท็ก จะปรากฏที่นี่หลังสร้างสตอรี่บอร์ด" />
                     </Border>
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding HasSpec, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
@@ -539,7 +539,7 @@
                                 Background="Transparent"
                                 BorderThickness="0"
                                 FontFamily="{StaticResource FontUI}"
-                                FontSize="12.5"
+                                FontSize="14"
                                 Foreground="{StaticResource BrushText1}"
                                 IsReadOnly="True"
                                 TextWrapping="Wrap"
@@ -549,12 +549,12 @@
 
                         <TextBlock Margin="2,14,0,6" Style="{StaticResource TextSectionDivider}" Text="HASHTAGS" />
                         <Border Padding="12" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
-                            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="12" Foreground="{StaticResource BrushGoldHi}" TextWrapping="Wrap" Text="{Binding Facebook.HashtagLine, Mode=OneWay}" />
+                            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13.5" Foreground="{StaticResource BrushGoldHi}" TextWrapping="Wrap" Text="{Binding Facebook.HashtagLine, Mode=OneWay}" />
                         </Border>
 
                         <TextBlock Margin="2,12,0,6" Style="{StaticResource TextSectionDivider}" Text="แท็กแบบคอมม่า" />
                         <Border Padding="12" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
-                            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="12" Foreground="{StaticResource BrushText2}" TextWrapping="Wrap" Text="{Binding Facebook.CommaTagLine, Mode=OneWay}" />
+                            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13.5" Foreground="{StaticResource BrushText2}" TextWrapping="Wrap" Text="{Binding Facebook.CommaTagLine, Mode=OneWay}" />
                         </Border>
                     </StackPanel>
                     </ScrollViewer>

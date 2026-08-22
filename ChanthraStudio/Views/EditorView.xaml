@@ -57,7 +57,7 @@
             Effect="{StaticResource ShadowGoldGlowSoft}"
             Visibility="{Binding HasAutosaveRecovery, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
             <StackPanel Orientation="Horizontal">
-                <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="14" Foreground="{StaticResource BrushText1}" Text="✦ Autosave found from a previous session" />
+                <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="15" Foreground="{StaticResource BrushText1}" Text="✦ Autosave found from a previous session" />
                 <Button Margin="14,0,6,0" Padding="12,4" Command="{Binding RecoverAutosaveCommand}" Content="Recover" Style="{StaticResource ButtonPillGold}" />
                 <Button Padding="12,4" Command="{Binding DismissAutosaveCommand}" Content="Dismiss" Style="{StaticResource ButtonPill}" />
             </StackPanel>
@@ -96,7 +96,7 @@
                     </Style.Triggers>
                 </Style>
             </Border.Style>
-            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="11.5" Foreground="{StaticResource BrushText1}" Text="{Binding ToastMessage}" />
+            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="{Binding ToastMessage}" />
         </Border>
 
         <!--  Header  -->
@@ -116,7 +116,7 @@
                         <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
                         <Run Text="Editor · NLE-lite" />
                     </TextBlock>
-                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12"
+                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="13.5"
                                Text="Drop library clips onto the timeline, set per-slot durations, optionally pin an audio take, render." />
                 </StackPanel>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
@@ -169,7 +169,7 @@
                     <Border Grid.Row="0" Padding="14,12,14,8" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="0,0,0,1">
                         <StackPanel>
                             <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText3}" Text="LIBRARY" />
-                            <TextBlock Margin="0,3,0,0" FontFamily="{StaticResource FontMono}" FontSize="10" Foreground="{StaticResource BrushText4}"
+                            <TextBlock Margin="0,3,0,0" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText4}"
                                        Text="{Binding LibraryClips.Count, StringFormat={}{0} clips available}" />
                         </StackPanel>
                     </Border>
@@ -201,8 +201,8 @@
                                                 </Grid>
                                             </Border>
                                             <StackPanel Grid.Column="1" Margin="10,0,8,0" VerticalAlignment="Center">
-                                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="11" Foreground="{StaticResource BrushText1}" Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Margin="0,2,0,0" Style="{StaticResource TextMonoUpper}" FontSize="9" Text="{Binding SizeLabel}" />
+                                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="12.5" Foreground="{StaticResource BrushText1}" Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Margin="0,2,0,0" Style="{StaticResource TextMonoUpper}" FontSize="11" Text="{Binding SizeLabel}" />
                                             </StackPanel>
                                             <Button
                                                 Grid.Column="2"
@@ -213,7 +213,7 @@
                                                 CommandParameter="{Binding}"
                                                 Style="{StaticResource ButtonSummonCta}"
                                                 ToolTip="Add to timeline">
-                                                <TextBlock FontFamily="{StaticResource FontMono}" FontSize="14" Foreground="#FF1A0D05" Text="+" />
+                                                <TextBlock FontFamily="{StaticResource FontMono}" FontSize="15" Foreground="#FF1A0D05" Text="+" />
                                             </Button>
                                         </Grid>
                                     </Border>
@@ -293,7 +293,7 @@
                                     Click="PreviewRewind_Click"
                                     Style="{StaticResource ButtonIcon}"
                                     ToolTip="Restart from 0:00">
-                                    <TextBlock FontFamily="{StaticResource FontMono}" FontSize="13" Foreground="{StaticResource BrushText2}" Text="⟲" />
+                                    <TextBlock FontFamily="{StaticResource FontMono}" FontSize="14" Foreground="{StaticResource BrushText2}" Text="⟲" />
                                 </Button>
                                 <Button
                                     x:Name="PreviewPlayBtn"
@@ -304,7 +304,7 @@
                                     Click="PreviewPlayPause_Click"
                                     Style="{StaticResource ButtonSummonCta}"
                                     ToolTip="Play this slot with audio (space)">
-                                    <TextBlock x:Name="PreviewPlayGlyph" FontFamily="{StaticResource FontMono}" FontSize="14" Foreground="#FF1A0D05" Text="▶" />
+                                    <TextBlock x:Name="PreviewPlayGlyph" FontFamily="{StaticResource FontMono}" FontSize="15" Foreground="#FF1A0D05" Text="▶" />
                                 </Button>
                                 <Button
                                     x:Name="PreviewMuteBtn"
@@ -314,14 +314,14 @@
                                     Click="PreviewMute_Click"
                                     Style="{StaticResource ButtonIcon}"
                                     ToolTip="Mute / unmute">
-                                    <TextBlock x:Name="PreviewMuteGlyph" FontFamily="{StaticResource FontMono}" FontSize="13" Foreground="{StaticResource BrushText2}" Text="🔊" />
+                                    <TextBlock x:Name="PreviewMuteGlyph" FontFamily="{StaticResource FontMono}" FontSize="14" Foreground="{StaticResource BrushText2}" Text="🔊" />
                                 </Button>
                                 <TextBlock
                                     x:Name="PreviewTimecode"
                                     Margin="10,0,4,0"
                                     VerticalAlignment="Center"
                                     Style="{StaticResource TextMonoGold}"
-                                    FontSize="10.5"
+                                    FontSize="12"
                                     Text="0:00" />
                             </StackPanel>
                         </Border>
@@ -357,7 +357,7 @@
                                             Style="{StaticResource ButtonPillGold}"
                                             ToolTip="Play the whole timeline · silent preview · advances slots automatically (shift-space)">
                                         <TextBlock>
-                                            <Run x:Name="TimelinePlayGlyph" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="#FF1A0D05" Text="▶▶" />
+                                            <Run x:Name="TimelinePlayGlyph" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="#FF1A0D05" Text="▶▶" />
                                             <Run Foreground="#FF1A0D05" Text=" Timeline" />
                                         </TextBlock>
                                     </Button>
@@ -442,46 +442,46 @@
                                                             <Border Background="{StaticResource BrushSurface03}" />
                                                             <Image Source="{Binding FilePath, Converter={StaticResource ClipPathToImage}}" Stretch="UniformToFill" />
                                                             <Border Margin="3" Padding="4,1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="{StaticResource BrushBlackOverlay55}" CornerRadius="3">
-                                                                <TextBlock Style="{StaticResource TextMonoGold}" FontSize="9" Text="{Binding DurationSec, StringFormat={}{0:F1}s}" />
+                                                                <TextBlock Style="{StaticResource TextMonoGold}" FontSize="11" Text="{Binding DurationSec, StringFormat={}{0:F1}s}" />
                                                             </Border>
                                                         </Grid>
                                                     </Border>
-                                                    <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="9" Foreground="{StaticResource BrushText2}" TextTrimming="CharacterEllipsis" MaxWidth="120" Text="{Binding FileName}" />
+                                                    <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText2}" TextTrimming="CharacterEllipsis" MaxWidth="120" Text="{Binding FileName}" />
                                                     <StackPanel Margin="0,4,0,0" HorizontalAlignment="Center" Orientation="Horizontal">
                                                         <Button Width="22" Height="22" Padding="0" Margin="0,0,2,0"
                                                                 Command="{Binding DataContext.MoveLeftCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                 CommandParameter="{Binding}"
                                                                 Style="{StaticResource ButtonIcon}"
                                                                 ToolTip="Move left">
-                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText2}" Text="‹" />
+                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushText2}" Text="‹" />
                                                         </Button>
                                                         <Button Width="22" Height="22" Padding="0" Margin="0,0,2,0"
                                                                 Command="{Binding DataContext.MoveRightCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                 CommandParameter="{Binding}"
                                                                 Style="{StaticResource ButtonIcon}"
                                                                 ToolTip="Move right">
-                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText2}" Text="›" />
+                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushText2}" Text="›" />
                                                         </Button>
                                                         <Button Width="22" Height="22" Padding="0" Margin="0,0,2,0"
                                                                 Command="{Binding DataContext.SplitSlotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                 CommandParameter="{Binding}"
                                                                 Style="{StaticResource ButtonIcon}"
                                                                 ToolTip="Razor split — halve duration + clone in place">
-                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="✂" />
+                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}" Text="✂" />
                                                         </Button>
                                                         <Button Width="22" Height="22" Padding="0" Margin="0,0,2,0"
                                                                 Command="{Binding DataContext.DuplicateSlotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                 CommandParameter="{Binding}"
                                                                 Style="{StaticResource ButtonIcon}"
                                                                 ToolTip="Duplicate slot (keep duration)">
-                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText2}" Text="❏" />
+                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushText2}" Text="❏" />
                                                         </Button>
                                                         <Button Width="22" Height="22" Padding="0"
                                                                 Command="{Binding DataContext.RemoveSlotCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                 CommandParameter="{Binding}"
                                                                 Style="{StaticResource ButtonIcon}"
                                                                 ToolTip="Remove">
-                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushCrimson}" Text="×" />
+                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushCrimson}" Text="×" />
                                                         </Button>
                                                     </StackPanel>
                                                 </StackPanel>
@@ -500,7 +500,7 @@
             <Border Grid.Column="2" Background="{StaticResource BrushSurface02}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1,0,0,0">
                 <ScrollViewer Padding="18,16,18,18" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
-                        <TextBlock Style="{StaticResource TextPanelHeader}" FontSize="14">
+                        <TextBlock Style="{StaticResource TextPanelHeader}" FontSize="15">
                             <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
                             <Run Text="Inspector" />
                         </TextBlock>
@@ -543,7 +543,7 @@
                                     <TextBlock Grid.Column="0" Style="{StaticResource TextMonoUpper}" Text="KEN BURNS · ZOOM" />
                                     <Button Grid.Column="1" Padding="6,2" Command="{Binding ResetKenBurnsCommand}" Content="reset" Style="{StaticResource ButtonPill}" />
                                 </Grid>
-                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="9.5" Foreground="{StaticResource BrushText4}" Text="100 → 100 = static · 100 → 115 = push-in · 115 → 100 = pull-back" />
+                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText4}" Text="100 → 100 = static · 100 → 115 = push-in · 115 → 100 = pull-back" />
 
                                 <TextBlock Margin="0,8,0,0" Style="{StaticResource TextMonoUpper}" Text="START · END" />
                                 <Grid Margin="0,4,0,0">
@@ -573,7 +573,7 @@
                                 <!--  Pan target (T50 / 7.19) — start / end normalized 0..1 with 0.5 = centre.
                                       Note: pan only takes effect when zoom > 100%. (7.20 / review LOGIC #4)  -->
                                 <TextBlock Margin="0,12,0,0" Style="{StaticResource TextMonoUpper}" Text="PAN · NEEDS ZOOM &gt; 100%" />
-                                <TextBlock Margin="0,2,0,4" FontFamily="{StaticResource FontMono}" FontSize="9" Foreground="{StaticResource BrushText4}"
+                                <TextBlock Margin="0,2,0,4" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText4}"
                                            Text="Sliders are inactive until zoom is greater than 100% on at least one end" />
                                 <TextBlock Margin="0,4,0,0" Style="{StaticResource TextMonoUpper}" Text="START X / Y" />
                                 <Grid Margin="0,4,0,0">
@@ -661,7 +661,7 @@
                             <StackPanel>
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Text="OUTPUT NAME" />
                                 <Border Margin="0,4,0,0" Padding="8,5" Background="{StaticResource BrushSurface03}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="4">
-                                    <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText1}" Text="{Binding OutputName, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushText1}" Text="{Binding OutputName, UpdateSourceTrigger=PropertyChanged}" />
                                 </Border>
 
                                 <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="CROSSFADE BETWEEN SLOTS" />
@@ -732,7 +732,7 @@
                                     <TextBlock Grid.Column="0" Style="{StaticResource TextMonoUpper}" Text="TITLE CARDS · TEXT" />
                                     <Button Grid.Column="1" Padding="8,3" Command="{Binding AddTitleCommand}" Content="+ Title" Style="{StaticResource ButtonPill}" />
                                 </Grid>
-                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="9.5" Foreground="{StaticResource BrushText4}" Text="Layered via ffmpeg drawtext — no PNG required. Brand-locked palette." />
+                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText4}" Text="Layered via ffmpeg drawtext — no PNG required. Brand-locked palette." />
 
                                 <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding TitleTimeline}"
                                               Visibility="{Binding HasTitles, Converter={StaticResource BoolToVis}}">
@@ -761,14 +761,14 @@
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
                                                     <StackPanel Grid.Column="0">
-                                                        <TextBlock FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
-                                                        <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="9" Foreground="{StaticResource BrushText4}" Text="{Binding Summary}" />
+                                                        <TextBlock FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="13.5" Foreground="{StaticResource BrushText1}" Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="11" Foreground="{StaticResource BrushText4}" Text="{Binding Summary}" />
                                                     </StackPanel>
                                                     <Button Grid.Column="1" Width="22" Height="22" Padding="0"
                                                             Command="{Binding DataContext.RemoveTitleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                             CommandParameter="{Binding}"
                                                             Style="{StaticResource ButtonIcon}">
-                                                        <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushCrimson}" Text="×" />
+                                                        <TextBlock FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushCrimson}" Text="×" />
                                                     </Button>
                                                 </Grid>
                                             </Border>
@@ -780,7 +780,7 @@
                                 <StackPanel Visibility="{Binding HasSelectedTitle, Converter={StaticResource BoolToVis}}">
                                     <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="TEXT" />
                                     <Border Margin="0,4,0,0" Padding="8,5" Background="{StaticResource BrushSurface03}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="4">
-                                        <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="14" Foreground="{StaticResource BrushText1}" AcceptsReturn="True" TextWrapping="Wrap" MaxLines="3" Text="{Binding SelectedTitle.Text, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBox Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="15" Foreground="{StaticResource BrushText1}" AcceptsReturn="True" TextWrapping="Wrap" MaxLines="3" Text="{Binding SelectedTitle.Text, UpdateSourceTrigger=PropertyChanged}" />
                                     </Border>
 
                                     <TextBlock Margin="0,10,0,0" Style="{StaticResource TextMonoUpper}" Text="START · DURATION" />
@@ -854,13 +854,13 @@
                         <Border Margin="0,12,0,0" Padding="14,10" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="8">
                             <StackPanel>
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Text="OVERLAY TRACK · PIP" />
-                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="9.5" Foreground="{StaticResource BrushText4}" Text="Drop library clips here · each one becomes a layered PiP at its own start time" />
+                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText4}" Text="Drop library clips here · each one becomes a layered PiP at its own start time" />
 
                                 <!--  Drag-drop target — adds a new overlay slot each drop  -->
                                 <Border Margin="0,6,0,0" MinHeight="48" Background="{StaticResource BrushSurface03}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6"
                                         AllowDrop="True" Drop="Overlay_Drop" DragEnter="Overlay_DragEnter" DragLeave="Overlay_DragLeave">
                                     <Grid>
-                                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="10" Foreground="{StaticResource BrushText3}" Text="DROP A LIBRARY CLIP TO ADD" />
+                                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText3}" Text="DROP A LIBRARY CLIP TO ADD" />
                                     </Grid>
                                 </Border>
 
@@ -897,13 +897,13 @@
                                                             <Image Source="{Binding FilePath, Converter={StaticResource ClipPathToImage}}" Stretch="UniformToFill" />
                                                         </Border>
                                                         <Border VerticalAlignment="Bottom" Padding="4,2" Background="{StaticResource BrushBlackOverlay65}" CornerRadius="0,0,4,4">
-                                                            <TextBlock Style="{StaticResource TextMonoGold}" FontSize="9" Text="{Binding StartSec, StringFormat={}@{0:F1}s}" />
+                                                            <TextBlock Style="{StaticResource TextMonoGold}" FontSize="11" Text="{Binding StartSec, StringFormat={}@{0:F1}s}" />
                                                         </Border>
                                                         <Button HorizontalAlignment="Right" VerticalAlignment="Top" Width="18" Height="18" Padding="0" Margin="2"
                                                                 Command="{Binding DataContext.RemoveOverlayCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                 CommandParameter="{Binding}"
                                                                 Style="{StaticResource ButtonIcon}">
-                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="10" Foreground="{StaticResource BrushCrimson}" Text="×" />
+                                                            <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushCrimson}" Text="×" />
                                                         </Button>
                                                     </Grid>
                                                 </Border>
@@ -977,7 +977,7 @@
                                     <TextBlock Grid.Column="0" Style="{StaticResource TextMonoUpper}" Text="AUDIO MIXER · MULTI-TRACK" />
                                     <Button Grid.Column="1" Padding="8,3" Command="{Binding AddAudioTrackCommand}" Content="+ Track" Style="{StaticResource ButtonPill}" />
                                 </Grid>
-                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="9.5" Foreground="{StaticResource BrushText4}" Text="Each track plays from its own start time, mixed via amix." />
+                                <TextBlock Margin="0,4,0,0" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText4}" Text="Each track plays from its own start time, mixed via amix." />
 
                                 <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding AudioTracks}"
                                               Visibility="{Binding HasAudioTracks, Converter={StaticResource BoolToVis}}">
@@ -1005,14 +1005,14 @@
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
                                                     <StackPanel Grid.Column="0">
-                                                        <TextBlock FontFamily="{StaticResource FontUI}" FontSize="11" Foreground="{StaticResource BrushText1}" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-                                                        <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="9" Foreground="{StaticResource BrushText4}" Text="{Binding Summary}" />
+                                                        <TextBlock FontFamily="{StaticResource FontUI}" FontSize="12.5" Foreground="{StaticResource BrushText1}" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="11" Foreground="{StaticResource BrushText4}" Text="{Binding Summary}" />
                                                     </StackPanel>
                                                     <Button Grid.Column="1" Width="22" Height="22" Padding="0"
                                                             Command="{Binding DataContext.RemoveAudioCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                             CommandParameter="{Binding}"
                                                             Style="{StaticResource ButtonIcon}">
-                                                        <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushCrimson}" Text="×" />
+                                                        <TextBlock FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushCrimson}" Text="×" />
                                                     </Button>
                                                 </Grid>
                                             </Border>
@@ -1074,7 +1074,7 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <Border Grid.Column="0" Padding="8,5" Background="{StaticResource BrushSurface03}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="4">
-                                        <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="10.5" Foreground="{StaticResource BrushText2}" Text="{Binding AudioFileName}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushText2}" Text="{Binding AudioFileName}" TextTrimming="CharacterEllipsis" />
                                     </Border>
                                     <Button Grid.Column="1" Margin="6,0,0,0" Padding="8,5" Command="{Binding BrowseAudioCommand}" Content="Browse" Style="{StaticResource ButtonPill}" />
                                     <Button Grid.Column="2" Margin="6,0,0,0" Padding="8,5" Command="{Binding ClearAudioCommand}" Style="{StaticResource ButtonPill}">
@@ -1086,11 +1086,11 @@
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate>
                                             <StackPanel>
-                                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="11.5" Foreground="{StaticResource BrushText1}" Text="{Binding FileName}" />
+                                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="{Binding FileName}" />
                                                 <StackPanel Margin="0,2,0,0" Orientation="Horizontal">
-                                                    <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="9" Text="{Binding ProviderDisplayName}" />
-                                                    <TextBlock Margin="6,0" FontSize="9" Foreground="{StaticResource BrushText4}" Text="·" />
-                                                    <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="9" Text="{Binding VoiceDisplayName}" />
+                                                    <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="11" Text="{Binding ProviderDisplayName}" />
+                                                    <TextBlock Margin="6,0" FontSize="11" Foreground="{StaticResource BrushText4}" Text="·" />
+                                                    <TextBlock Style="{StaticResource TextMonoUpper}" FontSize="11" Text="{Binding VoiceDisplayName}" />
                                                 </StackPanel>
                                             </StackPanel>
                                         </DataTemplate>

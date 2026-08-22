@@ -38,7 +38,7 @@
                         <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
                         <Run Text="Usage &amp; cost" />
                     </TextBlock>
-                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12"
+                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="13.5"
                                Text="คำนวณจากราคาจริงของ provider · บันทึกทุก call ที่ผ่านแอป · แปลงเป็นบาทตามเรท FX ที่ตั้งไว้" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
@@ -49,7 +49,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText3}" Text="1 USD =" />
-                            <TextBox Grid.Column="1" Width="56" Margin="6,0,0,0" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Right" Text="{Binding FxRate, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.##}}" />
+                            <TextBox Grid.Column="1" Width="56" Margin="6,0,0,0" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="13" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Right" Text="{Binding FxRate, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.##}}" />
                             <TextBlock Grid.Column="1" Margin="0,0,-22,0" VerticalAlignment="Center" HorizontalAlignment="Right" Style="{StaticResource TextMono}" Foreground="{StaticResource BrushText3}" Text="THB" />
                         </Grid>
                     </Border>
@@ -104,8 +104,8 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText1}" Text="{Binding Label}" />
-                                                <TextBlock Grid.Column="1" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="{Binding AmountLabel}" />
+                                                <TextBlock Grid.Column="0" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushText1}" Text="{Binding Label}" />
+                                                <TextBlock Grid.Column="1" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}" Text="{Binding AmountLabel}" />
                                             </Grid>
                                             <Border Grid.Row="1" Margin="0,4,0,0" Height="4" Background="{StaticResource BrushBgInset}" CornerRadius="2">
                                                 <Border HorizontalAlignment="Left" Background="{StaticResource BrushSliderFill}" CornerRadius="2"
@@ -135,8 +135,8 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" FontFamily="{StaticResource FontMono}" FontSize="10.5" Foreground="{StaticResource BrushText1}" Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Grid.Column="1" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="{Binding AmountLabel}" />
+                                                <TextBlock Grid.Column="0" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="1" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}" Text="{Binding AmountLabel}" />
                                             </Grid>
                                             <Border Grid.Row="1" Margin="0,4,0,0" Height="4" Background="{StaticResource BrushBgInset}" CornerRadius="2">
                                                 <Border HorizontalAlignment="Left" Background="{StaticResource BrushSliderFill}" CornerRadius="2"
@@ -180,11 +180,11 @@
                                             <ColumnDefinition Width="120" />
                                             <ColumnDefinition Width="100" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" FontFamily="{StaticResource FontMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}" Text="{Binding OccurredAt, StringFormat={}{0:MM-dd HH:mm}}" />
-                                        <TextBlock Grid.Column="1" FontFamily="{StaticResource FontMono}" FontSize="10.5" Foreground="{StaticResource BrushText2}" Text="{Binding ProviderId}" />
-                                        <TextBlock Grid.Column="2" FontFamily="{StaticResource FontMono}" FontSize="10.5" Foreground="{StaticResource BrushText1}" Text="{Binding ModelSlug}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="3" FontFamily="{StaticResource FontMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}" Text="{Binding UnitLabel}" />
-                                        <TextBlock Grid.Column="4" FontFamily="{StaticResource FontMono}" FontSize="10.5" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Right" Text="{Binding CostThbLabel}" />
+                                        <TextBlock Grid.Column="0" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushText3}" Text="{Binding OccurredAt, StringFormat={}{0:MM-dd HH:mm}}" />
+                                        <TextBlock Grid.Column="1" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushText2}" Text="{Binding ProviderId}" />
+                                        <TextBlock Grid.Column="2" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding ModelSlug}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="3" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushText3}" Text="{Binding UnitLabel}" />
+                                        <TextBlock Grid.Column="4" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Right" Text="{Binding CostThbLabel}" />
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

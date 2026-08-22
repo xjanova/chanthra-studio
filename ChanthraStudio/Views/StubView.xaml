@@ -41,7 +41,7 @@
                 CornerRadius="10">
                 <TextBlock
                     Style="{StaticResource TextSecondary}"
-                    FontSize="12.5"
+                    FontSize="14"
                     TextAlignment="Center"
                     TextWrapping="Wrap"
                     Text="{Binding Description, RelativeSource={RelativeSource AncestorType=UserControl}}" />

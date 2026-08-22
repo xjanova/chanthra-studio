@@ -49,7 +49,7 @@
             </Border.Style>
             <TextBlock
                 FontFamily="{StaticResource FontUI}"
-                FontSize="11.5"
+                FontSize="13"
                 Foreground="{StaticResource BrushText1}"
                 Text="{Binding ToastMessage}" />
         </Border>
@@ -67,13 +67,13 @@
                     <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
                     <Run Text="Library" />
                 </TextBlock>
-                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12" Text="{Binding Summary}" />
+                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="13.5" Text="{Binding Summary}" />
             </StackPanel>
             <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
                 <!--  Render bar — visible only when something selected  -->
                 <StackPanel Orientation="Horizontal" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
                     <Border Padding="10,6" VerticalAlignment="Center" Background="{StaticResource BrushSurface03}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="99">
-                        <TextBlock FontSize="11" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}">
+                        <TextBlock FontSize="12.5" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}">
                             <Run Text="{Binding SelectedCount}" /><Run Text=" SELECTED" />
                         </TextBlock>
                     </Border>
@@ -146,7 +146,7 @@
                     Margin="0,8,0,0"
                     HorizontalAlignment="Center"
                     Style="{StaticResource TextSecondary}"
-                    FontSize="12"
+                    FontSize="13.5"
                     TextAlignment="Center"
                     MaxWidth="380"
                     TextWrapping="Wrap"
@@ -229,7 +229,7 @@
                                                 <TextBlock
                                                     Margin="0,4,0,0"
                                                     HorizontalAlignment="Center"
-                                                    FontSize="9.5"
+                                                    FontSize="11.5"
                                                     Style="{StaticResource TextMonoUpper}"
                                                     Text="MEDIA" />
                                             </StackPanel>
@@ -252,7 +252,7 @@
                                                 Visibility="{Binding IsPosted, Converter={StaticResource BoolToVis}}">
                                                 <TextBlock
                                                     FontFamily="{StaticResource FontMono}"
-                                                    FontSize="9"
+                                                    FontSize="11"
                                                     Foreground="{StaticResource BrushOk}"
                                                     Text="{Binding PostBadgeLabel}" />
                                             </Border>
@@ -313,19 +313,19 @@
                                             <StackPanel Grid.Column="0">
                                                 <TextBlock
                                                     FontFamily="{StaticResource FontUI}"
-                                                    FontSize="11.5"
+                                                    FontSize="13"
                                                     FontWeight="Medium"
                                                     Foreground="{StaticResource BrushText1}"
                                                     Text="{Binding FileName}"
                                                     TextTrimming="CharacterEllipsis" />
                                                 <StackPanel Margin="0,3,0,0" Orientation="Horizontal">
                                                     <TextBlock
-                                                        FontSize="9.5"
+                                                        FontSize="11.5"
                                                         Style="{StaticResource TextMonoUpper}"
                                                         Text="{Binding CreatedAt, StringFormat={}{0:yyyy-MM-dd HH:mm}}" />
                                                     <TextBlock
                                                         Margin="6,0,0,0"
-                                                        FontSize="9.5"
+                                                        FontSize="11.5"
                                                         Style="{StaticResource TextMonoUpper}"
                                                         Foreground="{StaticResource BrushOk}"
                                                         Visibility="{Binding IsPosted, Converter={StaticResource BoolToVis}}"
@@ -338,7 +338,7 @@
                                                 VerticalAlignment="Center"
                                                 Background="{StaticResource BrushSurface03}"
                                                 CornerRadius="4">
-                                                <TextBlock FontSize="9" Style="{StaticResource TextMonoGold}" Text="{Binding SizeLabel}" />
+                                                <TextBlock FontSize="11" Style="{StaticResource TextMonoGold}" Text="{Binding SizeLabel}" />
                                             </Border>
                                         </Grid>
                                     </Border>

@@ -11,9 +11,9 @@
     mc:Ignorable="d">
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="320" />
+            <ColumnDefinition Width="372" />
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="360" />
+            <ColumnDefinition Width="396" />
         </Grid.ColumnDefinitions>
 
         <!--  ============== COMPOSER (left) ==============  -->
@@ -59,7 +59,7 @@
                         Command="{Binding AiWorkflowRunCommand}"
                         Style="{StaticResource ButtonPillGold}"
                         ToolTip="AI designs a ComfyUI workflow from your prompt, then runs it on ComfyUI">
-                        <TextBlock FontFamily="{StaticResource FontUI}" FontSize="12" Text="✦ AI workflow → run (ComfyUI)" />
+                        <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13.5" Text="✦ AI workflow → run (ComfyUI)" />
                     </Button>
                     <Button
                         HorizontalContentAlignment="Stretch"
@@ -83,7 +83,7 @@
                                 CornerRadius="4">
                                 <TextBlock
                                     FontFamily="{StaticResource FontMono}"
-                                    FontSize="10"
+                                    FontSize="11.5"
                                     Foreground="#FF1A0D05"
                                     Text="{Binding Credits}" />
                             </Border>
@@ -120,7 +120,7 @@
                                                 BorderThickness="1"
                                                 CornerRadius="99">
                                                 <TextBlock
-                                                    FontSize="9"
+                                                    FontSize="11"
                                                     Foreground="{StaticResource BrushGoldHi}"
                                                     Style="{StaticResource TextMonoUpper}"
                                                     Text="cinematic" />
@@ -133,7 +133,7 @@
                                                 BorderThickness="1"
                                                 CornerRadius="99">
                                                 <TextBlock
-                                                    FontSize="9"
+                                                    FontSize="11"
                                                     Foreground="#FFE89AA5"
                                                     Style="{StaticResource TextMonoUpper}"
                                                     Text="silk" />
@@ -145,7 +145,7 @@
                                                 BorderThickness="1"
                                                 CornerRadius="99">
                                                 <TextBlock
-                                                    FontSize="9"
+                                                    FontSize="11"
                                                     Style="{StaticResource TextMonoUpper}"
                                                     Text="thai" />
                                             </Border>
@@ -184,7 +184,7 @@
                                                 Command="{Binding RandomPromptCommand}"
                                                 Style="{StaticResource ButtonIcon}"
                                                 ToolTip="🎲 Roll a brand starter prompt — for when you're stuck">
-                                                <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="⚂" />
+                                                <TextBlock FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}" Text="⚂" />
                                             </Button>
                                             <Button
                                                 Width="24"
@@ -231,7 +231,7 @@
                                             MinHeight="48"
                                             Padding="10,8"
                                             FontFamily="{StaticResource FontMono}"
-                                            FontSize="11"
+                                            FontSize="12.5"
                                             Foreground="{StaticResource BrushText2}"
                                             Background="Transparent"
                                             BorderThickness="0"
@@ -289,7 +289,7 @@
                                                         <GradientStop Offset="1" Color="#D9000000" />
                                                     </LinearGradientBrush>
                                                 </Border.Background>
-                                                <TextBlock Margin="6,12,6,4" HorizontalAlignment="Center" FontFamily="{StaticResource FontDisplay}" FontSize="10.5" FontStyle="Italic" Foreground="{StaticResource BrushText1}" Text="{Binding Name}" />
+                                                <TextBlock Margin="6,12,6,4" HorizontalAlignment="Center" FontFamily="{StaticResource FontDisplay}" FontSize="12" FontStyle="Italic" Foreground="{StaticResource BrushText1}" Text="{Binding Name}" />
                                             </Border>
                                         </Grid>
                                     </Button>
@@ -322,7 +322,7 @@
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
                                         FontFamily="{StaticResource FontDisplay}"
-                                        FontSize="13"
+                                        FontSize="14"
                                         FontStyle="Italic"
                                         FontWeight="Medium"
                                         Foreground="{StaticResource BrushGoldHi}"
@@ -336,7 +336,7 @@
                                     BorderThickness="0"
                                     Foreground="{StaticResource BrushText1}"
                                     FontFamily="{StaticResource FontUI}"
-                                    FontSize="12.5"
+                                    FontSize="14"
                                     ItemsSource="{Binding Workflows}"
                                     SelectedItem="{Binding ActiveWorkflow, Mode=TwoWay}"
                                     Cursor="Hand">
@@ -345,7 +345,7 @@
                                             <StackPanel>
                                                 <TextBlock
                                                     FontFamily="{StaticResource FontUI}"
-                                                    FontSize="12.5"
+                                                    FontSize="14"
                                                     Foreground="{StaticResource BrushText1}"
                                                     Text="{Binding DisplayName}" />
                                                 <TextBlock
@@ -395,12 +395,12 @@
                                     BorderThickness="0"
                                     Foreground="{StaticResource BrushText1}"
                                     FontFamily="{StaticResource FontUI}"
-                                    FontSize="12.5"
+                                    FontSize="14"
                                     ItemsSource="{Binding VideoRoutes}"
                                     SelectedItem="{Binding ActiveRoute, Mode=TwoWay}"
                                     DisplayMemberPath="DisplayName"
                                     Cursor="Hand"
-                                    ToolTip="Where to run this generation. ComfyUI = local GPU · Replicate/Runway/Pika/fal = cloud (paid)" />
+                                    ToolTip="เรนเดอร์ที่ไหน · ComfyUI = เอนจินในเครื่องที่สตูดิโอติดตั้งเอง · Rented GPU = เช่าการ์ด · Replicate/Runway/Pika/fal = คลาวด์ (เสียเงิน)" />
                             </Grid>
                         </Border>
 
@@ -456,7 +456,7 @@
                                     <TextBlock
                                         Margin="0,2,0,0"
                                         FontFamily="{StaticResource FontMono}"
-                                        FontSize="11"
+                                        FontSize="12.5"
                                         Foreground="{StaticResource BrushText1}"
                                         Text="{Binding ReferenceImageFileName}"
                                         TextTrimming="CharacterEllipsis" />
@@ -490,9 +490,9 @@
                             CornerRadius="10">
                             <StackPanel>
                                 <!--  Aspect  -->
-                                <Grid Margin="13,10" Height="28">
+                                <Grid Margin="13,10" Height="30">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="74" />
+                                        <ColumnDefinition Width="86" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextLabel}" Text="Aspect" />
@@ -520,7 +520,7 @@
                                 <!--  Duration  -->
                                 <Grid Margin="13,10">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="74" />
+                                        <ColumnDefinition Width="86" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
@@ -539,7 +539,7 @@
                                 <!--  Motion  -->
                                 <Grid Margin="13,10">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="74" />
+                                        <ColumnDefinition Width="86" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
@@ -558,18 +558,18 @@
                                 <!--  Seed — two editable numbers + a regenerate (shuffle) button  -->
                                 <Grid Margin="13,10">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="74" />
+                                        <ColumnDefinition Width="86" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextLabel}" Text="Seed" />
                                     <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
                                         <Border Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="4" Padding="6,2">
-                                            <TextBox Width="58" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Center" Text="{Binding SeedA, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBox Width="58" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="13" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Center" Text="{Binding SeedA, UpdateSourceTrigger=PropertyChanged}" />
                                         </Border>
                                         <TextBlock Margin="4,0" VerticalAlignment="Center" Foreground="{StaticResource BrushText4}" Text="·" />
                                         <Border Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="4" Padding="6,2">
-                                            <TextBox Width="58" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Center" Text="{Binding SeedB, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBox Width="58" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}" FontFamily="{StaticResource FontMono}" FontSize="13" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Center" Text="{Binding SeedB, UpdateSourceTrigger=PropertyChanged}" />
                                         </Border>
                                     </StackPanel>
                                     <Button Grid.Column="2" Width="24" Height="24" Margin="6,0,0,0" Command="{Binding RegenerateSeedCommand}" Style="{StaticResource ButtonIcon}" ToolTip="Shuffle seed (random)">
@@ -640,7 +640,7 @@
                                          Style="{StaticResource ChipRadio}" Height="58">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Path Margin="0,0,0,4" Width="22" Height="22" Data="M4 4 L20 4 L20 20 L4 20 Z M9 9 L15 9 L15 15 L9 15 Z" Stretch="Uniform" Stroke="{StaticResource BrushGoldHi}" StrokeThickness="1.4" />
-                                    <TextBlock FontSize="9" Foreground="{StaticResource BrushGoldHi}" Style="{StaticResource TextMonoUpper}" Text="PUSH" />
+                                    <TextBlock FontSize="11" Foreground="{StaticResource BrushGoldHi}" Style="{StaticResource TextMonoUpper}" Text="PUSH" />
                                 </StackPanel>
                             </RadioButton>
                             <RadioButton GroupName="camera" Margin="0,0,4,0"
@@ -715,7 +715,7 @@
                 </Border.Style>
                 <TextBlock
                     FontFamily="{StaticResource FontUI}"
-                    FontSize="11.5"
+                    FontSize="13"
                     Foreground="{StaticResource BrushText1}"
                     Text="{Binding ToastMessage}" />
             </Border>
@@ -727,7 +727,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource TextSecondary}" FontSize="12.5" Text="{Binding Breadcrumb}" />
+                    <TextBlock Style="{StaticResource TextSecondary}" FontSize="14" Text="{Binding Breadcrumb}" />
                     <Border
                         Margin="14,0,0,0"
                         Padding="9,4"
@@ -744,7 +744,7 @@
                                 VerticalAlignment="Center"
                                 Style="{StaticResource PulsingGoldDot}" />
                             <TextBlock
-                                FontSize="11"
+                                FontSize="12.5"
                                 Foreground="{StaticResource BrushGoldHi}"
                                 Style="{StaticResource TextMonoUpper}"
                                 Text="{Binding GeneratingDuration}" />
@@ -858,7 +858,7 @@
                                     Background="{StaticResource BrushBlackOverlay55}"
                                     CornerRadius="4">
                                     <TextBlock
-                                        FontSize="10"
+                                        FontSize="11.5"
                                         Style="{StaticResource TextMonoUpper}"
                                         Text="{Binding ShotMetaShot}" />
                                 </Border>
@@ -868,7 +868,7 @@
                                     Background="{StaticResource BrushBlackOverlay55}"
                                     CornerRadius="4">
                                     <TextBlock
-                                        FontSize="10"
+                                        FontSize="11.5"
                                         Style="{StaticResource TextMonoUpper}"
                                         Text="{Binding ShotMetaFrame}" />
                                 </Border>
@@ -878,7 +878,7 @@
                                     Background="{StaticResource BrushBlackOverlay55}"
                                     CornerRadius="4">
                                     <TextBlock
-                                        FontSize="10"
+                                        FontSize="11.5"
                                         Style="{StaticResource TextMonoUpper}"
                                         Text="{Binding ShotMetaLens}" />
                                 </Border>
@@ -887,7 +887,7 @@
                                     Background="{StaticResource BrushBlackOverlay55}"
                                     CornerRadius="4">
                                     <TextBlock
-                                        FontSize="10"
+                                        FontSize="11.5"
                                         Style="{StaticResource TextMonoUpper}"
                                         Text="{Binding ShotMetaSeed}" />
                                 </Border>
@@ -981,7 +981,7 @@
                                     <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal">
                                         <TextBlock
                                             Margin="0,0,12,0"
-                                            FontSize="10"
+                                            FontSize="11.5"
                                             Foreground="{StaticResource BrushText2}"
                                             Style="{StaticResource TextMono}"
                                             Text="00:14 / 00:32" />
@@ -1077,7 +1077,7 @@
                                                         </ControlTemplate.Triggers>
                                                     </ControlTemplate>
                                                 </Button.Template>
-                                                <TextBlock Margin="8,0" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource BrushText1}" Style="{StaticResource TextMono}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Margin="8,0" VerticalAlignment="Center" FontSize="11.5" Foreground="{StaticResource BrushText1}" Style="{StaticResource TextMono}" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
                                             </Button>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
@@ -1118,10 +1118,10 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Border Grid.Column="0" Margin="2" Padding="8,4" Background="#1F6C5E85" BorderBrush="#33B8A5D0" BorderThickness="1" CornerRadius="4">
-                                    <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontThai}" FontStyle="Italic" FontSize="11" Foreground="{StaticResource BrushMoon}" Text="จันทรา" />
+                                    <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontThai}" FontStyle="Italic" FontSize="12.5" Foreground="{StaticResource BrushMoon}" Text="จันทรา" />
                                 </Border>
                                 <Border Grid.Column="2" Margin="2" Padding="8,4" Background="#1F6C5E85" BorderBrush="#33B8A5D0" BorderThickness="1" CornerRadius="4">
-                                    <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="11" Foreground="{StaticResource BrushMoon}" Text="the moon rises" />
+                                    <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="12.5" Foreground="{StaticResource BrushMoon}" Text="the moon rises" />
                                 </Border>
                             </Grid>
                         </Grid>
@@ -1147,22 +1147,22 @@
                     </Grid.ColumnDefinitions>
                     <Border Grid.Column="0" BorderBrush="{StaticResource BrushGold}" BorderThickness="0,0,0,1.5" Padding="0,4,0,8">
                         <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                            <TextBlock VerticalAlignment="Center" Style="{StaticResource TextBody}" FontSize="12" Text="Storyboard " />
+                            <TextBlock VerticalAlignment="Center" Style="{StaticResource TextBody}" FontSize="13.5" Text="Storyboard " />
                             <Border Padding="6,2" Background="#1FD4A76A" CornerRadius="99">
-                                <TextBlock FontSize="9" Foreground="{StaticResource BrushGoldHi}" Style="{StaticResource TextMonoUpper}" Text="{Binding Storyboard.Count}" />
+                                <TextBlock FontSize="11" Foreground="{StaticResource BrushGoldHi}" Style="{StaticResource TextMonoUpper}" Text="{Binding Storyboard.Count}" />
                             </Border>
                         </StackPanel>
                     </Border>
                     <Border Grid.Column="1" Padding="0,4,0,8">
                         <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                            <TextBlock VerticalAlignment="Center" Foreground="{StaticResource BrushText3}" Style="{StaticResource TextBody}" FontSize="12" Text="Queue " />
+                            <TextBlock VerticalAlignment="Center" Foreground="{StaticResource BrushText3}" Style="{StaticResource TextBody}" FontSize="13.5" Text="Queue " />
                             <Border Padding="6,2" Background="{StaticResource BrushSurface03}" CornerRadius="99">
-                                <TextBlock FontSize="9" Style="{StaticResource TextMonoUpper}" Text="{Binding QueueCount}" />
+                                <TextBlock FontSize="11" Style="{StaticResource TextMonoUpper}" Text="{Binding QueueCount}" />
                             </Border>
                         </StackPanel>
                     </Border>
                     <Border Grid.Column="2" Padding="0,4,0,8">
-                        <TextBlock HorizontalAlignment="Center" Foreground="{StaticResource BrushText3}" Style="{StaticResource TextBody}" FontSize="12" Text="Assets" />
+                        <TextBlock HorizontalAlignment="Center" Foreground="{StaticResource BrushText3}" Style="{StaticResource TextBody}" FontSize="13.5" Text="Assets" />
                     </Border>
                 </Grid>
 
@@ -1199,7 +1199,7 @@
                                                 </Border.Background>
                                             </Border>
                                             <Border Margin="10" Padding="6,3" HorizontalAlignment="Left" VerticalAlignment="Top" Background="{StaticResource BrushBlackOverlay55}" CornerRadius="4">
-                                                <TextBlock FontSize="9" Style="{StaticResource TextMonoUpper}" Text="{Binding Number, StringFormat=SHOT {0}}" />
+                                                <TextBlock FontSize="11" Style="{StaticResource TextMonoUpper}" Text="{Binding Number, StringFormat=SHOT {0}}" />
                                             </Border>
                                             <Ellipse
                                                 Width="7"
@@ -1210,7 +1210,7 @@
                                                 Effect="{StaticResource ShadowGoldGlowSoft}"
                                                 Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" />
                                             <Border Margin="10" Padding="6,3" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="{StaticResource BrushBlackOverlay55}" CornerRadius="4">
-                                                <TextBlock FontSize="9" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}" Text="{Binding DurationLabel}" />
+                                                <TextBlock FontSize="11" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}" Text="{Binding DurationLabel}" />
                                             </Border>
                                             <!--  generation progress bar  -->
                                             <Border Height="2" VerticalAlignment="Bottom" Background="#22FFFFFF">
@@ -1277,10 +1277,10 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Style="{StaticResource TextBody}" FontSize="12.5" FontWeight="Medium" Text="{Binding Title}" />
+                                                <TextBlock Grid.Column="0" Style="{StaticResource TextBody}" FontSize="14" FontWeight="Medium" Text="{Binding Title}" />
                                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource TextMono}" Text="{Binding Id, StringFormat=#28{0}}" />
                                             </Grid>
-                                            <TextBlock Margin="0,4,0,8" MaxHeight="36" Style="{StaticResource TextSecondary}" FontSize="11.5" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" Text="{Binding Description}" />
+                                            <TextBlock Margin="0,4,0,8" MaxHeight="36" Style="{StaticResource TextSecondary}" FontSize="13" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" Text="{Binding Description}" />
                                             <ItemsControl ItemsSource="{Binding Tags}">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
@@ -1290,7 +1290,7 @@
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
                                                         <Border Margin="0,0,4,0" Padding="6,2" Background="{StaticResource BrushSurface03}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="99">
-                                                            <TextBlock FontSize="9" Style="{StaticResource TextMonoUpper}" Text="{Binding}" />
+                                                            <TextBlock FontSize="11" Style="{StaticResource TextMonoUpper}" Text="{Binding}" />
                                                         </Border>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>

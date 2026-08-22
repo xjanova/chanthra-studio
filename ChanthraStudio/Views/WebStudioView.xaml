@@ -136,7 +136,7 @@
                     <TextBlock
                         Margin="0,4,0,8"
                         DockPanel.Dock="Top"
-                        FontSize="11"
+                        FontSize="12.5"
                         Foreground="{StaticResource BrushText1}"
                         Opacity="0.6"
                         Text="คลิกองค์ประกอบบนหน้าเว็บเพื่อจับ · แก้ชนิด/ค่าได้ · {{prompt}} {{image}} {{model}}"
@@ -210,7 +210,7 @@
                                                     ToolTip="ค่า เช่น {{prompt}}" />
                                                 <TextBlock
                                                     VerticalAlignment="Center"
-                                                    FontSize="10"
+                                                    FontSize="11.5"
                                                     Foreground="{StaticResource BrushText1}"
                                                     Opacity="0.6"
                                                     Text="{Binding Css}"
@@ -243,7 +243,7 @@
                     <TextBlock
                         Margin="0,4,0,8"
                         DockPanel.Dock="Top"
-                        FontSize="11"
+                        FontSize="12.5"
                         Foreground="{StaticResource BrushText1}"
                         Opacity="0.6"
                         Text="กรอก prompt + เลือกภาพ แล้วกดรัน · ระบบจะขับหน้าเว็บให้อัตโนมัติ"
@@ -319,7 +319,7 @@
             BorderBrush="{StaticResource BrushLineHairline}"
             BorderThickness="0,1,0,0">
             <TextBlock
-                FontSize="11"
+                FontSize="12.5"
                 Foreground="{StaticResource BrushText1}"
                 Opacity="0.7"
                 Text="{Binding StatusText}"

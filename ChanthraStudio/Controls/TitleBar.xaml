@@ -92,7 +92,7 @@
                                             Visibility="{Binding IsLive, Converter={StaticResource BoolToVis}}" />
                                         <TextBlock
                                             VerticalAlignment="Center"
-                                            FontSize="12.5"
+                                            FontSize="14"
                                             Foreground="{StaticResource BrushText2}"
                                             Style="{StaticResource TextBody}"
                                             Text="{Binding Title}" />
@@ -176,7 +176,7 @@
                         Background="{StaticResource BrushBgInset}"
                         CornerRadius="4">
                         <TextBlock
-                            FontSize="9"
+                            FontSize="11"
                             Style="{StaticResource TextMonoUpper}"
                             Text="Ctrl K" />
                     </Border>

@@ -27,7 +27,7 @@
                     <Run Foreground="{StaticResource BrushGold}" Text="✦ " />
                     <Run Text="Queue" />
                 </TextBlock>
-                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12" Text="{Binding Summary}" />
+                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="13.5" Text="{Binding Summary}" />
             </StackPanel>
             <Button
                 Grid.Column="1"
@@ -61,7 +61,7 @@
                     Margin="0,8,0,0"
                     HorizontalAlignment="Center"
                     Style="{StaticResource TextSecondary}"
-                    FontSize="12"
+                    FontSize="13.5"
                     TextAlignment="Center"
                     MaxWidth="380"
                     TextWrapping="Wrap"
@@ -122,7 +122,7 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </Border.Style>
-                                        <TextBlock FontSize="9.5" Style="{StaticResource TextMonoUpper}" Text="{Binding Status}" />
+                                        <TextBlock FontSize="11.5" Style="{StaticResource TextMonoUpper}" Text="{Binding Status}" />
                                     </Border>
 
                                     <!--  Body  -->
@@ -135,7 +135,7 @@
                                             <TextBlock
                                                 Grid.Column="0"
                                                 FontFamily="{StaticResource FontUI}"
-                                                FontSize="13"
+                                                FontSize="14"
                                                 FontWeight="Medium"
                                                 Foreground="{StaticResource BrushText1}"
                                                 Text="{Binding Provider}" />
@@ -143,21 +143,21 @@
                                                 Grid.Column="1"
                                                 Margin="10,0,0,0"
                                                 VerticalAlignment="Center"
-                                                FontSize="10"
+                                                FontSize="11.5"
                                                 Style="{StaticResource TextMono}"
                                                 Foreground="{StaticResource BrushText3}"
                                                 Text="{Binding ShortId, StringFormat=#{0}}" />
                                         </Grid>
                                         <TextBlock
                                             Margin="0,3,0,0"
-                                            FontSize="11"
+                                            FontSize="12.5"
                                             Style="{StaticResource TextSecondary}"
                                             Text="{Binding ErrorMessage}"
                                             TextTrimming="CharacterEllipsis"
                                             Visibility="{Binding ErrorMessage, Converter={StaticResource NotNullOrEmpty}}" />
                                         <TextBlock
                                             Margin="0,3,0,0"
-                                            FontSize="9.5"
+                                            FontSize="11.5"
                                             Style="{StaticResource TextMonoUpper}"
                                             Text="{Binding ShotId, StringFormat=SHOT {0}}" />
                                     </StackPanel>
@@ -166,13 +166,13 @@
                                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                         <TextBlock
                                             HorizontalAlignment="Right"
-                                            FontSize="10"
+                                            FontSize="11.5"
                                             Style="{StaticResource TextMonoGold}"
                                             Text="{Binding DurationLabel}" />
                                         <TextBlock
                                             Margin="0,3,0,0"
                                             HorizontalAlignment="Right"
-                                            FontSize="10"
+                                            FontSize="11.5"
                                             Style="{StaticResource TextMono}"
                                             Foreground="{StaticResource BrushText3}"
                                             Text="{Binding SubmittedAt, StringFormat={}{0:HH:mm:ss}}" />

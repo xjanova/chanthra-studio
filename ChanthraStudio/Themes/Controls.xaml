@@ -239,7 +239,7 @@
         <Setter Property="Background" Value="{StaticResource BrushSurface02}" />
         <Setter Property="Foreground" Value="{StaticResource BrushText2}" />
         <Setter Property="FontFamily" Value="{StaticResource FontUI}" />
-        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="Padding" Value="12,6" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Template">
@@ -278,7 +278,7 @@
         <Setter Property="FontFamily" Value="{StaticResource FontDisplay}" />
         <Setter Property="FontStyle" Value="Italic" />
         <Setter Property="FontWeight" Value="Medium" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="14" />
     </Style>
 
     <!--  Aspect / camera chip — single-select RadioButton variant  -->
@@ -289,7 +289,7 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Foreground" Value="{StaticResource BrushText2}" />
         <Setter Property="FontFamily" Value="{StaticResource FontMono}" />
-        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontSize" Value="11.5" />
         <Setter Property="Padding" Value="8,4" />
         <Setter Property="MinWidth" Value="44" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -330,7 +330,7 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Foreground" Value="{StaticResource BrushText2}" />
         <Setter Property="FontFamily" Value="{StaticResource FontMono}" />
-        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontSize" Value="11.5" />
         <Setter Property="Padding" Value="8,4" />
         <Setter Property="MinWidth" Value="44" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -482,7 +482,7 @@
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
         <Setter Property="FontFamily" Value="{StaticResource FontThai}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="14" />
         <Setter Property="AcceptsReturn" Value="True" />
         <Setter Property="TextWrapping" Value="Wrap" />
         <Setter Property="VerticalContentAlignment" Value="Top" />
@@ -497,7 +497,7 @@
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Foreground" Value="{StaticResource BrushText2}" />
         <Setter Property="FontFamily" Value="{StaticResource FontUI}" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="13.5" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Padding" Value="12,0" />
         <Setter Property="CaretBrush" Value="{StaticResource BrushGoldHi}" />
@@ -509,7 +509,7 @@
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
         <Setter Property="FontFamily" Value="{StaticResource FontUI}" />
-        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="FontSize" Value="14" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="MinHeight" Value="0" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -570,8 +570,15 @@
                             A ComboBox styled with this template and configured with
                             DisplayMemberPath instead of an ItemTemplate has no
                             template here, so the presenter falls back to ToString()
-                            and shows a type name. Give such pickers an explicit
-                            ItemTemplate (see the ROUTE picker in GenerateView).
+                            and shows a type name.
+
+                            The convention in this codebase is to override
+                            ToString() on the item class rather than to add an
+                            ItemTemplate — it fixes every picker bound to that type
+                            at once, including ones added later. See WebTool /
+                            WebSite in Models/WebStudio.cs, VideoRouteOption in
+                            ViewModels/GenerateViewModel.cs, and the provider
+                            options in ViewModels/VoiceViewModel.cs.
                         -->
                         <ContentPresenter
                             Grid.Column="0"

@@ -87,8 +87,8 @@
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel>
-                                            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="12.5" Text="{Binding DisplayName}" Foreground="{StaticResource BrushText1}" />
-                                            <TextBlock Margin="0,2,0,0" Style="{StaticResource TextSecondary}" FontSize="10.5" Text="{Binding ConfigSummary}" />
+                                            <TextBlock FontFamily="{StaticResource FontUI}" FontSize="14" Text="{Binding DisplayName}" Foreground="{StaticResource BrushText1}" />
+                                            <TextBlock Margin="0,2,0,0" Style="{StaticResource TextSecondary}" FontSize="12" Text="{Binding ConfigSummary}" />
                                         </StackPanel>
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
@@ -99,7 +99,7 @@
                     <!--  Clip identifier  -->
                     <StackPanel Grid.Row="2" Margin="0,14,0,0">
                         <TextBlock Style="{StaticResource TextMonoUpper}" Text="CLIP" />
-                        <TextBlock Margin="0,6,0,0" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText2}" Text="{Binding ClipFileName, RelativeSource={RelativeSource AncestorType=Window}}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Margin="0,6,0,0" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushText2}" Text="{Binding ClipFileName, RelativeSource={RelativeSource AncestorType=Window}}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
 
                     <!--  Caption  -->
@@ -120,7 +120,7 @@
                                 BorderThickness="0"
                                 CaretBrush="{StaticResource BrushGoldHi}"
                                 FontFamily="{StaticResource FontThai}"
-                                FontSize="13"
+                                FontSize="14"
                                 Foreground="{StaticResource BrushText1}"
                                 TextWrapping="Wrap"
                                 VerticalAlignment="Stretch"

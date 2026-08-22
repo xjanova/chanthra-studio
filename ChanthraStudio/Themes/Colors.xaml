@@ -33,11 +33,19 @@
     <Color x:Key="ColorPlum">#FF2A1B3D</Color>
     <Color x:Key="ColorPlumLight">#FF4A2E6A</Color>
 
-    <!--  Text  -->
+    <!--  Text
+
+          The two dim tiers were lifted for legibility. Measured against
+          ColorBgBase (#0C0814) the old values were:
+            Text3 #7D7388 → 4.40:1  (under the 4.5:1 floor for body text)
+            Text4 #514A5D → 2.35:1  (unreadable — and it is the colour of
+                                     the app's most-used label style)
+          The new values measure 6.8:1 and 5.0:1. The ramp keeps its order
+          and its mauve cast; only luminance moved.  -->
     <Color x:Key="ColorText1">#FFF0E7D4</Color>
     <Color x:Key="ColorText2">#FFB8AEC0</Color>
-    <Color x:Key="ColorText3">#FF7D7388</Color>
-    <Color x:Key="ColorText4">#FF514A5D</Color>
+    <Color x:Key="ColorText3">#FF9E93AC</Color>
+    <Color x:Key="ColorText4">#FF857C94</Color>
 
     <!--  Status  -->
     <Color x:Key="ColorOk">#FF6DBF8C</Color>

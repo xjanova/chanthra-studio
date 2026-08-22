@@ -15,7 +15,7 @@
         <!--  Single-line / multiline input field  -->
         <Style x:Key="FieldBox" TargetType="TextBox">
             <Setter Property="FontFamily" Value="{StaticResource FontUI}" />
-            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontSize" Value="14" />
             <Setter Property="Foreground" Value="{StaticResource BrushText1}" />
             <Setter Property="CaretBrush" Value="{StaticResource BrushGoldHi}" />
             <Setter Property="Padding" Value="9,7" />
@@ -89,7 +89,7 @@
                             CornerRadius="99">
                             <TextBlock
                                 FontFamily="{StaticResource FontUI}"
-                                FontSize="12"
+                                FontSize="13.5"
                                 Foreground="{StaticResource BrushText2}"
                                 Text="{Binding Label}" />
                         </Border>
@@ -155,10 +155,10 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Border Width="24" Height="24" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="12">
-                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="1" />
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}" Text="1" />
                             </Border>
                             <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="Mode &amp; use-case" />
+                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="14" Foreground="{StaticResource BrushText1}" Text="Mode &amp; use-case" />
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="HOW TO DIRECT" />
                             </StackPanel>
                         </Grid>
@@ -170,10 +170,10 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Border Width="24" Height="24" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="12">
-                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="2" />
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}" Text="2" />
                             </Border>
                             <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="Materials" />
+                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="14" Foreground="{StaticResource BrushText1}" Text="Materials" />
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="@REFERENCES" />
                             </StackPanel>
                         </Grid>
@@ -185,10 +185,10 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Border Width="24" Height="24" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="12">
-                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="3" />
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}" Text="3" />
                             </Border>
                             <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="Scene &amp; camera" />
+                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="14" Foreground="{StaticResource BrushText1}" Text="Scene &amp; camera" />
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="SUBJECT · LENS" />
                             </StackPanel>
                         </Grid>
@@ -200,10 +200,10 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Border Width="24" Height="24" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="12">
-                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="4" />
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}" Text="4" />
                             </Border>
                             <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="Timeline &amp; sound" />
+                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="14" Foreground="{StaticResource BrushText1}" Text="Timeline &amp; sound" />
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="BEATS · AUDIO" />
                             </StackPanel>
                         </Grid>
@@ -215,10 +215,10 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Border Width="24" Height="24" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="12">
-                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="5" />
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}" Text="5" />
                             </Border>
                             <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" Foreground="{StaticResource BrushText1}" Text="Output &amp; review" />
+                                <TextBlock FontFamily="{StaticResource FontUI}" FontSize="14" Foreground="{StaticResource BrushText1}" Text="Output &amp; review" />
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="LENGTH · FRAME" />
                             </StackPanel>
                         </Grid>
@@ -232,7 +232,7 @@
             <!--  Header  -->
             <StackPanel Margin="26,20,26,8" DockPanel.Dock="Top">
                 <TextBlock FontFamily="{StaticResource FontDisplay}" FontSize="22" FontStyle="Italic" Foreground="{StaticResource BrushText1}" Text="{Binding StepTitle}" />
-                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="12.5" Text="{Binding StepCaption}" />
+                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextSecondary}" FontSize="14" Text="{Binding StepCaption}" />
             </StackPanel>
 
             <!--  Footer nav  -->
@@ -273,7 +273,7 @@
                                 IsChecked="{Binding IsStoryboard, Mode=OneWay}"
                                 Style="{StaticResource ChipRadio}">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <TextBlock HorizontalAlignment="Center" FontFamily="{StaticResource FontUI}" FontSize="13.5" Foreground="{StaticResource BrushText1}" Text="🎬  Storyboard" />
+                                    <TextBlock HorizontalAlignment="Center" FontFamily="{StaticResource FontUI}" FontSize="14.5" Foreground="{StaticResource BrushText1}" Text="🎬  Storyboard" />
                                     <TextBlock Margin="0,3,0,0" Style="{StaticResource TextMonoUpper}" Text="SCENES · CAMERA · TIMELINE" />
                                 </StackPanel>
                             </RadioButton>
@@ -286,7 +286,7 @@
                                 IsChecked="{Binding IsLipSync, Mode=OneWay}"
                                 Style="{StaticResource ChipRadio}">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <TextBlock HorizontalAlignment="Center" FontFamily="{StaticResource FontUI}" FontSize="13.5" Foreground="{StaticResource BrushText1}" Text="💬  Lip-sync" />
+                                    <TextBlock HorizontalAlignment="Center" FontFamily="{StaticResource FontUI}" FontSize="14.5" Foreground="{StaticResource BrushText1}" Text="💬  Lip-sync" />
                                     <TextBlock Margin="0,3,0,0" Style="{StaticResource TextMonoUpper}" Text="TALKING HEAD · DIALOGUE" />
                                 </StackPanel>
                             </RadioButton>
@@ -311,8 +311,8 @@
                                             <ControlTemplate TargetType="Button">
                                                 <Border x:Name="bd" Padding="12,10" Background="{StaticResource BrushBgSurface}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="9">
                                                     <StackPanel>
-                                                        <TextBlock FontFamily="{StaticResource FontUI}" FontSize="13" FontWeight="Medium" Foreground="{StaticResource BrushText1}" Text="{Binding Name}" />
-                                                        <TextBlock Margin="0,3,0,0" Style="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Text="{Binding Blurb}" />
+                                                        <TextBlock FontFamily="{StaticResource FontUI}" FontSize="14" FontWeight="Medium" Foreground="{StaticResource BrushText1}" Text="{Binding Name}" />
+                                                        <TextBlock Margin="0,3,0,0" Style="{StaticResource TextSecondary}" FontSize="12.5" TextWrapping="Wrap" Text="{Binding Blurb}" />
                                                     </StackPanel>
                                                 </Border>
                                                 <ControlTemplate.Triggers>
@@ -345,7 +345,7 @@
                                 <TextBlock Text="＋ Audio" />
                             </Button>
                         </StackPanel>
-                        <TextBlock Margin="2,9,0,0" Style="{StaticResource TextSecondary}" FontSize="11.5" TextWrapping="Wrap"
+                        <TextBlock Margin="2,9,0,0" Style="{StaticResource TextSecondary}" FontSize="13" TextWrapping="Wrap"
                                    Text="Limits: ≤ 9 images · ≤ 3 videos · ≤ 3 audio (videos+audio ≤ 15s) · ≤ 12 total. Give every material a role — Seedance ignores a material that isn't @referenced with a purpose." />
 
                         <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding Materials}">
@@ -360,7 +360,7 @@
                                             </Grid.ColumnDefinitions>
 
                                             <Border Grid.Column="0" Width="62" Height="62" VerticalAlignment="Top" Background="#1FD4A76A" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="8">
-                                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Center" Text="{Binding RefName}" />
+                                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="13.5" Foreground="{StaticResource BrushGoldHi}" TextAlignment="Center" Text="{Binding RefName}" />
                                             </Border>
 
                                             <StackPanel Grid.Column="1" Margin="12,0,8,0">
@@ -390,7 +390,7 @@
 
                         <Border Padding="16" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="10"
                                 Visibility="{Binding HasNoMaterials, Converter={StaticResource BoolToVis}}">
-                            <TextBlock HorizontalAlignment="Center" Style="{StaticResource TextSecondary}" FontSize="12" Text="No materials yet — a pure text→video prompt is fine too." />
+                            <TextBlock HorizontalAlignment="Center" Style="{StaticResource TextSecondary}" FontSize="13.5" Text="No materials yet — a pure text→video prompt is fine too." />
                         </Border>
                     </StackPanel>
 
@@ -447,7 +447,7 @@
                         <!--  Lip-sync dialogue  -->
                         <StackPanel Visibility="{Binding IsLipSync, Converter={StaticResource BoolToVis}}">
                             <Border Padding="12,10" Background="#1FD4A76A" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="9">
-                                <TextBlock Style="{StaticResource TextSecondary}" FontSize="11.5" TextWrapping="Wrap"
+                                <TextBlock Style="{StaticResource TextSecondary}" FontSize="13" TextWrapping="Wrap"
                                            Text="Lip-sync formula: locked medium close-up, front-facing portrait, 5–10 words per line, no head movement. Reference a portrait image in step 2 as the speaker." />
                             </Border>
 
@@ -492,7 +492,7 @@
                                                     </Grid.ColumnDefinitions>
                                                     <TextBox Grid.Column="0" Style="{StaticResource FieldBox}" Text="{Binding Emotion, UpdateSourceTrigger=PropertyChanged}" ToolTip="Emotion / delivery cue" />
                                                     <Border Grid.Column="1" Margin="8,0,0,0" Padding="8,0" MinWidth="64" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
-                                                        <TextBlock VerticalAlignment="Center" HorizontalAlignment="Center" Style="{StaticResource TextMono}" FontSize="10.5" Foreground="{StaticResource BrushText3}">
+                                                        <TextBlock VerticalAlignment="Center" HorizontalAlignment="Center" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}">
                                                             <Run Text="{Binding WordCount, Mode=OneWay}" /><Run Text=" w" />
                                                         </TextBlock>
                                                     </Border>
@@ -632,7 +632,7 @@
                         <Border Margin="0,18,0,0" Padding="14" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineGold}" BorderThickness="1" CornerRadius="10">
                             <StackPanel>
                                 <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}" Text="✦ READY" />
-                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextSecondary}" FontSize="12" TextWrapping="Wrap"
+                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextSecondary}" FontSize="13.5" TextWrapping="Wrap"
                                            Text="Your prompt is assembled live on the right. Copy it into Seedance 2.0, or send it straight to the Composer to keep working in the studio." />
                             </StackPanel>
                         </Border>
@@ -657,7 +657,7 @@
                         <Run Foreground="{StaticResource BrushGold}" Text="✦ " /><Run Text="Live prompt" />
                     </TextBlock>
                     <Border Grid.Column="1" Padding="8,3" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="99">
-                        <TextBlock Style="{StaticResource TextMono}" FontSize="10" Foreground="{StaticResource BrushText3}">
+                        <TextBlock Style="{StaticResource TextMono}" FontSize="11.5" Foreground="{StaticResource BrushText3}">
                             <Run Text="{Binding CharCount, Mode=OneWay}" /><Run Text=" chars" />
                         </TextBlock>
                     </Border>
@@ -665,7 +665,7 @@
 
                 <!--  Footer: copy + send + status  -->
                 <StackPanel DockPanel.Dock="Bottom">
-                    <TextBlock Margin="2,0,2,8" Style="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource BrushGoldHi}"
+                    <TextBlock Margin="2,0,2,8" Style="{StaticResource TextSecondary}" FontSize="12.5" TextWrapping="Wrap" Foreground="{StaticResource BrushGoldHi}"
                                Text="{Binding StatusMessage}"
                                Visibility="{Binding StatusMessage, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}" />
                     <Button Command="{Binding CopyPromptCommand}" HorizontalContentAlignment="Stretch" Style="{StaticResource ButtonSummonCta}">
@@ -693,7 +693,7 @@
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
                                             <Ellipse Grid.Column="0" Width="4" Height="4" Margin="0,6,8,0" VerticalAlignment="Top" Fill="{StaticResource BrushCrimson}" />
-                                            <TextBlock Grid.Column="1" Style="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Text="{Binding}" />
+                                            <TextBlock Grid.Column="1" Style="{StaticResource TextSecondary}" FontSize="12.5" TextWrapping="Wrap" Text="{Binding}" />
                                         </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -709,7 +709,7 @@
                                 Background="Transparent"
                                 BorderThickness="0"
                                 FontFamily="{StaticResource FontMono}"
-                                FontSize="12.5"
+                                FontSize="14"
                                 Foreground="{StaticResource BrushText1}"
                                 IsReadOnly="True"
                                 TextWrapping="Wrap"

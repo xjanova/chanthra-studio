@@ -25,10 +25,17 @@
     <Color x:Key="ColorGold">#FFE0B673</Color>
     <Color x:Key="ColorGoldHi">#FFFFDE96</Color>
 
-    <!--  Text  -->
+    <!--  Text. Dawn's backdrop is lighter than Lunar's, so the dim tiers
+          need to be lighter again to clear the same contrast floor.
+          Against ColorBgBase (#1B1428) these measure 7.2:1 and 5.1:1.
+
+          ColorText4 was previously not declared here at all, so it fell
+          through to Lunar's — 2.1:1 on this background, i.e. the dimmest
+          label tier was even less readable in Dawn than in Lunar.  -->
     <Color x:Key="ColorText1">#FFF7EFE0</Color>
     <Color x:Key="ColorText2">#FFC8BEDA</Color>
-    <Color x:Key="ColorText3">#FF9089A0</Color>
+    <Color x:Key="ColorText3">#FFA9A2B8</Color>
+    <Color x:Key="ColorText4">#FF8F86A0</Color>
 
     <!--  Brushes — re-materialise the keys that changed so StaticResource
           lookups in already-defined consumers pick up the new colours.
@@ -44,4 +51,5 @@
     <SolidColorBrush x:Key="BrushText1" Color="{StaticResource ColorText1}" />
     <SolidColorBrush x:Key="BrushText2" Color="{StaticResource ColorText2}" />
     <SolidColorBrush x:Key="BrushText3" Color="{StaticResource ColorText3}" />
+    <SolidColorBrush x:Key="BrushText4" Color="{StaticResource ColorText4}" />
 </ResourceDictionary>
