@@ -249,6 +249,9 @@
                                                     <TextBlock Margin="0,2,0,0" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushText3}" Text="{Binding Slug}" />
                                                     <TextBlock Margin="0,1,0,0" FontFamily="{StaticResource FontMono}" FontSize="11" Foreground="{StaticResource BrushGoldHi}" Text="{Binding PricingHint}"
                                                                Visibility="{Binding PricingHint, Converter={StaticResource NotNullOrEmpty}}" />
+                                                    <!--  The chip's note (e.g. "ไม่รองรับภาษาไทย") was in the catalog but never shown  -->
+                                                    <TextBlock MaxWidth="230" Margin="0,3,0,0" HorizontalAlignment="Left" FontSize="11" Foreground="{StaticResource BrushText3}" TextWrapping="Wrap" Text="{Binding Description}"
+                                                               Visibility="{Binding Description, Converter={StaticResource NotNullOrEmpty}}" />
                                                 </StackPanel>
                                             </Button>
                                         </DataTemplate>
@@ -262,7 +265,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="ACTIVE MODEL" />
-                                    <TextBlock Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}" Text="{Binding ActiveModel}" />
+                                    <TextBlock Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}" FontSize="12.5" Foreground="{StaticResource BrushGoldHi}" Text="{Binding ActiveModelLabel}" />
                                 </Grid>
                             </StackPanel>
                         </Expander>

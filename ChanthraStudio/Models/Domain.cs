@@ -109,7 +109,20 @@ public sealed class Clip : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
     public string ShotId { get; set; } = "";
     public int DurationMs { get; set; }
     public string FilePath { get; set; } = "";
-    public string? PosterPath { get; set; }
+
+    private string? _posterPath;
+    /// <summary>A still frame for video clips — WPF's Image cannot show an
+    /// .mp4, so without one every video card in the Library was blank.</summary>
+    public string? PosterPath
+    {
+        get => _posterPath;
+        set { if (SetProperty(ref _posterPath, value)) OnPropertyChanged(nameof(ThumbPath)); }
+    }
+
+    /// <summary>What a card should draw: the poster when there is one on
+    /// disk, otherwise the file itself (stills).</summary>
+    public string ThumbPath => !string.IsNullOrEmpty(_posterPath) && System.IO.File.Exists(_posterPath) ? _posterPath! : FilePath;
+
     public DateTimeOffset CreatedAt { get; set; }
 
     private bool _isSelected;

@@ -29,6 +29,10 @@ public sealed class UpdateInfo : ObservableObject
 
     public long AssetSizeBytes { get; init; }
 
+    /// <summary>Lower-case hex SHA-256 GitHub publishes for the asset
+    /// (<c>digest: "sha256:…"</c>); null when the release predates digests.</summary>
+    public string? AssetSha256 { get; init; }
+
     public string AssetSizeFormatted =>
         AssetSizeBytes <= 0 ? ""
         : AssetSizeBytes >= 1_048_576 ? $"{AssetSizeBytes / 1_048_576.0:F1} MB"

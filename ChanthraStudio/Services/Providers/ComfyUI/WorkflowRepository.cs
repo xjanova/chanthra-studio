@@ -150,8 +150,17 @@ public sealed class WorkflowRepository
             if (!firstLine.StartsWith("//", StringComparison.Ordinal)) return null;
             var rest = firstLine[2..].Trim();
             // Format: "Display Name" · SPEC — description
-            var pipe = rest.IndexOf('·');
-            if (pipe < 0) return (rest, "USER", "");
+            // The display name may itself contain "·" ("WAN 2.1 · image → video"),
+            // so a quoted name is read to its closing quote before looking for
+            // the separator — splitting at the first "·" cut it in half.
+            var searchFrom = 0;
+            if (rest.StartsWith('"'))
+            {
+                var close = rest.IndexOf('"', 1);
+                if (close > 0) searchFrom = close + 1;
+            }
+            var pipe = rest.IndexOf('·', searchFrom);
+            if (pipe < 0) return (rest.Trim('"'), "USER", "");
             var display = rest[..pipe].Trim().Trim('"');
             var afterPipe = rest[(pipe + 1)..].Trim();
             var dash = afterPipe.IndexOf('—');

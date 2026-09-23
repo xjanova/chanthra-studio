@@ -1,4 +1,6 @@
+using System;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using ChanthraStudio.ViewModels;
@@ -42,7 +44,10 @@ public partial class SeedanceWizardView : UserControl
             CheckFileExists = true,
         };
         if (dlg.ShowDialog() == true)
+        {
             mat.Label = Path.GetFileName(dlg.FileName);
+            mat.FilePath = dlg.FileName;
+        }
     }
 
     /// <summary>
@@ -61,7 +66,43 @@ public partial class SeedanceWizardView : UserControl
             return;
         }
 
-        main.Generate.Prompt = vm.AssembledPrompt;
+        // The frame, the length and the attached image travel with the
+        // prompt; the Composer used to render a 9:16 lip-sync plan at its own
+        // 16:9 / 8 s with no reference image at all.
+        var gen = main.Generate;
+        gen.Prompt = vm.AssembledPrompt;
+        gen.Aspect = vm.ActiveAspectId switch
+        {
+            "9:16" => Models.AspectRatio.Vertical,
+            "1:1" => Models.AspectRatio.Square,
+            "21:9" => Models.AspectRatio.Cinema,
+            _ => Models.AspectRatio.Wide,
+        };
+        gen.DurationSec = vm.DurationSec;
+        // Always the wizard's image — or none. Keeping the Composer's previous
+        // reference uploaded an unrelated picture as this plan's first frame.
+        gen.ReferenceImagePath = vm.PrimaryImagePath;
+        // The size the plan was written for: Seedance bills 1080p when HD is
+        // on, and the Composer's default had it on for a 480p/720p plan.
+        gen.Hd4k = vm.ActiveResolutionId == "1080p";
+        // The Composer wraps every prompt in its own style, camera and motion
+        // clauses; make them agree with the plan instead of fighting it — no
+        // house style in front of the @references, the plan's own move, and
+        // a still head for lip-sync.
+        gen.ActiveStyleId = "";
+        gen.Camera = vm.IsLipSync && vm.LockCamera ? Models.CamMode.Locked : vm.ActiveMoveId switch
+        {
+            "locked" => Models.CamMode.Locked,
+            "panL" or "panR" => Models.CamMode.Pan,
+            "tilt" => Models.CamMode.Tilt,
+            "orbit" => Models.CamMode.Orbit,
+            "pull" or "dolly" or "follow" or "onetake" => Models.CamMode.Dolly,
+            _ => Models.CamMode.Push,
+        };
+        if (vm.IsLipSync) gen.Motion = Math.Min(gen.Motion, 0.2);
+        // The @Image1-style references only mean something to Seedance.
+        var seedance = gen.VideoRoutes.FirstOrDefault(r => r.Id == "seedance");
+        if (seedance is not null) gen.ActiveRoute = seedance;
         main.ActiveView = AppView.Generate;
     }
 }

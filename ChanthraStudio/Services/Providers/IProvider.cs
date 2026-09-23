@@ -22,6 +22,13 @@ public interface IProvider
     /// </summary>
     bool IsImplemented => true;
 
+    /// <summary>
+    /// The model this provider calls when no Settings chip is picked, so the
+    /// Settings page can name it instead of showing a blank "active model".
+    /// Null for providers without a model choice.
+    /// </summary>
+    string? DefaultModelId => null;
+
     /// <summary>Quick liveness probe. Should not consume credits.</summary>
     Task<ProviderHealth> ProbeAsync(string apiKey, CancellationToken ct = default);
 }
@@ -39,7 +46,9 @@ public interface ILlmProvider : IProvider
 /// callback) so the UsageTracker can record real billed counts instead
 /// of estimating from string length.
 /// </summary>
-public sealed record LlmResult(string Text, int InputTokens = 0, int OutputTokens = 0, string? Model = null);
+/// <param name="Truncated">The model stopped at the token ceiling, so the text
+/// is cut off mid-way — for a JSON storyboard that means unparseable.</param>
+public sealed record LlmResult(string Text, int InputTokens = 0, int OutputTokens = 0, string? Model = null, bool Truncated = false);
 
 public sealed class LlmRequest
 {
@@ -95,6 +104,13 @@ public interface IVoiceProvider : IProvider
     IReadOnlyList<VoicePreset> AvailableVoices { get; }
 
     /// <summary>
+    /// The voices this key can actually use, fetched from the vendor. The
+    /// default is the built-in list, for providers whose voices are fixed.
+    /// </summary>
+    Task<IReadOnlyList<VoicePreset>> ListVoicesAsync(string apiKey, CancellationToken ct = default)
+        => Task.FromResult(AvailableVoices);
+
+    /// <summary>
     /// Synthesise speech and write the resulting audio bytes to <paramref name="destPath"/>.
     /// Returns the absolute output path on success; throws on failure.
     /// </summary>
@@ -112,6 +128,8 @@ public sealed class VoicePreset
 public sealed class VoiceRequest
 {
     public string ApiKey { get; set; } = "";
+    /// <summary>Model picked in Settings; empty uses the provider's default.</summary>
+    public string Model { get; set; } = "";
     public string VoiceId { get; set; } = "";
     public string Text { get; set; } = "";
     public double Speed { get; set; } = 1.0;

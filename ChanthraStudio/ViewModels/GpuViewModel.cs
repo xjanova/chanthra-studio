@@ -431,9 +431,13 @@ public sealed class GpuViewModel : ObservableObject, IDisposable
         Say($"releasing {w.Name}…", "busy");
         try
         {
-            await _gpu.TerminateAsync(w, "released from the GPU panel");
+            var released = await _gpu.TerminateAsync(w, "released from the GPU panel");
             Reload();
-            Say($"{w.Name} released.", "ok");
+            // A failed vendor call leaves the machine billing; green "released"
+            // there would be the most expensive lie in the app.
+            if (released) Say($"{w.Name} released.", "ok");
+            else Say($"{w.Name}: the release did not go through yet — the app retries every 30 s. " +
+                     "If this persists, release it on the SimplePod dashboard.", "warn");
         }
         catch (Exception ex) { Say(ex.Message, "err"); }
     }
@@ -452,7 +456,9 @@ public sealed class GpuViewModel : ObservableObject, IDisposable
         {
             var n = await _gpu.TerminateAllAsync("released from the GPU panel");
             Reload();
-            Say($"released {n} machine(s).", "ok");
+            var pending = live.Count - n;
+            if (pending == 0) Say($"released {n} machine(s).", "ok");
+            else Say($"released {n} of {live.Count} — {pending} still pending, retrying every 30 s.", "warn");
         }
         catch (Exception ex) { Say(ex.Message, "err"); }
     }

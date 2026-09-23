@@ -49,6 +49,24 @@ public sealed class ProviderRow : ObservableObject
             _settings.SetSetting($"activeModel:{Id}", value);
             try { _settings.Save(); } catch { }
             OnPropertyChanged();
+            OnPropertyChanged(nameof(ActiveModelLabel));
+        }
+    }
+
+    /// <summary>
+    /// The model calls actually go to. A blank line here used to hide that
+    /// the provider's own default was being billed.
+    /// </summary>
+    public string ActiveModelLabel
+    {
+        get
+        {
+            var picked = _settings[$"activeModel:{Id}"];
+            if (!string.IsNullOrWhiteSpace(picked)) return picked;
+            var fallback = _provider.DefaultModelId;
+            return string.IsNullOrEmpty(fallback)
+                ? "ค่าเริ่มต้นของผู้ให้บริการ"
+                : fallback + "  (ค่าเริ่มต้น — ยังไม่ได้เลือก)";
         }
     }
 

@@ -43,12 +43,22 @@ public sealed class VoiceService
             throw new InvalidOperationException($"No API key for {provider.DisplayName} — set it in Settings.");
 
         var voiceLabel = provider.AvailableVoices.FirstOrDefault(v => v.Id == voiceId)?.DisplayName ?? voiceId;
-        var fileName = $"voice_{DateTime.Now:yyyyMMdd_HHmmss}_{providerId}_{Sanitise(voiceLabel)}.mp3";
+        // Invariant digits: a th-TH machine would otherwise stamp the Buddhist
+        // year. Milliseconds keep two takes in the same second apart — the
+        // second used to overwrite the first.
+        var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
+        var fileName = $"voice_{stamp}_{providerId}_{Sanitise(voiceLabel)}.mp3";
         var destPath = Path.Combine(OutputDir, fileName);
+
+        // The Settings chip used to be read only by the cost tracker, so
+        // picking tts-1-hd billed the HD rate for a tts-1 take.
+        var modelSlug = _ctx.Settings.GetSetting($"activeModel:{providerId}");
+        if (string.IsNullOrWhiteSpace(modelSlug)) modelSlug = provider.DefaultModelId ?? "";
 
         var req = new VoiceRequest
         {
             ApiKey = apiKey,
+            Model = modelSlug,
             VoiceId = voiceId,
             Text = text,
             Speed = speed,
@@ -57,14 +67,9 @@ public sealed class VoiceService
         };
         var path = await provider.SynthesiseAsync(req, destPath, ct);
 
-        // Record character-based usage. Provider-specific model slug
-        // comes from activeModel:<providerId>; if not set, fall back to
-        // a sensible default per provider so cost still gets tracked.
+        // Record character-based usage against the model that actually ran.
         try
         {
-            var modelSlug = _ctx.Settings.GetSetting($"activeModel:{providerId}");
-            if (string.IsNullOrEmpty(modelSlug))
-                modelSlug = providerId == "elevenlabs" ? "eleven_multilingual_v2" : "tts-1";
             _ctx.Tracker.RecordChars(providerId, modelSlug, text.Length, "tts");
         }
         catch { }
@@ -102,10 +107,15 @@ public sealed class VoiceService
             .ToList();
     }
 
-    public void DeleteTake(VoiceTake take)
+    /// <summary>True when the file is gone (deleted now or already missing).</summary>
+    public bool DeleteTake(VoiceTake take)
     {
-        try { if (File.Exists(take.FilePath)) File.Delete(take.FilePath); }
-        catch { /* file in use / read-only — caller surfaces toast */ }
+        try
+        {
+            if (File.Exists(take.FilePath)) File.Delete(take.FilePath);
+            return true;
+        }
+        catch { return false; /* file in use / read-only — caller surfaces toast */ }
     }
 
     public string MusicOutputDir
@@ -151,7 +161,8 @@ public sealed class VoiceService
         }
 
         var slugSafe = string.IsNullOrEmpty(modelSlug) ? "default" : modelSlug.Replace('/', '_');
-        var fileName = $"music_{DateTime.Now:yyyyMMdd_HHmmss}_{Sanitise(slugSafe)}.mp3";
+        var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
+        var fileName = $"music_{stamp}_{Sanitise(slugSafe)}.mp3";
         var destPath = Path.Combine(MusicOutputDir, fileName);
 
         var req = new MusicRequest

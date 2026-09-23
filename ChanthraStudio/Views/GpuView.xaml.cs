@@ -19,12 +19,27 @@ public partial class GpuView : UserControl
             var studio = App.Current?.Studio;
             if (studio is null) return;
             if (DataContext is GpuViewModel old) old.Dispose();
-            DataContext = new GpuViewModel(studio);
+            var vm = new GpuViewModel(studio);
+            DataContext = vm;
+            // PasswordBox.Password cannot be bound; prime the boxes by hand.
+            _priming = true;
+            ApiKeyBox.Password = vm.ApiKeyDraft;
+            HfTokenBox.Password = vm.HfTokenDraft;
+            _priming = false;
         };
 
         Unloaded += (_, _) =>
         {
             if (DataContext is GpuViewModel vm) vm.Dispose();
         };
+    }
+
+    private bool _priming;
+
+    private void Secret_PasswordChanged(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (_priming || DataContext is not GpuViewModel vm) return;
+        if (ReferenceEquals(sender, ApiKeyBox)) vm.ApiKeyDraft = ApiKeyBox.Password;
+        else if (ReferenceEquals(sender, HfTokenBox)) vm.HfTokenDraft = HfTokenBox.Password;
     }
 }

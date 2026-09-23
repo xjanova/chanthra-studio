@@ -48,6 +48,7 @@ public sealed class GeminiVeoVideoProvider : IVideoProvider
     /// <c>veo-3.0-generate-001</c>; quality preview is
     /// <c>veo-3.1-generate-preview</c> — both selectable from the Settings chips.</summary>
     public const string DefaultModel = "veo-3.1-fast-generate-preview";
+    public string? DefaultModelId => DefaultModel;
 
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(2) };
 

@@ -129,6 +129,7 @@ public sealed class ShotsRepository
                        hd4k, audio, cam_mode, status, progress,
                        thumb_path, video_path
                 FROM shots
+                WHERE id NOT LIKE 'board-%'
                 ORDER BY created_at DESC, id DESC
                 LIMIT $limit
                 """, new { limit }).ToList();
@@ -153,10 +154,12 @@ public sealed class ShotsRepository
         {
             using var c = _db.Open();
             var cutoff = DateTimeOffset.UtcNow.AddMinutes(-staleAfterMinutes).ToUnixTimeSeconds();
+            // Queue counts too: a row is only written at submit time, so a
+            // Queue row is a submitted job the dead session never started.
             return c.Execute("""
                 UPDATE shots
                 SET status = 'Error', updated_at = $now
-                WHERE status = 'Generating' AND updated_at < $cutoff
+                WHERE status IN ('Generating', 'Queue') AND updated_at <= $cutoff
                 """,
                 new { now = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), cutoff });
         }

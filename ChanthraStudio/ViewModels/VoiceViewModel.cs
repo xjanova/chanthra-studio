@@ -79,6 +79,9 @@ public sealed class VoiceViewModel : ObservableObject
             if (!SetProperty(ref _selectedProvider, value)) return;
             ReloadVoices();
             OnPropertyChanged(nameof(ShowCustomVoiceField));
+            OnPropertyChanged(nameof(SupportsSpeed));
+            OnPropertyChanged(nameof(SupportsStability));
+            SyncStabilityStep();
         }
     }
 
@@ -86,8 +89,28 @@ public sealed class VoiceViewModel : ObservableObject
     public VoicePreset? SelectedVoice
     {
         get => _selectedVoice;
-        set => SetProperty(ref _selectedVoice, value);
+        set
+        {
+            if (SetProperty(ref _selectedVoice, value))
+                OnPropertyChanged(nameof(EffectiveVoiceLabel));
+        }
     }
+
+    private string _voicesNote = "";
+    /// <summary>
+    /// Where the voice list came from when it is not the vendor's live list
+    /// — so a built-in fallback is never presented as the account's voices.
+    /// </summary>
+    public string VoicesNote
+    {
+        get => _voicesNote;
+        private set
+        {
+            if (SetProperty(ref _voicesNote, value))
+                OnPropertyChanged(nameof(HasVoicesNote));
+        }
+    }
+    public bool HasVoicesNote => !string.IsNullOrEmpty(_voicesNote);
 
     /// <summary>
     /// User-pasted cloned voice id (ElevenLabs only). When non-empty, the
@@ -128,6 +151,34 @@ public sealed class VoiceViewModel : ObservableObject
     }
 
     public bool ShowCustomVoiceField => _selectedProvider?.Id == "elevenlabs";
+
+    // Each slider shows only where the provider reads it: OpenAI takes a
+    // speed and no stability, the ElevenLabs call sends stability only.
+    public bool SupportsSpeed => _selectedProvider?.Id != "elevenlabs";
+    public bool SupportsStability => _selectedProvider?.Id == "elevenlabs";
+
+    /// <summary>
+    /// Eleven v3 takes only 0 / 0.5 / 1 (Creative, Natural, Robust); the
+    /// provider rounds to those, so the slider snaps to them too — it used to
+    /// read 0.30 while 0.5 was sent.
+    /// </summary>
+    public double StabilityStep
+    {
+        get
+        {
+            if (_selectedProvider?.Id != "elevenlabs") return 0.01;
+            var model = _ctx.Settings.GetSetting("activeModel:elevenlabs");
+            if (string.IsNullOrWhiteSpace(model)) model = _selectedProvider.Provider.DefaultModelId;
+            return model == "eleven_v3" ? 0.5 : 0.01;
+        }
+    }
+
+    private void SyncStabilityStep()
+    {
+        OnPropertyChanged(nameof(StabilityStep));
+        if (StabilityStep >= 0.5)
+            Stability = Math.Round(Stability * 2, MidpointRounding.AwayFromZero) / 2;
+    }
 
     private MusicProviderOption? _selectedMusicProvider;
     public MusicProviderOption? SelectedMusicProvider
@@ -288,19 +339,67 @@ public sealed class VoiceViewModel : ObservableObject
         RevealTakeCommand = new RelayCommand<VoiceTake>(RevealTake);
         StopPlaybackCommand = new RelayCommand(() => CurrentlyPlaying = null);
         CopyPathCommand = new RelayCommand<VoiceTake>(CopyPath);
-        DeleteTakeCommand = new RelayCommand<VoiceTake>(DeleteTake);
+        DeleteTakeCommand = new AsyncRelayCommand<VoiceTake>(DeleteTakeAsync);
         SwitchToTtsCommand = new RelayCommand(() => Mode = VoiceMode.Tts);
         SwitchToMusicCommand = new RelayCommand(() => Mode = VoiceMode.Music);
 
         RefreshTakes();
     }
 
+    /// <summary>
+    /// Re-read the account's voices — the view calls this on every visit, so
+    /// a key pasted in Settings since the last one takes effect.
+    /// </summary>
+    public void RefreshVoiceList()
+    {
+        SyncStabilityStep();   // the model chip may have changed in Settings
+        if (_selectedProvider?.Id == "elevenlabs") _ = LoadLiveVoicesAsync(_selectedProvider);
+    }
+
     private void ReloadVoices()
     {
         Voices.Clear();
+        VoicesNote = "";
         if (_selectedProvider is null) return;
         foreach (var v in _selectedProvider.Provider.AvailableVoices) Voices.Add(v);
         SelectedVoice = Voices.FirstOrDefault();
+        if (_selectedProvider.Id == "elevenlabs") _ = LoadLiveVoicesAsync(_selectedProvider);
+    }
+
+    /// <summary>
+    /// Swap in the voices the ElevenLabs key can really use. The built-in
+    /// six are the Default set, which newer accounts never had.
+    /// </summary>
+    private async Task LoadLiveVoicesAsync(VoiceProviderOption option)
+    {
+        var key = _ctx.Settings[option.Id];
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            VoicesNote = "รายชื่อตั้งต้น — ใส่ API key ในหน้า Settings แล้วแอปจะดึงเสียงจากบัญชีของคุณมาแสดง";
+            return;
+        }
+        VoicesNote = "กำลังโหลดรายชื่อเสียงจากบัญชี ElevenLabs…";
+        try
+        {
+            var live = await option.Provider.ListVoicesAsync(key);
+            // The user may have switched provider while the list was loading.
+            if (!ReferenceEquals(_selectedProvider, option)) return;
+            if (live.Count == 0)
+            {
+                VoicesNote = "บัญชีนี้ยังไม่มีเสียง — เพิ่มจาก Voice Library บนเว็บ ElevenLabs หรือวาง voice_id ด้านล่าง (รายชื่อที่เห็นคือเสียงตั้งต้นซึ่งบัญชีที่สมัครหลัง มี.ค. 2026 ใช้ไม่ได้)";
+                return;
+            }
+            var keep = _selectedVoice?.Id;
+            Voices.Clear();
+            foreach (var v in live) Voices.Add(v);
+            SelectedVoice = Voices.FirstOrDefault(v => v.Id == keep) ?? Voices.FirstOrDefault();
+            VoicesNote = "";
+        }
+        catch (Exception ex)
+        {
+            if (!ReferenceEquals(_selectedProvider, option)) return;
+            VoicesNote = "โหลดรายชื่อเสียงจากบัญชีไม่ได้ (" + ex.Message + ") — แสดงเสียงตั้งต้นแทน ซึ่งอาจใช้ไม่ได้กับบัญชีใหม่";
+        }
     }
 
     public void RefreshTakes()
@@ -318,32 +417,33 @@ public sealed class VoiceViewModel : ObservableObject
     {
         if (SelectedProvider is null)
         {
-            ShowToast("Pick a provider first.", "warn");
+            ShowToast("เลือกผู้ให้บริการเสียงก่อน", "warn");
             return;
         }
         if (string.IsNullOrWhiteSpace(ScriptText))
         {
-            ShowToast("Type something to voice.", "warn");
+            ShowToast("พิมพ์บทที่จะให้อ่านก่อน", "warn");
             return;
         }
         // ElevenLabs accepts a cloned/professional voice id pasted into the
         // custom box — overrides the default-library dropdown when present.
-        var voiceId = HasCustomVoice ? _customVoiceId.Trim() : SelectedVoice?.Id;
+        // The pasted voice_id is an ElevenLabs id; OpenAI answered it with a 400.
+        var voiceId = HasCustomVoice && SelectedProvider.Id == "elevenlabs" ? _customVoiceId.Trim() : SelectedVoice?.Id;
         if (string.IsNullOrWhiteSpace(voiceId))
         {
-            ShowToast("Pick a voice from the dropdown or paste a custom voice_id.", "warn");
+            ShowToast("เลือกเสียงจากรายการ หรือวาง voice_id ของเสียงที่โคลนไว้", "warn");
             return;
         }
 
         IsGenerating = true;
-        ShowToast($"Synthesising via {SelectedProvider.DisplayName}…", "info");
+        ShowToast($"กำลังสร้างเสียงผ่าน {SelectedProvider.DisplayName}…", "info");
         try
         {
             var take = await _ctx.VoiceService.GenerateAsync(
                 SelectedProvider.Id, voiceId, ScriptText, Speed, Stability);
             Takes.Insert(0, take);
             OnPropertyChanged(nameof(HasTakes));
-            ShowToast($"Voice ready · {take.FileName}", "ok");
+            ShowToast($"เสียงพร้อมแล้ว · {take.FileName}", "ok");
         }
         catch (Exception ex)
         {
@@ -359,17 +459,17 @@ public sealed class VoiceViewModel : ObservableObject
     {
         if (SelectedMusicProvider is null)
         {
-            ShowToast("No music provider available.", "warn");
+            ShowToast("ไม่มีช่องทางสร้างเพลงให้เลือก", "warn");
             return;
         }
         if (string.IsNullOrWhiteSpace(MusicPrompt))
         {
-            ShowToast("Describe the music you want first.", "warn");
+            ShowToast("บรรยายเพลงที่ต้องการก่อน", "warn");
             return;
         }
 
         IsGenerating = true;
-        ShowToast($"Generating music via {SelectedMusicProvider.DisplayName}…", "info");
+        ShowToast($"กำลังสร้างเพลงผ่าน {SelectedMusicProvider.DisplayName}…", "info");
 
         // Renting a card for music runs the same 10-40 minute warm-up as a
         // render. Without a live stage line the user sees a spinner, assumes it
@@ -382,7 +482,7 @@ public sealed class VoiceViewModel : ObservableObject
                 default, IsAceStepRoute ? MusicLyrics : null, warmup);
             MusicTakes.Insert(0, take);
             OnPropertyChanged(nameof(HasMusicTakes));
-            ShowToast($"Music ready · {take.FileName}", "ok");
+            ShowToast($"เพลงพร้อมแล้ว · {take.FileName}", "ok");
         }
         catch (Exception ex)
         {
@@ -399,22 +499,22 @@ public sealed class VoiceViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(ScriptBrief))
         {
-            ShowToast("Type a brief first (topic, audience, vibe).", "warn");
+            ShowToast("พิมพ์โจทย์สั้น ๆ ก่อน (หัวข้อ กลุ่มผู้ชม อารมณ์)", "warn");
             return;
         }
 
         IsWriting = true;
-        ShowToast($"Writing via {ActiveLlmLabel}…", "info");
+        ShowToast($"กำลังเขียนบทผ่าน {ActiveLlmLabel}…", "info");
         try
         {
             var text = await _ctx.Llm.WriteFortuneScriptAsync(ScriptBrief);
             if (string.IsNullOrWhiteSpace(text))
             {
-                ShowToast("LLM returned empty — check your key + model.", "err");
+                ShowToast("LLM ตอบกลับมาว่างเปล่า — ตรวจ key และรุ่นในหน้า Settings", "err");
                 return;
             }
             ScriptText = text.Trim();
-            ShowToast($"Script ready · {ActiveLlmLabel}", "ok");
+            ShowToast($"บทพร้อมแล้ว · {ActiveLlmLabel}", "ok");
         }
         catch (Exception ex)
         {
@@ -431,7 +531,7 @@ public sealed class VoiceViewModel : ObservableObject
         if (take is null) return;
         if (!System.IO.File.Exists(take.FilePath))
         {
-            ShowToast("Take file is missing on disk.", "err");
+            ShowToast("ไม่พบไฟล์เสียงนี้บนดิสก์แล้ว", "err");
             return;
         }
         // In-place inline playback (T54 / 7.20) — code-behind picks up the
@@ -457,20 +557,44 @@ public sealed class VoiceViewModel : ObservableObject
         try
         {
             System.Windows.Clipboard.SetText(take.FilePath);
-            ShowToast("Path copied — paste into Render Film's audio picker.", "ok");
+            ShowToast("คัดลอกตำแหน่งไฟล์แล้ว — วางในช่องเลือกเสียงของ Render Film ได้เลย", "ok");
         }
-        catch (Exception ex) { ShowToast($"Copy failed: {ex.Message}", "err"); }
+        catch (Exception ex) { ShowToast($"คัดลอกไม่สำเร็จ: {ex.Message}", "err"); }
     }
 
-    private void DeleteTake(VoiceTake? take)
+    private async Task DeleteTakeAsync(VoiceTake? take)
     {
         if (take is null) return;
-        _ctx.VoiceService.DeleteTake(take);
+        var answer = System.Windows.MessageBox.Show(
+            $"ลบไฟล์ {take.FileName} ถาวร?\nกู้คืนไม่ได้",
+            "ลบไฟล์เสียง", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning,
+            System.Windows.MessageBoxResult.No);
+        if (answer != System.Windows.MessageBoxResult.Yes) return;
+
+        // The inline player holds the file open; release it first or the
+        // delete fails and the row vanished anyway. The player lets go of the
+        // handle a moment later, hence the short retries.
+        // By path: RefreshTakes builds new objects, so the playing take is
+        // usually not the same instance as the row being deleted.
+        if (CurrentlyPlaying is { } playing
+            && string.Equals(playing.FilePath, take.FilePath, StringComparison.OrdinalIgnoreCase))
+            CurrentlyPlaying = null;
+        var deleted = false;
+        for (var attempt = 0; attempt < 5 && !deleted; attempt++)
+        {
+            if (attempt > 0) await Task.Delay(250);
+            deleted = _ctx.VoiceService.DeleteTake(take);
+        }
+        if (!deleted)
+        {
+            ShowToast($"ลบ {take.FileName} ไม่ได้ — ไฟล์อาจถูกเปิดอยู่ในโปรแกรมอื่น", "err");
+            return;
+        }
         Takes.Remove(take);
         MusicTakes.Remove(take);
         OnPropertyChanged(nameof(HasTakes));
         OnPropertyChanged(nameof(HasMusicTakes));
-        ShowToast($"Deleted {take.FileName}", "ok");
+        ShowToast($"ลบ {take.FileName} แล้ว", "ok");
     }
 
     private async void ShowToast(string message, string kind)
@@ -479,7 +603,9 @@ public sealed class VoiceViewModel : ObservableObject
         ToastKind = kind;
         try
         {
-            await Task.Delay(3000);
+            // An error needs time to be read; a "working…" line stays until
+            // the result replaces it.
+            await Task.Delay(kind switch { "err" => 12000, "warn" => 6000, "info" => 60000, _ => 3500 });
             if (ToastMessage == message) ToastMessage = null;
         }
         catch { }

@@ -60,7 +60,7 @@ public static class WorkflowPatch
     };
 
     private static readonly string[] FpsNodes =
-        { "SaveAnimatedWEBP", "VHS_VideoCombine", "SaveAnimatedPNG", "SaveWEBM" };
+        { "CreateVideo", "SaveAnimatedWEBP", "VHS_VideoCombine", "SaveAnimatedPNG", "SaveWEBM" };
 
     private static readonly string[] LoraNodes = { "LoraLoader", "LoraLoaderModelOnly" };
 
@@ -100,6 +100,22 @@ public static class WorkflowPatch
             count++;
         }
         return count;
+    }
+
+    /// <summary>The width × height the graph's own latent node asks for, or
+    /// null when it has none (image-to-image graphs size from the input).</summary>
+    public static (int Width, int Height)? LatentSize(this Workflow wf)
+    {
+        var set = new HashSet<string>(LatentNodes, StringComparer.Ordinal);
+        foreach (var (_, ct, inputs) in wf.AllNodes())
+        {
+            if (!set.Contains(ct)) continue;
+            if (inputs["width"] is JsonValue w && w.TryGetValue<int>(out var width)
+                && inputs["height"] is JsonValue h && h.TryGetValue<int>(out var height)
+                && width > 0 && height > 0)
+                return (width, height);
+        }
+        return null;
     }
 
     /// <summary>Nodes of the given types that declare the given input key.</summary>

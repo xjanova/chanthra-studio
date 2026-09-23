@@ -80,6 +80,16 @@
 
             <!--  List  -->
             <ScrollViewer Grid.Column="0" Padding="32,18,16,18" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                <!--  Empty state  -->
+                <Border Padding="22" Style="{StaticResource SurfaceCard}"
+                        Visibility="{Binding HasNoSchedules, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushGoldHi}" Text="✦ ยังไม่มีตารางอัตโนมัติ" />
+                        <TextBlock Margin="0,8,0,0" FontSize="14" Foreground="{StaticResource BrushText2}" TextWrapping="Wrap"
+                                   Text="กด ✦ Add schedule มุมขวาบน เพื่อตั้งให้แอปเรนเดอร์คลิปตามเวลา แล้วโพสต์ขึ้น Facebook หรือส่ง webhook ให้อัตโนมัติ (ต้องเปิดแอปทิ้งไว้ตอนถึงเวลา)" />
+                    </StackPanel>
+                </Border>
                 <ItemsControl ItemsSource="{Binding Schedules}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type m:Schedule}">
@@ -123,7 +133,7 @@
                                                 </Style>
                                             </Border.Style>
                                             <TextBlock FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText1}">
-                                                <Run Text="{Binding IsEnabled, Converter={StaticResource StringEquals}, ConverterParameter=True, FallbackValue=OFF}" />
+                                                <Run Text="{Binding EnabledLabel, Mode=OneWay}" />
                                             </TextBlock>
                                         </Border>
 
@@ -164,17 +174,23 @@
                                     </Grid>
 
                                     <!--  Next 5 fires — small mono row so the user can verify the spec at a glance  -->
-                                    <StackPanel Grid.Row="3" Margin="0,8,0,0" Orientation="Horizontal">
-                                        <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="UPCOMING" />
-                                        <TextBlock Margin="8,0,0,0" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText3}"
-                                                   Text="{Binding NextFiresPreviewLabel}"
-                                                   TextTrimming="CharacterEllipsis" />
+                                    <StackPanel Grid.Row="3" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Style="{StaticResource TextMonoUpper}" Foreground="{StaticResource BrushText4}" Text="UPCOMING" />
+                                            <TextBlock Margin="8,0,0,0" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource BrushText3}"
+                                                       Text="{Binding NextFiresPreviewLabel}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}" TextWrapping="Wrap"
+                                                   Text="{Binding LastRunNote}"
+                                                   Visibility="{Binding HasLastRunNote, Converter={StaticResource BoolToVis}}" />
                                     </StackPanel>
                                 </Grid>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                </StackPanel>
             </ScrollViewer>
 
             <!--  Editor for selected schedule  -->
@@ -281,7 +297,7 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Margin="0,0,8,0">
                                     <TextBlock Style="{StaticResource TextMonoUpper}" Text="ASPECT" />
-                                    <ComboBox Margin="0,4,0,0" SelectedValue="{Binding Selected.Aspect, Mode=TwoWay}">
+                                    <ComboBox Margin="0,4,0,0" SelectedValuePath="Tag" SelectedValue="{Binding Selected.Aspect, Mode=TwoWay}">
                                         <ComboBoxItem Content="Vertical" Tag="{x:Static m:AspectRatio.Vertical}" />
                                         <ComboBoxItem Content="Square" Tag="{x:Static m:AspectRatio.Square}" />
                                         <ComboBoxItem Content="Wide" Tag="{x:Static m:AspectRatio.Wide}" />
@@ -290,7 +306,7 @@
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Margin="8,0,0,0">
                                     <TextBlock Style="{StaticResource TextMonoUpper}" Text="CAMERA" />
-                                    <ComboBox Margin="0,4,0,0" SelectedValue="{Binding Selected.Camera, Mode=TwoWay}">
+                                    <ComboBox Margin="0,4,0,0" SelectedValuePath="Tag" SelectedValue="{Binding Selected.Camera, Mode=TwoWay}">
                                         <ComboBoxItem Content="Locked" Tag="{x:Static m:CamMode.Locked}" />
                                         <ComboBoxItem Content="Pan" Tag="{x:Static m:CamMode.Pan}" />
                                         <ComboBoxItem Content="Tilt" Tag="{x:Static m:CamMode.Tilt}" />
@@ -303,14 +319,23 @@
 
                             <!--  Auto-post  -->
                             <Border Grid.Row="6" Margin="0,0,0,12" Padding="10,8" Background="{StaticResource BrushBgInset}" BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="1" CornerRadius="6">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <CheckBox Grid.Column="0" VerticalAlignment="Center" IsChecked="{Binding Selected.AutoPost, Mode=TwoWay}" Foreground="{StaticResource BrushText1}" Content="Auto-post when done" />
-                                    <ComboBox Grid.Column="1" Margin="12,0,0,0" ItemsSource="{Binding PostingTargets}" SelectedItem="{Binding Selected.PostTarget, Mode=TwoWay}" />
-                                </Grid>
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0" VerticalAlignment="Center" IsChecked="{Binding Selected.AutoPost, Mode=TwoWay}" Foreground="{StaticResource BrushText1}" Content="Auto-post when done" />
+                                        <ComboBox Grid.Column="1" Margin="12,0,0,0" ItemsSource="{Binding PostingTargets}" SelectedItem="{Binding Selected.PostTarget, Mode=TwoWay}" />
+                                    </Grid>
+                                    <TextBlock Margin="0,10,0,4" Style="{StaticResource TextMonoUpper}" Text="CAPTION" />
+                                    <TextBox MinHeight="44" Padding="6,4" AcceptsReturn="True" TextWrapping="Wrap"
+                                             Background="Transparent" BorderThickness="0"
+                                             Foreground="{StaticResource BrushText1}" CaretBrush="{StaticResource BrushGoldHi}"
+                                             Text="{Binding Selected.PostCaption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}" TextWrapping="Wrap"
+                                               Text="ข้อความที่จะโพสต์คู่กับคลิป ใช้ {date} {time} {dow} ได้ — เว้นว่างไว้จะใช้ชื่อตารางนี้ (ไม่ใช้ prompt)" />
+                                </StackPanel>
                             </Border>
 
                             <!--  Save + Run-now buttons  -->

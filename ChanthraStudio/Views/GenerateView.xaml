@@ -534,6 +534,9 @@
                                         Value="{Binding DurationSec}" />
                                     <TextBlock Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource TextMonoGold}" Text="{Binding DurationSec, StringFormat={}{0:F1}s}" />
                                 </Grid>
+                                <TextBlock Margin="13,-4,13,8" FontSize="11.5" Foreground="{StaticResource BrushText3}" TextWrapping="Wrap"
+                                           Text="ComfyUI: ความยาวคลิปมาจาก workflow — ตั้งเองได้ที่หน้า Models → วิดีโอ · ความยาว / เฟรมเรต"
+                                           Visibility="{Binding DurationIsWorkflowOwned, Converter={StaticResource BoolToVis}}" />
                                 <Border BorderBrush="{StaticResource BrushLineHairline}" BorderThickness="0,1,0,0" />
 
                                 <!--  Motion  -->
@@ -811,6 +814,17 @@
                             <Image Source="{Binding StageImagePath, Converter={StaticResource ClipPathToImage}, FallbackValue=/Assets/Brand/empress-wide.png}" Stretch="UniformToFill" />
                             <!--  Static brand poster underneath, in case the converter returns null  -->
                             <Image Panel.ZIndex="-1" Source="/Assets/Brand/empress-wide.png" Stretch="UniformToFill" />
+                            <!--  A finished video plays here, muted and looping  -->
+                            <Border x:Name="StageVideoHost" Background="#FF07050A" Visibility="Collapsed">
+                                <MediaElement
+                                    x:Name="StageVideo"
+                                    IsMuted="True"
+                                    LoadedBehavior="Manual"
+                                    UnloadedBehavior="Close"
+                                    Stretch="Uniform"
+                                    MediaEnded="StageVideo_MediaEnded"
+                                    MediaFailed="StageVideo_MediaFailed" />
+                            </Border>
 
                             <!--  L-corner guides  -->
                             <Border
@@ -901,11 +915,14 @@
                                 Style="{StaticResource TextWatermark}"
                                 Text="✦ Chanthra preview" />
 
-                            <!--  Playback bar  -->
+                            <!--  Playback bar — drives the Stage video; hidden when there is none
+                                  (it used to be a picture of a player: no command, fixed 00:14 / 00:32)  -->
                             <Border
+                                x:Name="StageBar"
                                 Height="56"
                                 Margin="14,0,14,14"
                                 VerticalAlignment="Bottom"
+                                Visibility="Collapsed"
                                 Background="{StaticResource BrushBlackOverlay65}"
                                 BorderBrush="{StaticResource BrushLineHairline}"
                                 BorderThickness="1"
@@ -920,82 +937,57 @@
                                         <Button
                                             Width="36"
                                             Height="32"
-                                            Style="{StaticResource ButtonSummonCta}">
+                                            Click="StagePlay_Click"
+                                            Style="{StaticResource ButtonSummonCta}"
+                                            ToolTip="เล่น / หยุดชั่วคราว">
                                             <Path
+                                                x:Name="StagePlayIcon"
                                                 Width="14"
                                                 Height="14"
-                                                Data="{StaticResource IcoPlay}"
+                                                Data="{StaticResource IcoPause}"
+                                                Stroke="#FF1A0D05"
+                                                StrokeThickness="2"
                                                 Fill="#FF1A0D05"
                                                 Stretch="Uniform" />
                                         </Button>
                                     </StackPanel>
-                                    <Grid Grid.Column="1" Margin="14,0">
+                                    <Grid x:Name="StageTrack" Grid.Column="1" Margin="14,0">
                                         <Border
                                             Height="4"
                                             VerticalAlignment="Center"
                                             Background="#1AFFFFFF"
                                             CornerRadius="2" />
                                         <Border
-                                            Width="380"
+                                            x:Name="StageFill"
+                                            Width="0"
                                             Height="4"
                                             HorizontalAlignment="Left"
                                             VerticalAlignment="Center"
                                             Background="{StaticResource BrushSliderFill}"
                                             CornerRadius="2" />
-                                        <Canvas VerticalAlignment="Center">
-                                            <Rectangle
-                                                Canvas.Left="84"
-                                                Canvas.Top="-4"
-                                                Width="8"
-                                                Height="8"
-                                                Fill="{StaticResource BrushGoldHi}"
-                                                RenderTransformOrigin="0.5,0.5">
-                                                <Rectangle.RenderTransform>
-                                                    <RotateTransform Angle="45" />
-                                                </Rectangle.RenderTransform>
-                                            </Rectangle>
-                                            <Rectangle
-                                                Canvas.Left="266"
-                                                Canvas.Top="-4"
-                                                Width="8"
-                                                Height="8"
-                                                Fill="{StaticResource BrushGoldHi}"
-                                                RenderTransformOrigin="0.5,0.5">
-                                                <Rectangle.RenderTransform>
-                                                    <RotateTransform Angle="45" />
-                                                </Rectangle.RenderTransform>
-                                            </Rectangle>
-                                            <Rectangle
-                                                Canvas.Left="532"
-                                                Canvas.Top="-4"
-                                                Width="8"
-                                                Height="8"
-                                                Fill="{StaticResource BrushGoldHi}"
-                                                RenderTransformOrigin="0.5,0.5">
-                                                <Rectangle.RenderTransform>
-                                                    <RotateTransform Angle="45" />
-                                                </Rectangle.RenderTransform>
-                                            </Rectangle>
-                                        </Canvas>
                                     </Grid>
                                     <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal">
                                         <TextBlock
+                                            x:Name="StageTime"
                                             Margin="0,0,12,0"
+                                            VerticalAlignment="Center"
                                             FontSize="11.5"
                                             Foreground="{StaticResource BrushText2}"
                                             Style="{StaticResource TextMono}"
-                                            Text="00:14 / 00:32" />
-                                        <Button Width="28" Height="28" Style="{StaticResource ButtonIcon}">
+                                            Text="00:00 / 00:00" />
+                                        <Button Width="28" Height="28" Click="StageMute_Click" Style="{StaticResource ButtonIcon}" ToolTip="เปิด / ปิดเสียง">
                                             <Path
+                                                x:Name="StageMuteIcon"
                                                 Width="13"
                                                 Height="13"
+                                                Opacity="0.45"
                                                 Data="{StaticResource IcoVolume}"
                                                 Fill="Transparent"
                                                 Stretch="Uniform"
                                                 Stroke="{StaticResource BrushText2}"
                                                 StrokeThickness="1.4" />
                                         </Button>
-                                        <Button Width="28" Height="28" Style="{StaticResource ButtonIcon}">
+                                        <Button Width="28" Height="28" Click="StageOpen_Click" Style="{StaticResource ButtonIcon}" ToolTip="เปิดในโปรแกรมเล่นวิดีโอ">
                                             <Path
                                                 Width="13"
                                                 Height="13"
@@ -1015,7 +1007,7 @@
             <!--  Timeline  -->
             <Border
                 Grid.Row="2"
-                MinHeight="170"
+                MinHeight="96"
                 Background="{StaticResource BrushBlackOverlay35}"
                 BorderBrush="{StaticResource BrushLineHairline}"
                 BorderThickness="0,1,0,0">
@@ -1026,14 +1018,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Style="{StaticResource TextSectionDivider}" Text="TIMELINE · 32 FPS · DCI 1080" />
-                        <UniformGrid Grid.Column="2" Columns="5" Width="420">
-                            <TextBlock HorizontalAlignment="Left" Style="{StaticResource TextMonoUpper}" Text="00:00" />
-                            <TextBlock HorizontalAlignment="Center" Style="{StaticResource TextMonoUpper}" Text="00:08" />
-                            <TextBlock HorizontalAlignment="Center" Style="{StaticResource TextMonoUpper}" Text="00:16" />
-                            <TextBlock HorizontalAlignment="Center" Style="{StaticResource TextMonoUpper}" Text="00:24" />
-                            <TextBlock HorizontalAlignment="Right" Style="{StaticResource TextMonoUpper}" Text="00:32" />
-                        </UniformGrid>
+                        <TextBlock Grid.Column="0" Style="{StaticResource TextSectionDivider}" Text="{Binding TimelineLabel}" />
                     </Grid>
 
                     <StackPanel Margin="22,0,22,12">
@@ -1085,46 +1070,6 @@
                             </Border>
                         </Grid>
 
-                        <!--  Score track  -->
-                        <Grid Margin="0,0,0,4" Height="36">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="90" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Text="SCORE" />
-                            <Border Grid.Column="1" Background="#0F4A2E6A" BorderBrush="#33B8A5D0" BorderThickness="1" CornerRadius="4">
-                                <Path
-                                    Margin="6,4"
-                                    Stretch="Fill"
-                                    Stroke="{StaticResource BrushMoon}"
-                                    StrokeThickness="1.2"
-                                    Opacity="0.55"
-                                    Data="M0,15 C 30,5 60,25 90,15 S 150,5 180,15 S 240,25 270,15 S 330,5 360,15 S 420,25 450,15 S 510,5 540,15 S 600,25 630,15 S 690,5 720,15 S 780,25 810,15 S 870,5 900,15 S 960,25 990,15" />
-                            </Border>
-                        </Grid>
-
-                        <!--  Caption track  -->
-                        <Grid Height="32">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="90" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMonoUpper}" Text="CAPTION" />
-                            <Grid Grid.Column="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" Margin="2" Padding="8,4" Background="#1F6C5E85" BorderBrush="#33B8A5D0" BorderThickness="1" CornerRadius="4">
-                                    <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontThai}" FontStyle="Italic" FontSize="12.5" Foreground="{StaticResource BrushMoon}" Text="จันทรา" />
-                                </Border>
-                                <Border Grid.Column="2" Margin="2" Padding="8,4" Background="#1F6C5E85" BorderBrush="#33B8A5D0" BorderThickness="1" CornerRadius="4">
-                                    <TextBlock VerticalAlignment="Center" FontFamily="{StaticResource FontDisplay}" FontStyle="Italic" FontSize="12.5" Foreground="{StaticResource BrushMoon}" Text="the moon rises" />
-                                </Border>
-                            </Grid>
-                        </Grid>
                     </StackPanel>
                 </DockPanel>
             </Border>
@@ -1138,10 +1083,10 @@
             BorderThickness="1,0,0,0">
             <DockPanel LastChildFill="True">
 
-                <!--  Tabs  -->
+                <!--  Header counts (not tabs: the list below is always the storyboard;
+                      the old third "Assets" label led nowhere)  -->
                 <Grid Margin="18,16,18,0" DockPanel.Dock="Top">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition />
                         <ColumnDefinition />
                         <ColumnDefinition />
                     </Grid.ColumnDefinitions>
@@ -1160,9 +1105,6 @@
                                 <TextBlock FontSize="11" Style="{StaticResource TextMonoUpper}" Text="{Binding QueueCount}" />
                             </Border>
                         </StackPanel>
-                    </Border>
-                    <Border Grid.Column="2" Padding="0,4,0,8">
-                        <TextBlock HorizontalAlignment="Center" Foreground="{StaticResource BrushText3}" Style="{StaticResource TextBody}" FontSize="13.5" Text="Assets" />
                     </Border>
                 </Grid>
 

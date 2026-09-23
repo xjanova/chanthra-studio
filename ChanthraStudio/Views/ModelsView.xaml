@@ -289,12 +289,23 @@
                                                         <TextBlock Style="{StaticResource TextFieldLabel}" Text="{Binding DisplayName}" />
                                                         <TextBlock Margin="0,3,0,0" Style="{StaticResource TextHint}" Text="{Binding Description}" />
                                                         <TextBlock Margin="0,3,0,0" Style="{StaticResource TextMono}" Text="{Binding SizeLabel}" />
+                                                        <TextBlock Margin="0,4,0,0" Style="{StaticResource TextHint}" Foreground="{StaticResource BrushWarn}"
+                                                                   TextWrapping="Wrap" Text="{Binding VramWarning}"
+                                                                   Visibility="{Binding HasVramWarning, Converter={StaticResource BoolToVis}}" />
                                                     </StackPanel>
-                                                    <Button Grid.Column="1" VerticalAlignment="Top" Padding="12,5"
-                                                            Command="{Binding DataContext.DownloadBundleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                            CommandParameter="{Binding}"
-                                                            Content="⬇ โหลด" Style="{StaticResource ButtonPill}"
-                                                            IsEnabled="{Binding CanDownload}" />
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Top" Orientation="Horizontal">
+                                                        <Button Padding="12,5"
+                                                                Command="{Binding DataContext.DownloadBundleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}"
+                                                                Content="⬇ โหลด" Style="{StaticResource ButtonPill}"
+                                                                IsEnabled="{Binding CanDownload}"
+                                                                Visibility="{Binding Busy, Converter={StaticResource InvBoolToVis}}" />
+                                                        <Button Padding="12,5"
+                                                                Command="{Binding DataContext.CancelBundleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}"
+                                                                Content="ยกเลิก" Style="{StaticResource ButtonPill}"
+                                                                Visibility="{Binding Busy, Converter={StaticResource BoolToVis}}" />
+                                                    </StackPanel>
                                                 </Grid>
                                                 <Border Margin="0,8,0,0" Height="4" CornerRadius="2" Background="{StaticResource BrushBgBase}"
                                                         Visibility="{Binding Busy, Converter={StaticResource BoolToVis}}">

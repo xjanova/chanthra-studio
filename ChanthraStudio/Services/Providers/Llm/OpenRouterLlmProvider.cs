@@ -24,6 +24,13 @@ internal sealed class OpenRouterLlmProvider : ILlmProvider
     private static readonly HttpClient Http = new();
 
     public string Id => "openrouter";
+
+    /// <summary>
+    /// Used when no model chip is picked. The free router — the old default,
+    /// Claude Sonnet 4.5, billed a key the setup steps sell as free.
+    /// </summary>
+    public const string DefaultModel = "openrouter/free";
+    public string? DefaultModelId => DefaultModel;
     public string DisplayName => "OpenRouter";
     public string ApiKeyHint => "sk-or-… · openrouter.ai/keys";
     public ProviderKind Kind => ProviderKind.Llm;
@@ -56,10 +63,11 @@ internal sealed class OpenRouterLlmProvider : ILlmProvider
 
         var payload = new JsonObject
         {
-            ["model"] = string.IsNullOrEmpty(req.Model) ? "anthropic/claude-sonnet-4-5" : req.Model,
+            ["model"] = string.IsNullOrEmpty(req.Model) ? DefaultModel : req.Model,
             ["messages"] = messages,
             ["temperature"] = req.Temperature,
-            ["max_tokens"] = req.MaxTokens,
+            // Room for models that reason before answering; a ceiling only.
+            ["max_tokens"] = Math.Max(req.MaxTokens, 8000),
         };
 
         using var msg = new HttpRequestMessage(HttpMethod.Post, Endpoint)
@@ -71,21 +79,22 @@ internal sealed class OpenRouterLlmProvider : ILlmProvider
         msg.Headers.Add("HTTP-Referer", "https://github.com/xjanova/chanthra-studio");
         msg.Headers.Add("X-Title", "Chanthra Studio");
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromMinutes(2));
-        using var resp = await Http.SendAsync(msg, cts.Token);
-        var body = await resp.Content.ReadAsStringAsync(cts.Token);
-        if (!resp.IsSuccessStatusCode)
-            throw new InvalidOperationException(
-                $"OpenRouter completion failed ({(int)resp.StatusCode}): {ExtractError(body) ?? body}");
+        var (resp, body) = await LlmHttp.SendAsync(msg, "OpenRouter", ct);
+        using (resp)
+        {
+            if (!resp.IsSuccessStatusCode)
+                throw new InvalidOperationException(
+                    $"OpenRouter completion failed ({(int)resp.StatusCode}): {ExtractError(body) ?? body}");
+        }
 
         var root = JsonNode.Parse(body);
         var content = root?["choices"]?[0]?["message"]?["content"]?.GetValue<string>() ?? "";
+        var finish = root?["choices"]?[0]?["finish_reason"]?.GetValue<string>();
         // OpenRouter exposes the upstream provider's usage in OpenAI shape.
         var inT = root?["usage"]?["prompt_tokens"]?.GetValue<int>() ?? 0;
         var outT = root?["usage"]?["completion_tokens"]?.GetValue<int>() ?? 0;
         var model = root?["model"]?.GetValue<string>() ?? req.Model;
-        return new LlmResult(content, inT, outT, model);
+        return new LlmResult(content, inT, outT, model, Truncated: finish == "length");
     }
 
     private static string? ExtractError(string body)

@@ -7,16 +7,6 @@ namespace ChanthraStudio.ViewModels;
 
 public enum AppView { Generate, Seedance, Storyboard, Edit, Voice, Flow, WebStudio, Library, Models, Queue, Schedule, Gpu, Usage, Settings }
 
-public sealed class TabItem : ObservableObject
-{
-    public string Id { get; init; } = "";
-    public string Title { get; init; } = "";
-    public bool IsLive { get; set; }
-
-    private bool _isActive;
-    public bool IsActive { get => _isActive; set => SetProperty(ref _isActive, value); }
-}
-
 public sealed class MainViewModel : ObservableObject
 {
     private AppView _activeView = AppView.Generate;
@@ -24,17 +14,6 @@ public sealed class MainViewModel : ObservableObject
     {
         get => _activeView;
         set => SetProperty(ref _activeView, value);
-    }
-
-    private string _activeTabId = "empress";
-    public string ActiveTabId
-    {
-        get => _activeTabId;
-        set
-        {
-            if (SetProperty(ref _activeTabId, value))
-                RefreshActiveTab();
-        }
     }
 
     /// <summary>
@@ -55,7 +34,6 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    public ObservableCollection<TabItem> OpenTabs { get; } = new();
 
     public GenerateViewModel Generate { get; }
     public StoryboardViewModel Board { get; }
@@ -63,9 +41,6 @@ public sealed class MainViewModel : ObservableObject
     public StatusBarViewModel Status { get; } = new();
 
     public IRelayCommand<string> SwitchViewCommand { get; }
-    public IRelayCommand<string> SwitchTabCommand { get; }
-    public IRelayCommand NewTabCommand { get; }
-    public IRelayCommand<string> CloseTabCommand { get; }
 
     public MainViewModel()
     {
@@ -75,10 +50,6 @@ public sealed class MainViewModel : ObservableObject
         Generate = studio is not null ? new GenerateViewModel(studio) : new GenerateViewModel();
         Board = studio is not null ? new StoryboardViewModel(studio) : new StoryboardViewModel();
         WebStudio = studio is not null ? new WebStudioViewModel(studio) : new WebStudioViewModel();
-
-        OpenTabs.Add(new TabItem { Id = "empress", Title = "The Empress", IsLive = true });
-        OpenTabs.Add(new TabItem { Id = "moondog", Title = "Moondog", IsLive = false });
-        OpenTabs.Add(new TabItem { Id = "veil-fall", Title = "Veil Fall", IsLive = false });
 
         // Kick the status-bar autosave label ticker so it stops showing
         // the stale "Auto-save —" placeholder forever.
@@ -90,35 +61,5 @@ public sealed class MainViewModel : ObservableObject
                 ActiveView = v;
         });
 
-        SwitchTabCommand = new RelayCommand<string>(id =>
-        {
-            if (id is not null) ActiveTabId = id;
-        });
-
-        NewTabCommand = new RelayCommand(() =>
-        {
-            var id = $"untitled-{OpenTabs.Count + 1}";
-            OpenTabs.Add(new TabItem { Id = id, Title = "Untitled" });
-            ActiveTabId = id;
-        });
-
-        CloseTabCommand = new RelayCommand<string>(id =>
-        {
-            if (id is null) return;
-            var t = OpenTabs.FirstOrDefault(x => x.Id == id);
-            if (t is null || OpenTabs.Count <= 1) return;
-            var idx = OpenTabs.IndexOf(t);
-            OpenTabs.Remove(t);
-            if (ActiveTabId == id)
-                ActiveTabId = OpenTabs[System.Math.Min(idx, OpenTabs.Count - 1)].Id;
-        });
-
-        RefreshActiveTab();
-    }
-
-    private void RefreshActiveTab()
-    {
-        foreach (var tab in OpenTabs)
-            tab.IsActive = tab.Id == ActiveTabId;
     }
 }

@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -14,45 +17,34 @@ namespace ChanthraStudio.Services.Gpu;
 /// <summary>
 /// SimplePod.ai marketplace adapter.
 ///
-/// Two things about this vendor shape every design decision below:
+/// <b>Ported from a working integration.</b> The first version was written
+/// against guessed field names and never ran; every call except the host was
+/// wrong. The owner's aixman service (<c>src/lib/gpu/simplepod.ts</c>) has
+/// rented real machines, and each shape below follows what it learned — the
+/// comments say where a detail was only discovered on a live rental.
+///
+/// Two things about this vendor shape every design decision:
 ///
 ///  1. <b>Creation calls return an empty body.</b> POST /instances and
-///     POST /instances/templates both answer <c>{ }</c> — no id, no handle.
-///     So we snapshot the list first, create, then diff the list to find
-///     what appeared. Templates are matched by name instead, which is why
-///     the template name has to be a stable unique key.
+///     POST /instances/templates answer with nothing — no id. So we snapshot
+///     the instance list first and diff it afterwards; templates are matched
+///     by a name that fingerprints their content.
 ///
-///  2. <b>Server-side filters are coarse.</b> <c>pricePerGpu[lte]</c> only
-///     accepts small integers, so we ask for a generous slice and do the
-///     real filtering here.
+///  2. <b>Server-side filters are coarse.</b> <c>pricePerGpu[lte]</c> takes
+///     whole dollars, so the real ceiling is enforced here.
 ///
 /// Auth is the <c>X-AUTH-TOKEN</c> header — not <c>Authorization: Bearer</c>.
-///
-/// Field names in the market/instance payloads are read leniently (vendors
-/// rename them), but never <i>defaulted</i> leniently: an offer whose price
-/// or VRAM we can't parse is dropped, not treated as free. Guessing zero on
-/// a money field is how you rent a machine you didn't mean to.
 /// </summary>
 public sealed class SimplePodProvider : IGpuRentalProvider
 {
-    /// <summary>
-    /// The vendor's API host.
-    ///
-    /// <b>Corrected against a working implementation.</b> This was
-    /// <c>api.simplemining.net</c>, inferred from shared lineage with
-    /// SimpleMining and never checked — which would have failed the first real
-    /// rental no matter what key was pasted in. The owner's aixman service has
-    /// actually called this API and enumerated the market, and it uses
-    /// <c>api.simplepod.ai</c> (see its <c>src/lib/gpu/simplepod.ts</c>, whose
-    /// own docs link is <c>api.simplepod.ai/docs_ai.html</c>).
-    ///
-    /// Still overridable via the <c>gpu:apiBase</c> setting so a vendor move
-    /// doesn't require a new build.
-    /// </summary>
+    /// <summary>The vendor's API host (overridable via <c>gpu:apiBase</c>).</summary>
     public const string DefaultApiBase = "https://api.simplepod.ai";
 
     private readonly string _apiBase;
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
+
+    /// <summary>How long a freshly rented instance may take to appear in the list.</summary>
+    private static readonly TimeSpan RentSettle = TimeSpan.FromSeconds(90);
 
     public SimplePodProvider(string? apiBase = null)
     {
@@ -68,10 +60,14 @@ public sealed class SimplePodProvider : IGpuRentalProvider
     public async Task<decimal> GetBalanceAsync(string apiKey, CancellationToken ct = default)
     {
         var json = await SendAsync(HttpMethod.Get, "/instances/summary", apiKey, null, ct);
-        // Vendors sometimes wrap the summary in a "data"/"summary" envelope.
+        // The documented shape (and what aixman reads) is
+        // { "rentalAvailability": { "balanceRental": 7.16, … } }. The older
+        // guesses stay as a fallback; without the right one "Verify & save"
+        // threw on every key, so no key could ever be stored.
         var root = json as JsonObject;
-        var scope = (root?["data"] as JsonObject) ?? (root?["summary"] as JsonObject) ?? root;
-        var bal = FirstDecimal(scope, "balance", "credits", "creditBalance", "accountBalance", "funds");
+        var bal = FirstDecimal(root?["rentalAvailability"] as JsonObject, "balanceRental")
+                  ?? FirstDecimal((root?["data"] as JsonObject) ?? (root?["summary"] as JsonObject) ?? root,
+                                  "balance", "credits", "creditBalance", "accountBalance", "funds");
         if (bal is null)
             throw new GpuRentalException(
                 "Connected, but the account summary had no balance field — the API shape may have changed.");
@@ -83,24 +79,24 @@ public sealed class SimplePodProvider : IGpuRentalProvider
     public async Task<IReadOnlyList<GpuOffer>> SearchMarketAsync(
         string apiKey, GpuFilter filter, CancellationToken ct = default)
     {
-        // pricePerGpu[lte] takes a small integer only — round UP so we never
-        // exclude a machine that's actually inside the user's budget, then
-        // enforce the real ceiling client-side below.
-        var coarsePrice = Math.Clamp((int)Math.Ceiling(filter.MaxPricePerHourUsd), 1, 5);
-
-        var qs = new StringBuilder("/instances/market/list?rentalStatus=active");
-        qs.Append("&gpuMemorySize[gte]=").Append(filter.MinVramGb);
-        qs.Append("&diskSize[gte]=").Append(filter.MinDiskGb);
-        qs.Append("&pricePerGpu[lte]=").Append(coarsePrice);
+        var inv = CultureInfo.InvariantCulture;
+        var qs = new StringBuilder("/instances/market/list?rentalStatus=active&order%5BpricePerGpu%5D=asc");
+        // VRAM is filtered in MB: the API accepts 8192–524288. Sending GB (8,
+        // 12, 24) was either rejected or ignored.
+        qs.Append("&gpuMemorySize%5Bgte%5D=").Append((filter.MinVramGb * 1024).ToString(inv));
+        qs.Append("&diskSize%5Bgte%5D=").Append(filter.MinDiskGb.ToString(inv));
+        // Whole dollars only — round up so nothing inside the budget is lost,
+        // then enforce the real ceiling below.
+        qs.Append("&pricePerGpu%5Blte%5D=").Append(Math.Max(1, (int)Math.Ceiling(filter.MaxPricePerHourUsd)).ToString(inv));
         if (filter.MinDownloadMbps > 0)
-            qs.Append("&downloadSpeedtest[gte]=").Append(filter.MinDownloadMbps);
+            qs.Append("&downloadSpeedtest%5Bgte%5D=").Append(filter.MinDownloadMbps.ToString(inv));
 
         var json = await SendAsync(HttpMethod.Get, qs.ToString(), apiKey, null, ct);
 
         var offers = new List<GpuOffer>();
         foreach (var item in EnumerateItems(json))
         {
-            var offer = ParseOffer(item);
+            var offer = ParseOffer(item, filter.MinDiskGb);
             if (offer is null) continue;                                  // unparseable price/VRAM → dropped
             // The ceiling is on what the meter charges, which includes disk.
             if (offer.TotalPricePerHourUsd > filter.MaxPricePerHourUsd) continue;
@@ -112,47 +108,45 @@ public sealed class SimplePodProvider : IGpuRentalProvider
         }
 
         // Cheapest JOB first, not cheapest hour — warm-up is billed at the
-        // same rate as rendering, so a slow link on a cheap box routinely
-        // costs more than a fast link on a dearer one. See GpuCostModel.
+        // same rate as rendering. See GpuCostModel.
         return GpuCostModel.Rank(offers, filter)
             .Take(Math.Max(1, filter.MaxResults))
             .ToList();
     }
 
-    private static GpuOffer? ParseOffer(JsonObject o)
+    private static GpuOffer? ParseOffer(JsonObject o, int diskGbWanted)
     {
-        var id = FirstString(o, "id", "_id", "machineId", "hostId", "uuid");
-        if (string.IsNullOrEmpty(id)) return null;
+        // Renting needs the row's instanceMarket IRI ("/instances/market/12"),
+        // not its numeric id; a row without one cannot be rented at all.
+        var marketRef = FirstString(o, "instanceMarket");
+        if (string.IsNullOrEmpty(marketRef)) return null;
+        if (o["isAvailableForDemand"] is JsonValue avail && avail.TryGetValue<bool>(out var available) && !available)
+            return null;
 
         // Price and VRAM are load-bearing — no fallback value is safe.
-        var price = FirstDecimal(o, "pricePerGpu", "pricePerHour", "price", "costPerHour", "hourlyPrice");
-        var vram = FirstInt(o, "gpuMemorySize", "gpuMemory", "vram", "vramSize", "gpuRam");
-        if (price is null || vram is null || vram <= 0) return null;
+        var price = FirstDecimal(o, "pricePerGpu");
+        var vramMb = FirstInt(o, "gpuMemorySize");
+        if (price is null || price <= 0 || vramMb is null || vramMb <= 0) return null;
+
+        // Disk is priced per GB per month; bill the disk this rental will ask for.
+        var diskGbMonth = FirstDecimal(o, "pricePerDiskSize") ?? 0m;
+        var diskPerHour = diskGbMonth * diskGbWanted / 730m;
 
         return new GpuOffer
         {
-            Id = id!,
-            GpuModel = FirstString(o, "gpuModel", "gpuName", "gpu", "model") ?? "GPU",
-            GpuCount = FirstInt(o, "gpuCount", "gpus", "gpuQuantity") ?? 1,
-            VramGb = NormaliseVramGb(vram.Value),
-            DiskGb = FirstInt(o, "diskSize", "disk", "diskSpace", "storage") ?? 0,
+            Id = FirstString(o, "id") ?? marketRef!,
+            MarketRef = marketRef!,
+            GpuModel = FirstString(o, "gpuModel") ?? "GPU",
+            GpuCount = FirstInt(o, "gpuCount") ?? 1,
+            VramGb = (int)Math.Round(vramMb.Value / 1024.0),
+            DiskGb = FirstInt(o, "diskSize") ?? 0,
             PricePerHourUsd = price.Value,
-            // Storage is billed separately here. Missing → 0, which is the
-            // one defaulting we allow on a money field: it is additive, so a
-            // zero understates by exactly the amount the vendor didn't tell
-            // us about, whereas dropping the whole offer would empty a market
-            // over an optional field. See GpuOffer.DiskPricePerHourUsd for
-            // the unit assumption still waiting on a real invoice.
-            DiskPricePerHourUsd = FirstDecimal(o, "pricePerDiskSize", "pricePerDisk", "diskPrice") ?? 0m,
-            DownloadMbps = FirstInt(o, "downloadSpeedtest", "downloadSpeed", "download") ?? 0,
-            Region = FirstString(o, "region", "country", "location") ?? "",
-            Reliability = FirstDouble(o, "sla", "reliability", "uptime") ?? 0,
+            DiskPricePerHourUsd = decimal.Round(diskPerHour, 4),
+            DownloadMbps = FirstInt(o, "downloadSpeedtest") ?? 0,
+            Region = FirstString(o, "region", "country") ?? "",
+            Reliability = FirstDouble(o, "sla") ?? 0,
         };
     }
-
-    /// <summary>Vendors report VRAM in GB or MB depending on the field.
-    /// Anything above 1024 is megabytes.</summary>
-    private static int NormaliseVramGb(int raw) => raw > 1024 ? raw / 1024 : raw;
 
     // ------------------------------------------------------------------- rent
 
@@ -162,114 +156,206 @@ public sealed class SimplePodProvider : IGpuRentalProvider
             throw new GpuRentalException(
                 $"Refusing to rent an instance not named \"{GpuWorkerService.NamePrefix}…\" — " +
                 "that prefix is what keeps the orphan sweep off other people's machines.");
+        if (string.IsNullOrEmpty(spec.OfferMarketRef))
+            throw new GpuRentalException("The picked offer has no market reference to rent it by.");
 
-        var templateId = await EnsureTemplateAsync(apiKey, spec, ct);
+        var template = await EnsureTemplateAsync(apiKey, spec, ct);
 
-        // POST /instances answers {} — capture what exists first so we can
-        // tell which id is ours afterwards.
-        var before = (await ListInstancesAsync(apiKey, ct)).Select(i => i.Id).ToHashSet(StringComparer.Ordinal);
+        // POST /instances answers with nothing — capture what exists first so
+        // we can tell which id is ours afterwards.
+        var before = (await ListInstanceRowsAsync(apiKey, ct))
+            .Select(r => FirstString(r, "id")).Where(id => id is not null).Select(id => id!)
+            .ToHashSet(StringComparer.Ordinal);
+        var pending = new PendingRental(before, DateTime.UtcNow, spec.Name);
 
         var body = new JsonObject
         {
             ["gpuCount"] = spec.GpuCount,
-            ["instanceMarket"] = spec.OfferId,
-            ["instanceTemplate"] = templateId,
-            ["startScript"] = spec.StartScript,
-            ["envVariables"] = new JsonArray(
-                spec.Env.Select(kv => (JsonNode)new JsonObject
-                {
-                    ["name"] = kv.Key,
-                    ["value"] = kv.Value,
-                }).ToArray()),
+            ["instanceMarket"] = spec.OfferMarketRef,
+            ["instanceTemplate"] = template,
+            // SimplePod runs a start script LINE BY LINE. The multi-line boot
+            // script travels as one self-extracting line; see AsSingleLine.
+            ["startScript"] = AsSingleLine(spec.StartScript),
         };
+        if (spec.Env.Count > 0)
+            body["envVariables"] = new JsonArray(spec.Env
+                .Select(kv => (JsonNode)new JsonObject { ["name"] = kv.Key, ["value"] = kv.Value }).ToArray());
 
-        await SendAsync(HttpMethod.Post, "/instances", apiKey, body, ct);
+        try
+        {
+            await SendAsync(HttpMethod.Post, "/instances", apiKey, body, ct);
+        }
+        catch (GpuRentalException ex) when (ex.StatusCode is >= 400 and < 500)
+        {
+            // A 4xx is a refusal — nothing was rented.
+            throw;
+        }
+        catch (GpuRentalException ex)
+        {
+            // A timeout or a 5xx from the vendor's edge may have gone through
+            // anyway: look for the machine before deciding.
+            ActivityLog.Warn("gpu", "rent request did not complete cleanly, checking whether it went through: " + ex.Message);
+        }
 
-        // Diff-poll for the new id. The vendor takes a few seconds to make
-        // the instance visible; 90s is generous but a miss here means a
-        // machine on the meter that we don't have a row for.
-        var deadline = DateTime.UtcNow.AddSeconds(90);
+        var deadline = DateTime.UtcNow + RentSettle;
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
             await Task.Delay(3000, ct);
 
-            var now = await ListInstancesAsync(apiKey, ct);
-            var fresh = now.FirstOrDefault(i => !before.Contains(i.Id));
-            if (fresh is null) continue;
-
-            // The vendor won't take a name at creation time, so stamp it now.
-            // If this fails the instance still exists and is still billing —
-            // surface it loudly rather than returning a machine the sweep
-            // will later refuse to touch (unnamed = untouchable, by design).
+            IReadOnlyList<JsonObject> rows;
             try
             {
-                await SendAsync(HttpMethod.Put, $"/instances/{Uri.EscapeDataString(fresh.Id)}", apiKey,
+                rows = await ListInstanceRowsAsync(apiKey, ct);
+            }
+            catch (GpuRentalException ex)
+            {
+                // The list endpoint fails intermittently. One bad poll must
+                // not abandon a machine that is already billing.
+                ActivityLog.Warn("gpu", "instance list failed while confirming a rental, retrying: " + ex.Message);
+                continue;
+            }
+
+            var fresh = rows.FirstOrDefault(r => FirstString(r, "id") is { } id && !before.Contains(id));
+            if (fresh is null) continue;
+            var freshId = FirstString(fresh, "id")!;
+
+            // Name it so the orphan sweep can tell it is ours. A failure here
+            // is logged, not thrown: the row we return the id to can still
+            // terminate it, and throwing left a billing machine with no row
+            // holding its id at all.
+            try
+            {
+                await SendAsync(HttpMethod.Put, $"/instances/{Uri.EscapeDataString(freshId)}", apiKey,
                     new JsonObject { ["name"] = spec.Name }, ct);
             }
             catch (Exception ex)
             {
-                throw new GpuRentalException(
-                    $"Rented instance {fresh.Id} but could not name it: {ex.Message}. " +
-                    "It is billing now — terminate it from the GPU panel or the vendor console.", ex);
+                ActivityLog.Error("gpu",
+                    $"instance {freshId} could not be named {spec.Name}; the orphan sweep will not recognise it if its row is lost", ex);
             }
-
-            return fresh.Id;
+            return freshId;
         }
 
-        throw new GpuRentalException(
-            "Rent request accepted but no new instance appeared within 90s. " +
-            "Check the SimplePod dashboard — if a machine did start, it is billing.");
+        throw new GpuRentUnconfirmedException(
+            $"SimplePod may have accepted the rental, but no new instance appeared within {RentSettle.TotalSeconds:0}s. " +
+            "The next checks will look for it and release it.", pending);
     }
 
     /// <summary>
-    /// Templates are also created with an empty response body, so the name is
-    /// the handle: look it up first, create only if missing, then look it up
-    /// again. Same image+ports always resolves to the same template.
+    /// Tag what an unconfirmed rental produced so the orphan sweep can kill it.
+    /// Errs hard toward not touching a machine: only one absent from the
+    /// pre-order snapshot, created within minutes of the order, qualifies —
+    /// and only the first such, since one order makes one machine.
+    /// </summary>
+    public async Task<int> AdoptUnconfirmedAsync(string apiKey, PendingRental pending, CancellationToken ct = default)
+    {
+        var before = new HashSet<string>(pending.Before, StringComparer.Ordinal);
+        var rows = await ListInstanceRowsAsync(apiKey, ct);
+        var windowStart = pending.OrderedAtUtc.AddMinutes(-1);           // vendor clock skew
+        var windowEnd = pending.OrderedAtUtc + RentSettle + TimeSpan.FromMinutes(5);
+
+        var first = rows
+            .Select(r => (Row: r, Id: FirstString(r, "id"), Created: FirstDateTime(r, "createdAt")))
+            .Where(x => x.Id is not null && !before.Contains(x.Id) && x.Created is { } c && c >= windowStart && c <= windowEnd)
+            .OrderBy(x => x.Created)
+            .FirstOrDefault();
+        if (first.Row is null) return 0;
+        if ((FirstString(first.Row, "name") ?? "").StartsWith(pending.NameTag, StringComparison.Ordinal)) return 1;
+
+        await SendAsync(HttpMethod.Put, $"/instances/{Uri.EscapeDataString(first.Id!)}", apiKey,
+            new JsonObject { ["name"] = pending.NameTag }, ct);
+        return 1;
+    }
+
+    /// <summary>
+    /// Find-or-create the private template describing our container.
+    ///
+    /// The name carries a hash of everything the template pins — image, tag,
+    /// disk and ports — so a change to any of them gets a fresh template
+    /// instead of silently reusing one that boots last month's image with too
+    /// little disk. The template never holds the worker's token or boot
+    /// script: it outlives the machine; those go with each order instead.
     /// </summary>
     private async Task<string> EnsureTemplateAsync(string apiKey, GpuRentSpec spec, CancellationToken ct)
     {
-        var name = TemplateName(spec);
+        var (image, tag) = SplitImage(spec.DockerImage);
+        var ports = spec.ExposedPort.ToString(CultureInfo.InvariantCulture);
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            string.Join("|", image, tag, spec.DiskGb.ToString(CultureInfo.InvariantCulture), ports))))[..10].ToLowerInvariant();
+        var name = $"chanthra-tpl-{fingerprint}";
 
         var existing = await FindTemplateByNameAsync(apiKey, name, ct);
-        if (existing is not null) return existing;
+        if (existing is not null) return $"/instances/templates/{existing}";
 
         var body = new JsonObject
         {
             ["name"] = name,
-            ["image"] = spec.DockerImage,
-            ["ports"] = spec.ExposedPort.ToString(CultureInfo.InvariantCulture),
-            ["isPublic"] = false,
+            ["imageName"] = image,
+            ["defaultTag"] = tag,
+            ["categoryName"] = "chanthra",
+            ["diskSize"] = spec.DiskGb,
+            ["exposePorts"] = ports,
+            ["startScript"] = "",
+            ["notes"] = "Managed by Chanthra Studio. Deleting this template does not stop running instances.",
+            ["isPasswordProtected"] = false,
+            ["isRunSshServerOn"] = false,
+            ["isRunJupyterOn"] = false,
         };
         await SendAsync(HttpMethod.Post, "/instances/templates", apiKey, body, ct);
 
         var created = await FindTemplateByNameAsync(apiKey, name, ct);
-        return created ?? throw new GpuRentalException(
-            $"Created template \"{name}\" but it did not appear in the template list.");
-    }
-
-    private static string TemplateName(GpuRentSpec spec)
-    {
-        // Stable per image+port so repeat rentals reuse one template rather
-        // than littering the account with near-duplicates.
-        var imageSlug = new string(spec.DockerImage
-            .Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray())
-            .Trim('-');
-        if (imageSlug.Length > 40) imageSlug = imageSlug[..40];
-        return $"{GpuWorkerService.NamePrefix}{imageSlug}-{spec.ExposedPort}";
+        return created is not null
+            ? $"/instances/templates/{created}"
+            : throw new GpuRentalException($"Created template \"{name}\" but it did not appear in the template list.");
     }
 
     private async Task<string?> FindTemplateByNameAsync(string apiKey, string name, CancellationToken ct)
     {
-        var json = await SendAsync(HttpMethod.Get, "/instances/templates", apiKey, null, ct);
+        var json = await SendAsync(HttpMethod.Get,
+            $"/instances/templates/list?itemsPerPage=100&search={Uri.EscapeDataString(name)}", apiKey, null, ct);
         foreach (var t in EnumerateItems(json))
         {
-            if (!string.Equals(FirstString(t, "name", "templateName"), name, StringComparison.Ordinal))
-                continue;
-            var id = FirstString(t, "id", "_id", "templateId", "uuid");
+            if (!string.Equals(FirstString(t, "name"), name, StringComparison.Ordinal)) continue;
+            var id = FirstString(t, "id");
             if (!string.IsNullOrEmpty(id)) return id;
         }
         return null;
+    }
+
+    /// <summary>"pytorch/pytorch:2.9.1-cuda13.0-cudnn9-runtime" → name + tag,
+    /// minding a registry host with a port ("host:5000/img:tag").</summary>
+    internal static (string Image, string Tag) SplitImage(string dockerImage)
+    {
+        var slash = dockerImage.LastIndexOf('/');
+        var colon = dockerImage.LastIndexOf(':');
+        return colon > slash ? (dockerImage[..colon], dockerImage[(colon + 1)..]) : (dockerImage, "latest");
+    }
+
+    /// <summary>Where the boot script is written inside the container.</summary>
+    private const string BootScriptPath = "/workspace/chanthra-boot.sh";
+
+    /// <summary>
+    /// Turn a multi-line script into the single command SimplePod can run.
+    ///
+    /// SimplePod runs a start script one line at a time, not as a script —
+    /// found on aixman's first real rental: a 13 KB bash script arrived as
+    /// hundreds of unrelated commands (functions, heredocs and loops all
+    /// broken), nothing started, and the machine sat idle while billing. So the
+    /// script travels gzipped and base64-encoded in one line that writes it to
+    /// a file and runs it with bash; base64 needs no quoting in any POSIX shell.
+    /// </summary>
+    public static string AsSingleLine(string script)
+    {
+        if (!script.Contains('\n')) return script;
+        using var buffer = new MemoryStream();
+        using (var gz = new GZipStream(buffer, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            var bytes = new UTF8Encoding(false).GetBytes(script);
+            gz.Write(bytes, 0, bytes.Length);
+        }
+        var encoded = Convert.ToBase64String(buffer.ToArray());
+        return $"mkdir -p /workspace && echo {encoded} | base64 -d | gunzip > {BootScriptPath} && exec bash {BootScriptPath}";
     }
 
     // -------------------------------------------------------------- instances
@@ -279,20 +365,19 @@ public sealed class SimplePodProvider : IGpuRentalProvider
         try
         {
             var json = await SendAsync(HttpMethod.Get, $"/instances/{Uri.EscapeDataString(instanceId)}", apiKey, null, ct);
-            var obj = json as JsonObject ?? (json?["instance"] as JsonObject) ?? (json?["data"] as JsonObject);
-            return obj is null ? null : ParseInstance(obj);
+            return json is JsonObject obj && FirstString(obj, "id") is not null ? ParseInstance(obj) : null;
         }
-        catch (GpuRentalException ex) when (ex.Message.Contains("404"))
+        catch (GpuRentalException ex) when (ex.StatusCode == 404)
         {
             return null;   // already destroyed — not an error
         }
     }
 
+    private async Task<IReadOnlyList<JsonObject>> ListInstanceRowsAsync(string apiKey, CancellationToken ct)
+        => EnumerateItems(await SendAsync(HttpMethod.Get, "/instances/list?itemsPerPage=200", apiKey, null, ct)).ToList();
+
     public async Task<IReadOnlyList<GpuInstance>> ListInstancesAsync(string apiKey, CancellationToken ct = default)
-    {
-        var json = await SendAsync(HttpMethod.Get, "/instances/list", apiKey, null, ct);
-        return EnumerateItems(json).Select(ParseInstance).ToList();
-    }
+        => (await ListInstanceRowsAsync(apiKey, ct)).Select(ParseInstance).ToList();
 
     public async Task TerminateAsync(string apiKey, string instanceId, CancellationToken ct = default)
     {
@@ -300,86 +385,118 @@ public sealed class SimplePodProvider : IGpuRentalProvider
         {
             await SendAsync(HttpMethod.Delete, $"/instances/{Uri.EscapeDataString(instanceId)}", apiKey, null, ct);
         }
-        catch (GpuRentalException ex) when (ex.Message.Contains("404"))
+        catch (GpuRentalException ex) when (ex.StatusCode == 404)
         {
-            // Already gone. Terminate is idempotent by contract — the caller
-            // only cares that the meter has stopped.
+            // Already gone is the desired end state. Anything else propagates:
+            // a swallowed error here is a machine that bills forever.
         }
     }
 
     private static GpuInstance ParseInstance(JsonObject o)
     {
-        var raw = FirstString(o, "status", "state", "rentalStatus", "instanceStatus") ?? "";
-        var inst = new GpuInstance
-        {
-            Id = FirstString(o, "id", "_id", "instanceId", "uuid") ?? "",
-            Name = FirstString(o, "name", "instanceName", "label") ?? "",
-            RawStatus = raw,
-            State = MapState(raw),
-            GpuModel = FirstString(o, "gpuModel", "gpuName", "gpu", "model") ?? "",
-            PricePerHourUsd = FirstDecimal(o, "pricePerGpu", "pricePerHour", "price", "costPerHour") ?? 0m,
-            StartedAt = FirstDateTime(o, "startedAt", "createdAt", "rentedAt", "created"),
-        };
+        var raw = FirstString(o, "status") ?? "";
+        var messages = Strings(o["errors"]).Concat(Strings(o["warnings"])).ToList();
+        var ports = ParsePorts(o["ports"] ?? o["portMappings"] ?? o["exposePortMappings"]);
+        ports.TryGetValue(GpuProvisioning.ProxyPort, out var endpoint);
 
-        var (proxy, direct) = ParsePorts(o, GpuProvisioning.ProxyPort);
-        inst.ProxyUrl = proxy;
-        inst.DirectUrl = direct;
-        return inst;
+        return new GpuInstance
+        {
+            Id = FirstString(o, "id") ?? "",
+            Name = FirstString(o, "name")?.Trim() ?? "",
+            RawStatus = raw,
+            State = MapState(raw, messages.Count > 0),
+            GpuModel = FirstString(o, "gpuModel") ?? "",
+            PricePerHourUsd = FirstDecimal(o, "pricePerGpu") ?? 0m,
+            StartedAt = FirstDateTime(o, "createdAt"),
+            ProxyUrl = endpoint is not null && endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? endpoint : null,
+            DirectUrl = endpoint is not null && !endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? endpoint : null,
+            StatusMessage = messages.Count > 0 ? string.Join("; ", messages) : null,
+        };
     }
+
+    private static IEnumerable<string> Strings(JsonNode? node)
+        => node is JsonArray arr
+            ? arr.OfType<JsonValue>().Select(v => v.TryGetValue<string>(out var s) ? s : null)
+                 .Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!)
+            : Enumerable.Empty<string>();
 
     /// <summary>
-    /// Pulls the public endpoint for <paramref name="wantedPort"/> out of the
-    /// instance payload. SimplePod exposes each port two ways — a Cloudflare
-    /// tunnel (HTTPS, preferred) and a direct host:port — under a "ports" map
-    /// keyed by the container port.
+    /// Normalise SimplePod's port mapping into internal port → public URL.
+    ///
+    /// What the instance detail really returns (first real rental, aixman
+    /// 2026-09-12) is two lists keyed by <c>srcPort</c>, the container port:
+    /// <c>{ direct: [{ srcPort, protocol: "http", url }], proxy: [{ srcPort,
+    /// protocol: "https", url: "https://….trycloudflare.com" }] }</c>, where
+    /// <c>protocol</c> reads "checking"/"closed" until something listens. The
+    /// earlier parser only knew an object keyed by port, so no worker ever got
+    /// an endpoint, sat "warming" to the timeout and was killed. A Cloudflare
+    /// tunnel URL always wins over a bare host:port.
     /// </summary>
-    internal static (string? proxyUrl, string? directUrl) ParsePorts(JsonObject o, int wantedPort)
+    internal static Dictionary<int, string> ParsePorts(JsonNode? raw)
     {
-        var portsNode = o["ports"] ?? o["portMappings"] ?? o["mapPort"];
-        var key = wantedPort.ToString(CultureInfo.InvariantCulture);
-
-        JsonObject? entry = null;
-        if (portsNode is JsonObject map)
+        var result = new Dictionary<int, string>();
+        if (raw is JsonObject grouped && (grouped["direct"] is JsonArray || grouped["proxy"] is JsonArray))
         {
-            entry = map[key] as JsonObject;
-            // Some builds key by the *host* port instead — fall back to any
-            // entry whose declared internal port matches.
-            entry ??= map.Select(kv => kv.Value as JsonObject)
-                         .FirstOrDefault(e => e is not null
-                             && (FirstInt(e, "internalPort", "containerPort", "port") == wantedPort));
-        }
-        else if (portsNode is JsonArray arr)
-        {
-            entry = arr.Select(n => n as JsonObject)
-                       .FirstOrDefault(e => e is not null
-                           && (FirstInt(e, "internalPort", "containerPort", "port") == wantedPort));
+            foreach (var list in new[] { grouped["proxy"] as JsonArray, grouped["direct"] as JsonArray })
+            {
+                if (list is null) continue;
+                foreach (var entry in list.OfType<JsonObject>())
+                {
+                    var port = FirstInt(entry, "srcPort");
+                    var url = LiveUrl(entry);
+                    if (port is > 0 && url is not null && !result.ContainsKey(port.Value)) result[port.Value] = url;
+                }
+            }
+            return result;
         }
 
-        if (entry is null) return (null, null);
+        // The documented object shape and a bare array are still accepted.
+        IEnumerable<(string? Key, JsonObject Value)> entries = raw switch
+        {
+            JsonArray arr => arr.OfType<JsonObject>().Select(v => ((string?)null, v)),
+            JsonObject obj => obj.Where(kv => kv.Value is JsonObject).Select(kv => ((string?)kv.Key, (JsonObject)kv.Value!)),
+            _ => Enumerable.Empty<(string?, JsonObject)>(),
+        };
+        foreach (var (key, value) in entries)
+        {
+            int? internalPort = int.TryParse(key, NumberStyles.Integer, CultureInfo.InvariantCulture, out var k) ? k
+                : FirstInt(value, "internalPort", "containerPort", "port", "privatePort");
+            if (internalPort is not > 0) continue;
 
-        var proxy = FirstString(entry, "proxyUrl", "proxy", "publicUrl", "url");
-        if (!string.IsNullOrWhiteSpace(proxy) && !proxy!.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-            proxy = "https://" + proxy;
+            var proxyUrl = FirstString(value, "proxyUrl");
+            if (!string.IsNullOrWhiteSpace(proxyUrl)) { result[internalPort.Value] = proxyUrl!.TrimEnd('/'); continue; }
 
-        string? direct = null;
-        var host = FirstString(entry, "host", "ip", "publicIp", "address")
-                   ?? FirstString(o, "ip", "publicIp", "host");
-        var externalPort = FirstInt(entry, "externalPort", "hostPort", "publicPort");
-        if (!string.IsNullOrWhiteSpace(host) && externalPort is > 0)
-            direct = $"http://{host}:{externalPort}";
-
-        return (string.IsNullOrWhiteSpace(proxy) ? null : proxy, direct);
+            var host = FirstString(value, "ip", "host", "hostIp", "publicIp");
+            var external = FirstInt(value, "externalPort", "hostPort", "publicPort", "mappedPort");
+            if (!string.IsNullOrWhiteSpace(host) && external is > 0)
+            {
+                var scheme = FirstString(value, "protocol") == "https" ? "https" : "http";
+                result[internalPort.Value] = $"{scheme}://{host}:{external}";
+            }
+        }
+        return result;
     }
 
-    private static GpuInstanceState MapState(string raw) => raw.ToLowerInvariant() switch
+    /// <summary>A published address that is actually usable — not "closed" or "checking".</summary>
+    private static string? LiveUrl(JsonObject entry)
     {
-        "running" or "active" or "online" or "ready" => GpuInstanceState.Running,
-        "provisioning" or "starting" or "pending" or "creating" or "queued" or "booting"
-            => GpuInstanceState.Provisioning,
-        "stopped" or "terminated" or "destroyed" or "deleted" or "inactive" or "ended"
-            => GpuInstanceState.Stopped,
-        "failed" or "error" or "crashed" => GpuInstanceState.Failed,
-        _ => GpuInstanceState.Unknown,
+        var protocol = FirstString(entry, "protocol") ?? "";
+        var url = FirstString(entry, "url")?.Trim() ?? "";
+        if (protocol is not ("http" or "https")) return null;
+        if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            && !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return null;
+        return url.TrimEnd('/');
+    }
+
+    private static GpuInstanceState MapState(string raw, bool hasErrors) => raw.ToLowerInvariant() switch
+    {
+        "active" or "running" or "ready" => GpuInstanceState.Running,
+        "created" or "creating" or "pending" or "starting" or "provisioning" or "queued" => GpuInstanceState.Provisioning,
+        "error" or "failed" or "unavailable" => GpuInstanceState.Failed,
+        "paused" or "stopped" or "deleted" or "removed" or "expired" => GpuInstanceState.Stopped,
+        // Unknown status with vendor-reported errors is treated as broken, so
+        // the reaper releases it instead of waiting out the warm-up timeout.
+        _ => hasErrors ? GpuInstanceState.Failed : GpuInstanceState.Provisioning,
     };
 
     // ------------------------------------------------------------------- HTTP
@@ -403,7 +520,7 @@ public sealed class SimplePodProvider : IGpuRentalProvider
         }
         catch (TaskCanceledException) when (!ct.IsCancellationRequested)
         {
-            throw new GpuRentalException($"SimplePod timed out on {method} {path}.");
+            throw new GpuRentalException($"SimplePod timed out on {method} {path.Split('?')[0]}.");
         }
         catch (HttpRequestException ex)
         {
@@ -420,11 +537,12 @@ public sealed class SimplePodProvider : IGpuRentalProvider
                 // a verbatim dump is how keys end up in log files.
                 throw new GpuRentalException(resp.StatusCode == HttpStatusCode.Unauthorized
                     ? "SimplePod rejected the API key (401). Re-paste it in the GPU panel."
-                    : $"SimplePod {method} {path} failed ({(int)resp.StatusCode}): {detail}");
+                    : $"SimplePod {method} {path.Split('?')[0]} failed ({(int)resp.StatusCode}): {detail}",
+                    (int)resp.StatusCode);
             }
             if (string.IsNullOrWhiteSpace(text)) return null;
             try { return JsonNode.Parse(text); }
-            catch { return null; }   // creation endpoints answer with a bare {} or empty body
+            catch { return null; }   // creation endpoints answer with an empty body
         }
     }
 
@@ -433,9 +551,8 @@ public sealed class SimplePodProvider : IGpuRentalProvider
         if (string.IsNullOrWhiteSpace(body)) return "no response body";
         try
         {
-            var n = JsonNode.Parse(body);
-            var msg = FirstString(n as JsonObject, "message", "error", "detail", "title");
-            if (!string.IsNullOrWhiteSpace(msg)) return msg!;
+            var msg = FirstString(JsonNode.Parse(body) as JsonObject, "detail", "title", "message", "error");
+            if (!string.IsNullOrWhiteSpace(msg)) return msg!.Length > 300 ? msg[..300] : msg;
         }
         catch { /* not JSON — fall through to the truncated raw body */ }
         return body.Length > 300 ? body[..300] + "…" : body;
@@ -443,14 +560,14 @@ public sealed class SimplePodProvider : IGpuRentalProvider
 
     // ----------------------------------------------------- tolerant JSON reads
 
-    /// <summary>Yields the item objects out of whichever envelope the vendor
-    /// used — a bare array, or an object wrapping one under a known key.</summary>
+    /// <summary>Yields the item objects out of a bare array, or an object
+    /// wrapping one under a known key (Hydra's "hydra:member" included).</summary>
     internal static IEnumerable<JsonObject> EnumerateItems(JsonNode? json)
     {
         JsonArray? arr = json as JsonArray;
         if (arr is null && json is JsonObject obj)
         {
-            foreach (var key in new[] { "data", "items", "instances", "results", "list", "templates", "market" })
+            foreach (var key in new[] { "hydra:member", "member", "data", "items", "instances", "results", "list", "templates", "market" })
             {
                 if (obj[key] is JsonArray a) { arr = a; break; }
             }
@@ -467,7 +584,7 @@ public sealed class SimplePodProvider : IGpuRentalProvider
         {
             if (o[k] is not JsonValue v) continue;
             if (v.TryGetValue<string>(out var s) && !string.IsNullOrWhiteSpace(s)) return s;
-            // Numeric ids arrive unquoted often enough to be worth handling.
+            // Numeric ids arrive unquoted.
             if (v.TryGetValue<long>(out var l)) return l.ToString(CultureInfo.InvariantCulture);
         }
         return null;

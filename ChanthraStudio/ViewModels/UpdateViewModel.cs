@@ -20,7 +20,18 @@ public sealed class UpdateViewModel : ObservableObject
     public bool IsChecking { get => _isChecking; set => SetProperty(ref _isChecking, value); }
 
     private bool _isDownloading;
-    public bool IsDownloading { get => _isDownloading; set => SetProperty(ref _isDownloading, value); }
+    public bool IsDownloading
+    {
+        get => _isDownloading;
+        set
+        {
+            if (!SetProperty(ref _isDownloading, value)) return;
+            // Install stayed clickable mid-download; a second click raced the
+            // first over the same .part file.
+            ((RelayCommand)DownloadAndApplyCommand).NotifyCanExecuteChanged();
+            ((RelayCommand)CheckCommand).NotifyCanExecuteChanged();
+        }
+    }
 
     private double _progress;
     public double Progress { get => _progress; set => SetProperty(ref _progress, value); }
@@ -52,9 +63,17 @@ public sealed class UpdateViewModel : ObservableObject
     /// <see cref="AppSettings.SkippedUpdateVersion"/> so the periodic
     /// poller stops re-popping the same dialog. A later release
     /// (higher CompareSemver) supersedes the skip automatically.</summary>
+    /// <summary>
+    /// Stop a download in flight. The dialog calls this whenever it closes —
+    /// "later", "skip this version" and the X all used to close it while the
+    /// download ran on, then installed and restarted the app anyway.
+    /// </summary>
+    public void CancelPending() => _cts?.Cancel();
+
     private void SkipVersion()
     {
         if (_info is null || !_info.HasUpdate) return;
+        CancelPending();
         try
         {
             var settings = ((App)System.Windows.Application.Current).Studio.Settings;
@@ -94,14 +113,16 @@ public sealed class UpdateViewModel : ObservableObject
 
     private async Task DownloadAsync()
     {
-        if (_info is null || !_info.HasUpdate) return;
+        if (_info is null || !_info.HasUpdate || _isDownloading) return;
         if (!LicenseGuard.Instance.IsLicensed)
         {
             Status = "auto-update requires a valid license";
             return;
         }
 
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
+        var token = _cts.Token;
         IsDownloading = true;
         Progress = 0;
         ProgressLabel = "starting download...";
@@ -116,12 +137,28 @@ public sealed class UpdateViewModel : ObservableObject
 
         try
         {
-            var path = await UpdateService.DownloadAsync(_info, prog, _cts.Token);
+            string? path;
+            try
+            {
+                path = await UpdateService.DownloadAsync(_info, prog, token);
+            }
+            catch (System.IO.InvalidDataException ex)
+            {
+                Status = ex.Message;
+                return;
+            }
+            if (token.IsCancellationRequested)
+            {
+                Status = "ยกเลิกการอัปเดตแล้ว";
+                return;
+            }
             if (string.IsNullOrEmpty(path))
             {
                 Status = "download failed";
                 return;
             }
+            ActivityLog.Info("update", $"downloaded {_info.AssetName} ({_info.AssetSizeBytes:N0} bytes, " +
+                (string.IsNullOrEmpty(_info.AssetSha256) ? "no digest published" : "sha256 verified") + ") — installing");
             Status = "applying update — app will restart...";
             UpdateService.ApplyAndRestart(path);
             // Give the helper a beat to spawn before we exit.

@@ -73,11 +73,13 @@ public static class UpdateService
         var name = root.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
         var body = root.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
         var publishedAt = root.TryGetProperty("published_at", out var p) && p.ValueKind == JsonValueKind.String
-            && DateTimeOffset.TryParse(p.GetString(), out var when) ? when : DateTimeOffset.MinValue;
+            && DateTimeOffset.TryParse(p.GetString(), System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var when) ? when : DateTimeOffset.MinValue;
 
         // Pick the first .zip asset; fall back to .exe so single-file
         // builds still work without a zip wrapper.
         string downloadUrl = "", assetName = "";
+        string? sha256 = null;
         long size = 0;
         if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
         {
@@ -87,13 +89,16 @@ public static class UpdateService
                 if (string.IsNullOrEmpty(aname)) continue;
                 var aurl = a.TryGetProperty("browser_download_url", out var au) ? au.GetString() ?? "" : "";
                 var asize = a.TryGetProperty("size", out var asz) && asz.ValueKind == JsonValueKind.Number ? asz.GetInt64() : 0;
+                var adigest = a.TryGetProperty("digest", out var ad) && ad.ValueKind == JsonValueKind.String ? ad.GetString() : null;
+                var ahash = adigest is not null && adigest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
+                    ? adigest[7..].Trim().ToLowerInvariant() : null;
                 if (aname.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                 {
-                    downloadUrl = aurl; assetName = aname; size = asize; break;
+                    downloadUrl = aurl; assetName = aname; size = asize; sha256 = ahash; break;
                 }
                 if (aname.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(downloadUrl))
                 {
-                    downloadUrl = aurl; assetName = aname; size = asize;
+                    downloadUrl = aurl; assetName = aname; size = asize; sha256 = ahash;
                 }
             }
         }
@@ -111,6 +116,7 @@ public static class UpdateService
             DownloadUrl = downloadUrl,
             AssetName = assetName,
             AssetSizeBytes = size,
+            AssetSha256 = sha256,
         };
     }
 
@@ -135,7 +141,9 @@ public static class UpdateService
     /// <summary>
     /// Streams the asset to a temp file, reporting bytes downloaded and
     /// total bytes via the progress callback. Returns the path to the
-    /// downloaded file, or null on cancel/failure.
+    /// downloaded file, or null on cancel/failure. Throws when the file
+    /// arrived but is not the one GitHub published — the caller must not
+    /// install it.
     /// </summary>
     public static async Task<string?> DownloadAsync(
         UpdateInfo info,
@@ -146,7 +154,13 @@ public static class UpdateService
 
         var tmpDir = Path.Combine(Path.GetTempPath(), "ChanthraStudio.Update");
         Directory.CreateDirectory(tmpDir);
-        var localPath = Path.Combine(tmpDir, info.AssetName);
+        // The name comes from the release JSON and ends up inside a batch
+        // script and a PowerShell command line; keep it to plain characters.
+        var safeName = string.Concat(Path.GetFileName(info.AssetName)
+            .Select(ch => char.IsAsciiLetterOrDigit(ch) || ch is '.' or '-' or '_' ? ch : '_'));
+        if (string.IsNullOrEmpty(safeName)) safeName = "update.zip";
+        var localPath = Path.Combine(tmpDir, safeName);
+        var partPath = localPath + ".part";
 
         try
         {
@@ -155,23 +169,47 @@ public static class UpdateService
             if (!resp.IsSuccessStatusCode) return null;
 
             long total = resp.Content.Headers.ContentLength ?? info.AssetSizeBytes;
-            using var src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            using var dst = File.Create(localPath);
-
-            var buf = new byte[81920];
             long downloaded = 0;
-            int read;
-            while ((read = await src.ReadAsync(buf.AsMemory(0, buf.Length), ct).ConfigureAwait(false)) > 0)
+            using var hash = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
+            using (var src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
+            using (var dst = File.Create(partPath))
             {
-                await dst.WriteAsync(buf.AsMemory(0, read), ct).ConfigureAwait(false);
-                downloaded += read;
-                progress.Report((downloaded, total));
+                var buf = new byte[81920];
+                int read;
+                while ((read = await src.ReadAsync(buf.AsMemory(0, buf.Length), ct).ConfigureAwait(false)) > 0)
+                {
+                    await dst.WriteAsync(buf.AsMemory(0, read), ct).ConfigureAwait(false);
+                    hash.AppendData(buf, 0, read);
+                    downloaded += read;
+                    progress.Report((downloaded, total));
+                }
             }
+
+            // It is about to be unpacked over the program itself: a cut-off
+            // download, or bytes that are not what GitHub lists for the
+            // release, must never get that far.
+            if (info.AssetSizeBytes > 0 && downloaded != info.AssetSizeBytes)
+                throw new InvalidDataException(
+                    $"ไฟล์อัปเดตไม่ครบ ({downloaded:N0} จาก {info.AssetSizeBytes:N0} ไบต์) — ลองดาวน์โหลดใหม่");
+            if (!string.IsNullOrEmpty(info.AssetSha256))
+            {
+                var actual = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+                if (actual != info.AssetSha256)
+                    throw new InvalidDataException(
+                        "ไฟล์อัปเดตไม่ตรงกับที่ GitHub ประกาศไว้ (SHA-256 ไม่ตรง) — ไม่ติดตั้ง ลองใหม่ภายหลัง");
+            }
+
+            File.Move(partPath, localPath, overwrite: true);
             return localPath;
+        }
+        catch (InvalidDataException)
+        {
+            try { if (File.Exists(partPath)) File.Delete(partPath); } catch { }
+            throw;
         }
         catch
         {
-            try { if (File.Exists(localPath)) File.Delete(localPath); } catch { }
+            try { if (File.Exists(partPath)) File.Delete(partPath); } catch { }
             return null;
         }
     }
@@ -189,6 +227,19 @@ public static class UpdateService
         var exeName = Path.GetFileName(Process.GetCurrentProcess().MainModule?.FileName ?? "ChanthraStudio.exe");
 
         var helperPath = Path.Combine(Path.GetTempPath(), "chanthra-studio-update.cmd");
+        // The helper runs after this process is gone; it leaves its verdict
+        // here, since a failed unpack otherwise relaunched the old version
+        // without a trace.
+        var updateLog = Path.Combine(AppPaths.LogsFolder, "update.log");
+
+        // Paths go into a batch file (where % expands) and a single-quoted
+        // PowerShell string (where ' ends it) — an install folder with a quote
+        // or a percent sign in its name broke the update, or worse.
+        static string Cmd(string s) => s.Replace("%", "%%");
+        // PowerShell also ends a single-quoted string at the typographic
+        // quotes (U+2018/U+2019/U+201A/U+201B); double those too.
+        static string Ps(string s) => s.Replace("'", "''").Replace("\u2018", "\u2018\u2018")
+            .Replace("\u2019", "\u2019\u2019").Replace("\u201A", "\u201A\u201A").Replace("\u201B", "\u201B\u201B");
 
         // The helper:
         //  1. waits for our PID to exit
@@ -204,9 +255,10 @@ if not errorlevel 1 (
 )
 timeout /t 1 /nobreak > nul
 {(downloadedPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
-    ? $@"powershell -NoProfile -ExecutionPolicy Bypass -Command ""Expand-Archive -Force -LiteralPath '{downloadedPath}' -DestinationPath '{installDir}'"""
-    : $@"copy /Y ""{downloadedPath}"" ""{installDir}\\{exeName}""")}
-start """" ""{installDir}\{exeName}""
+    ? $@"powershell -NoProfile -ExecutionPolicy Bypass -Command ""Expand-Archive -Force -LiteralPath '{Cmd(Ps(downloadedPath))}' -DestinationPath '{Cmd(Ps(installDir))}'"""
+    : $@"copy /Y ""{Cmd(downloadedPath)}"" ""{Cmd(installDir)}\\{Cmd(exeName)}""")}
+if errorlevel 1 (echo %date% %time% update FAILED to install {Cmd(Path.GetFileName(downloadedPath))}>> ""{Cmd(updateLog)}"") else (echo %date% %time% update installed {Cmd(Path.GetFileName(downloadedPath))}>> ""{Cmd(updateLog)}"")
+start """" ""{Cmd(installDir)}\{Cmd(exeName)}""
 del ""%~f0""
 ";
         File.WriteAllText(helperPath, script);
@@ -214,7 +266,10 @@ del ""%~f0""
         var psi = new ProcessStartInfo
         {
             FileName = "cmd.exe",
-            Arguments = $"/C \"{helperPath}\"",
+            // /S + an extra pair of quotes: with a plain /C "path", a temp
+            // folder containing & ( ) or ^ made cmd strip the quotes and the
+            // helper never ran — the app closed with no update and no restart.
+            Arguments = $"/D /S /C \"\"{helperPath}\"\"",
             CreateNoWindow = true,
             UseShellExecute = false,
             WindowStyle = ProcessWindowStyle.Hidden,

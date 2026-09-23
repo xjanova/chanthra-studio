@@ -121,7 +121,8 @@
                 </Button>
 
                 <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="0,0,6,0">
+                    <!--  Locked while Auto Pilot runs: it works on this board in place  -->
+                    <StackPanel Margin="0,0,6,0" IsEnabled="{Binding IsAutoPilotIdle}">
                         <TextBlock Style="{StaticResource TextSectionDivider}" Text="TEMPLATE" />
                         <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding Templates}">
                             <ItemsControl.ItemTemplate>
@@ -169,7 +170,7 @@
                         <TextBox Margin="0,8,0,0" Style="{StaticResource FieldBox}" Text="{Binding VoiceNote, UpdateSourceTrigger=PropertyChanged}" />
 
                         <TextBlock Margin="0,14,0,0" Style="{StaticResource TextSectionDivider}" Text="ภาพต้นแบบ · @ref1 ตัวละคร" />
-                        <Grid Margin="0,8,0,0">
+                        <Grid Margin="0,8,0,0" AllowDrop="True" Tag="ref" DragOver="RefDrop_DragOver" Drop="RefDrop_Drop" Background="Transparent">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -188,7 +189,7 @@
                         </Grid>
 
                         <TextBlock Margin="0,12,0,0" Style="{StaticResource TextSectionDivider}" Text="@ref2 ฉาก / สถานที่" />
-                        <Grid Margin="0,8,0,0" ToolTip="เอนจินที่รองรับหลายภาพอ้างอิง (Veo 3.1) จะใช้ภาพนี้คุมฉาก — เอนจินอื่นใช้ข้อความบรรยายแทน">
+                        <Grid Margin="0,8,0,0" AllowDrop="True" Tag="scene" DragOver="RefDrop_DragOver" Drop="RefDrop_Drop" Background="Transparent" ToolTip="เอนจินที่รองรับหลายภาพอ้างอิง (Veo 3.1) จะใช้ภาพนี้คุมฉาก — เอนจินอื่นใช้ข้อความบรรยายแทน">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -207,7 +208,7 @@
                         </Grid>
 
                         <TextBlock Margin="0,12,0,0" Style="{StaticResource TextSectionDivider}" Text="@ref3 เสื้อผ้า / ชุด" />
-                        <Grid Margin="0,8,0,0" ToolTip="เอนจินที่รองรับหลายภาพอ้างอิง (Veo 3.1) จะใช้ภาพนี้ล็อกชุด — เอนจินอื่นใช้ข้อความบรรยายแทน">
+                        <Grid Margin="0,8,0,0" AllowDrop="True" Tag="outfit" DragOver="RefDrop_DragOver" Drop="RefDrop_Drop" Background="Transparent" ToolTip="เอนจินที่รองรับหลายภาพอ้างอิง (Veo 3.1) จะใช้ภาพนี้ล็อกชุด — เอนจินอื่นใช้ข้อความบรรยายแทน">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -443,9 +444,24 @@
 
                 <!--  Footer: status + board actions  -->
                 <StackPanel DockPanel.Dock="Bottom">
-                    <TextBlock Margin="2,0,2,8" FontSize="12.5" TextWrapping="Wrap" Foreground="{StaticResource BrushGoldHi}"
+                    <TextBlock Margin="2,0,2,8" FontSize="12.5" TextWrapping="Wrap"
                                Text="{Binding StatusMessage}"
-                               Visibility="{Binding StatusMessage, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}" />
+                               Visibility="{Binding StatusMessage, Converter={StaticResource NotNullOrEmpty}, FallbackValue=Collapsed}">
+                        <!--  An error has to look like one  -->
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource BrushGoldHi}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding StatusKind}" Value="err">
+                                        <Setter Property="Foreground" Value="{StaticResource BrushCrimson}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding StatusKind}" Value="warn">
+                                        <Setter Property="Foreground" Value="{StaticResource BrushWarn}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                     <StackPanel Visibility="{Binding HasSpec, Converter={StaticResource BoolToVis}}">
 
                         <!--  ⚡ Auto Pilot — the one-button pipeline  -->

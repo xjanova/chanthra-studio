@@ -217,7 +217,10 @@ public sealed class LicenseClient
             info.DaysRemaining = dr.GetInt32();
         if (data.TryGetProperty("expires_at", out var ex) && ex.ValueKind == JsonValueKind.String)
         {
-            if (DateTimeOffset.TryParse(ex.GetString(), out var when)) info.ExpiresAt = when;
+            // Invariant: the server sends ISO 8601, and a culture with its own
+            // calendar has no business re-reading the year.
+            if (DateTimeOffset.TryParse(ex.GetString(), System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal, out var when)) info.ExpiresAt = when;
         }
     }
 }

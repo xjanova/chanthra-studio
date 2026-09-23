@@ -13,10 +13,9 @@ namespace ChanthraStudio.Services.Providers.Voice;
 
 /// <summary>
 /// Text-to-speech via OpenAI's audio.speech endpoint
-/// (<c>POST /v1/audio/speech</c>). Six built-in voices, single model
-/// (<c>tts-1</c>) by default — the "tts-1-hd" variant is twice the price
-/// for marginal quality and not exposed yet. Audio comes back as binary
-/// MP3 which we stream straight to disk.
+/// (<c>POST /v1/audio/speech</c>). Six built-in voices; the model is the
+/// Settings chip (tts-1, tts-1-hd, gpt-4o-mini-tts) or <see cref="DefaultModel"/>.
+/// Audio comes back as binary MP3 which we stream straight to disk.
 /// </summary>
 internal sealed class OpenAiTtsProvider : IVoiceProvider
 {
@@ -24,6 +23,8 @@ internal sealed class OpenAiTtsProvider : IVoiceProvider
     private static readonly HttpClient Http = new();
 
     public string Id => "openai-tts";
+    public const string DefaultModel = "tts-1";
+    public string? DefaultModelId => DefaultModel;
     public string DisplayName => "OpenAI TTS";
     public string ApiKeyHint => "sk-… · platform.openai.com/api-keys";
     public ProviderKind Kind => ProviderKind.Voice;
@@ -68,7 +69,7 @@ internal sealed class OpenAiTtsProvider : IVoiceProvider
 
         var payload = new JsonObject
         {
-            ["model"] = "tts-1",
+            ["model"] = string.IsNullOrWhiteSpace(req.Model) ? DefaultModel : req.Model,
             ["input"] = req.Text,
             ["voice"] = string.IsNullOrEmpty(req.VoiceId) ? "alloy" : req.VoiceId,
             ["speed"] = Math.Clamp(req.Speed, 0.25, 4.0),

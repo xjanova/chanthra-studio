@@ -62,6 +62,10 @@ public sealed class GpuWorker
     public string AuthTokenCipher { get; set; } = "";
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>For display: the history list printed the UTC clock, seven
+    /// hours off for a Bangkok user.</summary>
+    public DateTime CreatedAtLocal => DateTime.SpecifyKind(CreatedAt, DateTimeKind.Utc).ToLocalTime();
     public DateTime? ReadyAt { get; set; }
     public DateTime? LastSeenAt { get; set; }
     public DateTime? LastJobAt { get; set; }

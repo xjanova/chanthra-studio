@@ -25,14 +25,21 @@ public sealed class BoolToVisibilityConverter : IValueConverter
         => value is Visibility v && v == Visibility.Visible;
 }
 
-/// <summary>Visible iff the value is non-null and (for strings) non-empty.</summary>
+/// <summary>Visible iff the value is non-null and (for strings) non-empty.
+/// <c>ConverterParameter=invert</c> flips it — the parameter used to be
+/// ignored, so an "empty state" hint showed exactly when it shouldn't.</summary>
 public sealed class NotNullOrEmptyToVisibilityConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (value is null) return Visibility.Collapsed;
-        if (value is string s) return string.IsNullOrEmpty(s) ? Visibility.Collapsed : Visibility.Visible;
-        return Visibility.Visible;
+        var present = value switch
+        {
+            null => false,
+            string s => !string.IsNullOrEmpty(s),
+            _ => true,
+        };
+        if (string.Equals(parameter as string, "invert", StringComparison.OrdinalIgnoreCase)) present = !present;
+        return present ? Visibility.Visible : Visibility.Collapsed;
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

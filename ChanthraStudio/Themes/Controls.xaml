@@ -170,7 +170,9 @@
                                 <Border BorderBrush="#80FFE7B0" BorderThickness="1" CornerRadius="10" />
                                 <!--  inner top 1px white  -->
                                 <Border Height="1" Margin="2,1,2,0" VerticalAlignment="Top" Background="#80FFFFFF" CornerRadius="1" />
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <!--  Padding honoured: without it the button hugged its italic
+                                      label and clipped the last letter ("Next →", "Queue")  -->
+                                <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Grid>
                         </Border>
                     </Grid>

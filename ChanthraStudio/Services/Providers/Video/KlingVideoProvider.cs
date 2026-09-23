@@ -39,6 +39,7 @@ public sealed class KlingVideoProvider : IVideoProvider
 
     /// <summary>Default model when <see cref="VideoRequest.Model"/> is empty.</summary>
     public const string DefaultModel = "kling-v1-6";
+    public string? DefaultModelId => DefaultModel;
 
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(2) };
 

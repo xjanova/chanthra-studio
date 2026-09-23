@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,6 +30,7 @@ public sealed class PostingService
         {
             var miss = new PostResult(false, null, $"Unknown posting provider: {providerId}");
             WriteHistory(clip.Id, providerId, miss);
+            KeepCaptionForRetry(clip.Id, caption, posted: false);
             Completed?.Invoke(this, new PostingCompletedEventArgs(clip.Id, providerId, miss));
             return miss;
         }
@@ -62,8 +64,52 @@ public sealed class PostingService
         }
 
         WriteHistory(clip.Id, providerId, result);
+        KeepCaptionForRetry(clip.Id, caption, result.Ok);
         Completed?.Invoke(this, new PostingCompletedEventArgs(clip.Id, providerId, result));
         return result;
+    }
+
+    /// <summary>
+    /// The caption of a failed post, for the Library's retry to start from.
+    /// Auto Pilot and the scheduler compose a full caption with hashtags; the
+    /// retry used to offer just the file name, and the caption was gone.
+    /// </summary>
+    public static string? PendingCaption(string clipId)
+    {
+        try
+        {
+            var path = CaptionFile(clipId);
+            return File.Exists(path) ? File.ReadAllText(path) : null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Drop a kept caption — its clip is gone.</summary>
+    public static void ForgetCaption(string clipId) => KeepCaptionForRetry(clipId, "", posted: true);
+
+    private static string CaptionFile(string clipId) =>
+        Path.Combine(AppPaths.MediaFolder, "captions", SafeName(clipId) + ".txt");
+
+    private static string SafeName(string id) =>
+        string.Concat(id.Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '_'));
+
+    private static void KeepCaptionForRetry(string clipId, string caption, bool posted)
+    {
+        try
+        {
+            var path = CaptionFile(clipId);
+            if (posted || string.IsNullOrWhiteSpace(caption))
+            {
+                if (File.Exists(path)) File.Delete(path);
+                return;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, caption);
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn("posting", "could not keep the caption for a retry: " + ex.Message);
+        }
     }
 
     private void WriteHistory(string clipId, string providerId, PostResult result)

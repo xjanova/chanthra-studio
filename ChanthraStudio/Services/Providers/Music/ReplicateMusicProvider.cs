@@ -25,6 +25,7 @@ public sealed class ReplicateMusicProvider : IMusicProvider
     public bool RequiresApiKey => true;
 
     public const string DefaultModel = "meta/musicgen";
+    public string? DefaultModelId => DefaultModel;
 
     private const string BaseUrl = "https://api.replicate.com/v1";
 

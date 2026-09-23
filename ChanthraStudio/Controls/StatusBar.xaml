@@ -30,7 +30,14 @@
                     Height="6"
                     Margin="0,0,6,0"
                     Style="{StaticResource PulsingOkDot}"
-                    Effect="{StaticResource ShadowGoldGlowSoft}" />
+                    Effect="{StaticResource ShadowGoldGlowSoft}"
+                    Visibility="{Binding ConnectionOk, Converter={StaticResource BoolToVis}}" />
+                <Ellipse
+                    Width="6"
+                    Height="6"
+                    Margin="0,0,6,0"
+                    Fill="{StaticResource BrushText4}"
+                    Visibility="{Binding ConnectionOk, Converter={StaticResource InvBoolToVis}}" />
                 <TextBlock
                     Margin="0,0,14,0"
                     Style="{StaticResource TextMono}"

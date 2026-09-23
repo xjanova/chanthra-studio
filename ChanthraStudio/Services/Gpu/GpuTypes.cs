@@ -46,7 +46,18 @@ public interface IGpuRentalProvider
     /// <summary>Destroy the instance and stop the meter. Must be idempotent:
     /// terminating an already-gone instance is a success, not an error.</summary>
     Task TerminateAsync(string apiKey, string instanceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// After a rent the vendor may have accepted without our seeing the new
+    /// machine, find it and give it our name so the orphan sweep can kill it.
+    /// Returns how many instances were tagged (0 or 1).
+    /// </summary>
+    Task<int> AdoptUnconfirmedAsync(string apiKey, PendingRental pending, CancellationToken ct = default);
 }
+
+/// <summary>What we knew just before a rent whose result we never saw: the
+/// instances that already existed, when we ordered, and the name to stamp.</summary>
+public sealed record PendingRental(IReadOnlyCollection<string> Before, DateTime OrderedAtUtc, string NameTag);
 
 /// <summary>What we're shopping for.</summary>
 public sealed class GpuFilter
@@ -86,6 +97,10 @@ public sealed class GpuFilter
 public sealed class GpuOffer
 {
     public string Id { get; set; } = "";
+
+    /// <summary>What the vendor wants back when renting this offer — for
+    /// SimplePod the IRI <c>/instances/market/N</c>, not the bare id.</summary>
+    public string MarketRef { get; set; } = "";
     public string GpuModel { get; set; } = "";
     public int GpuCount { get; set; } = 1;
     public int VramGb { get; set; }
@@ -95,14 +110,13 @@ public sealed class GpuOffer
     public decimal PricePerHourUsd { get; set; }
 
     /// <summary>
-    /// The vendor's separate charge for the disk allocation, USD/hour.
+    /// The vendor's separate charge for the disk we ask for, USD/hour.
     ///
-    /// Read as a flat per-hour figure for the allocation, which is what the
-    /// observed magnitudes (~$0.05) look like. <b>Unverified against a real
-    /// invoice</b> — if it turns out to be per-GB-per-hour instead, this is
-    /// the one place to multiply by <see cref="DiskGb"/>. Counting it at all
-    /// is the conservative choice: a budget that overstates cost terminates
-    /// early, a budget that understates it produces a surprise bill.
+    /// SimplePod quotes disk as USD per GB per month (0.15 on $0.48–1/hr
+    /// cards, per the working aixman integration); the provider converts that
+    /// to an hourly figure for the disk this rental will request. Reading the
+    /// raw figure as dollars per hour — as this used to — pushed a $0.48 card
+    /// to $0.63 and over the default price ceiling.
     /// </summary>
     public decimal DiskPricePerHourUsd { get; set; }
 
@@ -125,6 +139,12 @@ public sealed class GpuRentSpec
 {
     /// <summary>The <see cref="GpuOffer.Id"/> we picked.</summary>
     public string OfferId { get; set; } = "";
+
+    /// <summary>The picked offer's <see cref="GpuOffer.MarketRef"/>.</summary>
+    public string OfferMarketRef { get; set; } = "";
+
+    /// <summary>Disk to ask for, GB — weights plus room for ComfyUI and output.</summary>
+    public int DiskGb { get; set; } = 80;
 
     /// <summary>Name to stamp on the instance. MUST start with
     /// <see cref="GpuWorkerService.NamePrefix"/> — that prefix is the only
@@ -176,6 +196,9 @@ public sealed class GpuInstance
 
     /// <summary>The URL our ComfyUI client should hit. Tunnel wins.</summary>
     public string? EndpointUrl => !string.IsNullOrWhiteSpace(ProxyUrl) ? ProxyUrl : DirectUrl;
+
+    /// <summary>Errors and warnings the vendor attached to the instance.</summary>
+    public string? StatusMessage { get; set; }
 }
 
 public enum GpuInstanceState
@@ -191,8 +214,21 @@ public enum GpuInstanceState
 }
 
 /// <summary>Thrown for vendor-API failures we want surfaced verbatim in the UI.</summary>
-public sealed class GpuRentalException : Exception
+public class GpuRentalException : Exception
 {
-    public GpuRentalException(string message) : base(message) { }
+    public GpuRentalException(string message, int? statusCode = null) : base(message) => StatusCode = statusCode;
     public GpuRentalException(string message, Exception inner) : base(message, inner) { }
+
+    /// <summary>The vendor's HTTP status, when the failure was an HTTP answer.
+    /// Checked instead of searching the message for "404", which also matched
+    /// an instance id such as 154041.</summary>
+    public int? StatusCode { get; }
+}
+
+/// <summary>The vendor may have rented a machine, but we never saw it appear.
+/// Carries what the next ticks need to find and tag it.</summary>
+public sealed class GpuRentUnconfirmedException : GpuRentalException
+{
+    public GpuRentUnconfirmedException(string message, PendingRental pending) : base(message) => Pending = pending;
+    public PendingRental Pending { get; }
 }

@@ -11,9 +11,8 @@ namespace ChanthraStudio.Services.Providers.Llm;
 /// <summary>
 /// xAI Grok via the OpenAI-compatible Chat Completions API
 /// (<c>POST https://api.x.ai/v1/chat/completions</c>, <c>Authorization: Bearer xai-…</c>).
-/// Default model <c>grok-3</c> — broadly available on any paid xAI account; the
-/// user can switch to grok-4 / grok-4-fast / grok-3-mini from the Settings
-/// model chips (persisted as <c>activeModel:grok</c>).
+/// Default model <see cref="DefaultModel"/>; the user can switch from the
+/// Settings model chips (persisted as <c>activeModel:grok</c>).
 /// </summary>
 internal sealed class GrokLlmProvider : ILlmProvider
 {
@@ -21,6 +20,13 @@ internal sealed class GrokLlmProvider : ILlmProvider
     private static readonly HttpClient Http = new();
 
     public string Id => "grok";
+
+    /// <summary>
+    /// Used when no model chip is picked. grok-3 and grok-4 were retired on
+    /// 2026-05-15 and now only redirect here (docs.x.ai, May 15 retirement).
+    /// </summary>
+    public const string DefaultModel = "grok-4.3";
+    public string? DefaultModelId => DefaultModel;
     public string DisplayName => "xAI Grok";
     public string ApiKeyHint => "xai-… · console.x.ai";
     public ProviderKind Kind => ProviderKind.Llm;
@@ -54,10 +60,11 @@ internal sealed class GrokLlmProvider : ILlmProvider
 
         var payload = new JsonObject
         {
-            ["model"] = string.IsNullOrEmpty(req.Model) ? "grok-3" : req.Model,
+            ["model"] = string.IsNullOrEmpty(req.Model) ? DefaultModel : req.Model,
             ["messages"] = messages,
             ["temperature"] = req.Temperature,
-            ["max_tokens"] = req.MaxTokens,
+            // Room for the reasoning current Grok models do first; a ceiling only.
+            ["max_tokens"] = Math.Max(req.MaxTokens, 8000),
         };
 
         using var msg = new HttpRequestMessage(HttpMethod.Post, Endpoint)
@@ -66,21 +73,22 @@ internal sealed class GrokLlmProvider : ILlmProvider
         };
         msg.Headers.Authorization = new AuthenticationHeaderValue("Bearer", req.ApiKey);
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromMinutes(2));
-        using var resp = await Http.SendAsync(msg, cts.Token);
-        var body = await resp.Content.ReadAsStringAsync(cts.Token);
-        if (!resp.IsSuccessStatusCode)
-            throw new InvalidOperationException(
-                $"Grok completion failed ({(int)resp.StatusCode}): {ExtractError(body) ?? body}");
+        var (resp, body) = await LlmHttp.SendAsync(msg, "Grok", ct);
+        using (resp)
+        {
+            if (!resp.IsSuccessStatusCode)
+                throw new InvalidOperationException(
+                    $"Grok completion failed ({(int)resp.StatusCode}): {ExtractError(body) ?? body}");
+        }
 
         var root = JsonNode.Parse(body);
         var content = root?["choices"]?[0]?["message"]?["content"]?.GetValue<string>();
+        var finish = root?["choices"]?[0]?["finish_reason"]?.GetValue<string>();
         // xAI mirrors OpenAI's usage block: usage.{prompt_tokens, completion_tokens}.
         var inT = root?["usage"]?["prompt_tokens"]?.GetValue<int>() ?? 0;
         var outT = root?["usage"]?["completion_tokens"]?.GetValue<int>() ?? 0;
         var model = root?["model"]?.GetValue<string>() ?? req.Model;
-        return new LlmResult(content ?? "", inT, outT, model);
+        return new LlmResult(content ?? "", inT, outT, model, Truncated: finish == "length");
     }
 
     private static string? ExtractError(string body)
@@ -88,9 +96,10 @@ internal sealed class GrokLlmProvider : ILlmProvider
         try
         {
             var n = JsonNode.Parse(body);
-            // xAI errors come as {"error":{"message":…}} or {"error":"…"}.
-            return n?["error"]?["message"]?.GetValue<string>()
-                ?? n?["error"]?.GetValue<string>();
+            // xAI errors come as {"error":{"message":…}} or {"error":"…"};
+            // indexing a string node throws, which lost the second shape.
+            var err = n?["error"];
+            return err is JsonObject o ? o["message"]?.GetValue<string>() : err?.GetValue<string>();
         }
         catch { return null; }
     }

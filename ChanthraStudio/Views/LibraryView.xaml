@@ -236,7 +236,7 @@
                                             <!--  Real image (only renders when ClipPathToImage returns non-null)  -->
                                             <Image
                                                 RenderOptions.BitmapScalingMode="HighQuality"
-                                                Source="{Binding FilePath, Converter={StaticResource ClipPathToImage}}"
+                                                Source="{Binding ThumbPath, Converter={StaticResource ClipPathToImage}}"
                                                 Stretch="UniformToFill" />
                                             <!--  Posted badge (top-right) — shown only when post_history has rows  -->
                                             <Border

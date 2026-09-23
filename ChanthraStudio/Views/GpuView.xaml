@@ -101,7 +101,10 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMono}" Foreground="{StaticResource BrushText2}" Text="SimplePod API key" />
                             <Border Grid.Column="1" Style="{StaticResource GpuFieldBox}">
-                                <TextBox Style="{StaticResource GpuFieldText}" Text="{Binding ApiKeyDraft, UpdateSourceTrigger=PropertyChanged}" />
+                                <!--  Masked: this key can rent machines on the owner's card  -->
+                                <PasswordBox x:Name="ApiKeyBox" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}"
+                                             FontFamily="{StaticResource FontMono}" FontSize="13" Foreground="{StaticResource BrushText1}" PasswordChar="•"
+                                             PasswordChanged="Secret_PasswordChanged" />
                             </Border>
                             <Button Grid.Column="2" Margin="8,0,0,0" Padding="14,6" Command="{Binding VerifyKeyCommand}" Content="Verify &amp; save" Style="{StaticResource ButtonPillGold}" />
                         </Grid>
@@ -114,7 +117,9 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" VerticalAlignment="Center" Style="{StaticResource TextMono}" Foreground="{StaticResource BrushText2}" Text="Hugging Face token" />
                             <Border Grid.Column="1" Style="{StaticResource GpuFieldBox}">
-                                <TextBox Style="{StaticResource GpuFieldText}" Text="{Binding HfTokenDraft, UpdateSourceTrigger=PropertyChanged}" />
+                                <PasswordBox x:Name="HfTokenBox" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource BrushGoldHi}"
+                                             FontFamily="{StaticResource FontMono}" FontSize="13" Foreground="{StaticResource BrushText1}" PasswordChar="•"
+                                             PasswordChanged="Secret_PasswordChanged" />
                             </Border>
                             <Button Grid.Column="2" Margin="8,0,0,0" Padding="14,6" Command="{Binding OpenConsoleCommand}" Content="Open console ↗" Style="{StaticResource ButtonPill}" />
                         </Grid>
@@ -140,7 +145,9 @@
                         <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding Profiles}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <UniformGrid Columns="5" Rows="1" />
+                                    <!--  Rows grow with the catalog: a fixed single row of five pushed the
+                                         sixth profile onward outside the measured area, over the hint below.  -->
+                                    <UniformGrid Columns="4" />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
@@ -432,7 +439,7 @@
                                             <ColumnDefinition Width="70" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}" Text="{Binding CreatedAt, StringFormat={}{0:MM-dd HH:mm}}" />
+                                        <TextBlock Grid.Column="0" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}" Text="{Binding CreatedAtLocal, StringFormat={}{0:MM-dd HH:mm}}" />
                                         <TextBlock Grid.Column="1" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText1}" Text="{Binding GpuModel}" TextTrimming="CharacterEllipsis" />
                                         <TextBlock Grid.Column="2" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushText3}" Text="{Binding UptimeLabel}" />
                                         <TextBlock Grid.Column="3" Style="{StaticResource TextMono}" FontSize="12" Foreground="{StaticResource BrushGoldHi}" Text="{Binding CostLabel}" />

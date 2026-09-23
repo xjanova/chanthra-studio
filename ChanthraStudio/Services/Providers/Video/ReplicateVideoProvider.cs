@@ -39,6 +39,7 @@ public sealed class ReplicateVideoProvider : IVideoProvider
 
     /// <summary>Default model slug used when <c>VideoRequest.Model</c> is empty.</summary>
     public const string DefaultModel = "black-forest-labs/flux-schnell";
+    public string? DefaultModelId => DefaultModel;
 
     private static readonly HttpClient _http = new()
     {

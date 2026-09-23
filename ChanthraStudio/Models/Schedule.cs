@@ -84,6 +84,21 @@ public sealed class Schedule : ObservableObject
     private string _postTarget = "";
     public string PostTarget { get => _postTarget; set => SetProperty(ref _postTarget, value); }
 
+    /// <summary>Caption for auto-posts; placeholders as in the prompt
+    /// template. Empty posts the schedule's name — never the raw prompt.</summary>
+    private string _postCaption = "";
+    public string PostCaption { get => _postCaption; set => SetProperty(ref _postCaption, value); }
+
+    /// <summary>How the most recent run ended, for the card. Not persisted
+    /// here — read from schedule_runs on each refresh.</summary>
+    private string _lastRunNote = "";
+    public string LastRunNote
+    {
+        get => _lastRunNote;
+        set { if (SetProperty(ref _lastRunNote, value)) OnPropertyChanged(nameof(HasLastRunNote)); }
+    }
+    public bool HasLastRunNote => _lastRunNote.Length > 0;
+
     private DateTimeOffset? _lastFireAt;
     public DateTimeOffset? LastFireAt
     {
@@ -109,8 +124,28 @@ public sealed class Schedule : ObservableObject
     public bool IsEnabled
     {
         get => _isEnabled;
-        set { if (SetProperty(ref _isEnabled, value)) InvalidateNextFiresCache(); }
+        set
+        {
+            if (!SetProperty(ref _isEnabled, value)) return;
+            OnPropertyChanged(nameof(EnabledLabel));
+            InvalidateNextFiresCache();
+        }
     }
+
+    /// <summary>The card's status pill. It used to run the bool through a
+    /// string-equality converter and print "True" / "False".</summary>
+    public string EnabledLabel => _isEnabled ? "ON" : "OFF";
+
+    /// <summary>Why this schedule can never fire, or null when its spec is
+    /// usable. Checked on save so a mistyped spec is said out loud instead of
+    /// leaving "next fire —" on a schedule that silently never runs.</summary>
+    public string? SpecProblem => Kind == ScheduleKind.Interval
+        ? (int.TryParse(Spec, NumberStyles.Integer, CultureInfo.InvariantCulture, out var m) && m > 0
+            ? null
+            : "โหมด INTERVAL ต้องใส่จำนวนนาทีเป็นตัวเลข เช่น 60")
+        : ParseSlots(Spec).Count > 0
+            ? null
+            : "โหมด DAILY ต้องใส่เวลาแบบ HH:mm คั่นด้วยจุลภาค เช่น 08:00,18:00";
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
@@ -180,6 +215,14 @@ public sealed class Schedule : ObservableObject
             _nextFiresPreviewCache = label;
             return label;
         }
+    }
+
+    /// <summary>The countdown and the upcoming list are relative to now; the
+    /// page calls this on a timer so "in 2h 3m" does not sit frozen.</summary>
+    public void RefreshTimeLabels()
+    {
+        OnPropertyChanged(nameof(NextFireCountdown));
+        InvalidateNextFiresCache();
     }
 
     /// <summary>Reset the cached preview so the next binding read recomputes.

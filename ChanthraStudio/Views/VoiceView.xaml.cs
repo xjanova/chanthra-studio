@@ -19,7 +19,10 @@ public partial class VoiceView : UserControl
             if (DataContext is not VoiceViewModel vvm)
                 DataContext = new VoiceViewModel(App.Current.Studio);
             else
+            {
                 vvm.RefreshTakes();
+                vvm.RefreshVoiceList();
+            }
             // Subscribe to CurrentlyPlaying changes so the MediaElement
             // swaps source and auto-plays whenever the VM signals a new
             // take. (T54 / 7.20)

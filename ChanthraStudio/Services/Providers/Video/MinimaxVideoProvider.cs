@@ -33,6 +33,7 @@ public sealed class MinimaxVideoProvider : IVideoProvider
 
     private const string BaseUrl = "https://api.minimax.io";
     public const string DefaultModel = "MiniMax-Hailuo-2.3";
+    public string? DefaultModelId => DefaultModel;
 
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(2) };
 
