@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -14,27 +15,46 @@ using ChanthraStudio.Models;
 namespace ChanthraStudio.Services;
 
 /// <summary>
-/// Polls the GitHub Releases API for new versions, downloads the asset
-/// with progress reporting, and applies the update by extracting over
-/// the install directory and relaunching.
+/// Asks xman4289.com — the site that sells the license — for a newer
+/// version, downloads the zip from xman4289.com with progress reporting,
+/// verifies it, and applies the update by extracting over the install
+/// directory and relaunching.
 ///
-/// Version comparison uses semantic-ish ordering: tag names like
+/// Owner rule (2026-09-24): the app is downloaded only from xman4289.com
+/// and customers must never learn where the source lives, so nothing here
+/// talks to (or names) the code host. The site serves the release file
+/// itself: <c>/api/v1/product/{slug}/update/check</c> announces the version,
+/// size and SHA-256, and the download URL it returns streams exactly that
+/// version's file.
+///
+/// Version comparison uses semantic-ish ordering: versions like
 /// <c>v0.2.0</c> are stripped of their leading <c>v</c> and parsed as
 /// <see cref="Version"/>. Pre-release suffixes (<c>-beta</c>) are
 /// dropped — we ship release-only updates through this channel.
 /// </summary>
 public static class UpdateService
 {
-    public const string Owner = "xjanova";
-    public const string Repo = "chanthra-studio";
+    /// <summary>The only host the updater accepts a file from.</summary>
+    public const string SiteHost = "xman4289.com";
+
+    public static string CheckUrl =>
+        $"{LicenseClient.BaseUrl}/api/v1/product/{LicenseClient.ProductSlug}/update/check";
+
+    /// <summary>Streams the newest zip — what the manual-download button opens.</summary>
+    public static string DownloadPageUrl => $"{LicenseClient.BaseUrl}/chanthra-studio/download";
 
     private static readonly HttpClient _http = CreateClient();
 
     private static HttpClient CreateClient()
     {
-        var c = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        // No redirects: the site streams the file itself, so a redirect means
+        // something is wrong (a login page, a mirror) and the bytes would not
+        // be the ones update/check vouched for.
+        var c = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+        {
+            Timeout = TimeSpan.FromMinutes(10),
+        };
         c.DefaultRequestHeaders.UserAgent.ParseAdd("ChanthraStudio-Updater/1.0");
-        c.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         return c;
     }
 
@@ -45,18 +65,22 @@ public static class UpdateService
     }
 
     /// <summary>
-    /// Fetches /releases/latest and returns an <see cref="UpdateInfo"/>.
-    /// Returns null if the network call fails or no release exists.
+    /// Asks update/check about the installed version and returns an
+    /// <see cref="UpdateInfo"/>. Returns null if the network call fails or
+    /// the answer can't be read.
     /// </summary>
     public static async Task<UpdateInfo?> CheckAsync(CancellationToken ct = default)
     {
         try
         {
-            var url = $"https://api.github.com/repos/{Owner}/{Repo}/releases/latest";
-            using var resp = await _http.GetAsync(url, ct).ConfigureAwait(false);
+            var current = CurrentVersion();
+            var url = $"{CheckUrl}?current_version={Uri.EscapeDataString(current)}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode) return null;
             var json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            return Parse(json);
+            return Parse(json, current);
         }
         catch
         {
@@ -64,61 +88,49 @@ public static class UpdateService
         }
     }
 
-    private static UpdateInfo Parse(string json)
+    /// <summary>
+    /// Reads the update/check answer:
+    /// <c>{ has_update, latest_version, download_url, changelog, sha256, file_size, filename }</c>.
+    /// <c>download_url</c> is only filled when there is an update, and is only
+    /// taken when it points at <see cref="SiteHost"/> over https.
+    /// </summary>
+    public static UpdateInfo Parse(string json, string current)
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
-        var tag = root.GetProperty("tag_name").GetString() ?? "";
-        var name = root.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
-        var body = root.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
-        var publishedAt = root.TryGetProperty("published_at", out var p) && p.ValueKind == JsonValueKind.String
-            && DateTimeOffset.TryParse(p.GetString(), System.Globalization.CultureInfo.InvariantCulture,
-                System.Globalization.DateTimeStyles.AssumeUniversal, out var when) ? when : DateTimeOffset.MinValue;
+        static string? Str(JsonElement e, string name) =>
+            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
-        // Pick the first .zip asset; fall back to .exe so single-file
-        // builds still work without a zip wrapper.
-        string downloadUrl = "", assetName = "";
-        string? sha256 = null;
-        long size = 0;
-        if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var a in assets.EnumerateArray())
-            {
-                var aname = a.TryGetProperty("name", out var an) ? an.GetString() ?? "" : "";
-                if (string.IsNullOrEmpty(aname)) continue;
-                var aurl = a.TryGetProperty("browser_download_url", out var au) ? au.GetString() ?? "" : "";
-                var asize = a.TryGetProperty("size", out var asz) && asz.ValueKind == JsonValueKind.Number ? asz.GetInt64() : 0;
-                var adigest = a.TryGetProperty("digest", out var ad) && ad.ValueKind == JsonValueKind.String ? ad.GetString() : null;
-                var ahash = adigest is not null && adigest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
-                    ? adigest[7..].Trim().ToLowerInvariant() : null;
-                if (aname.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                {
-                    downloadUrl = aurl; assetName = aname; size = asize; sha256 = ahash; break;
-                }
-                if (aname.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(downloadUrl))
-                {
-                    downloadUrl = aurl; assetName = aname; size = asize; sha256 = ahash;
-                }
-            }
-        }
+        var latest = NormaliseVersion(Str(root, "latest_version") ?? "");
+        var sha = Str(root, "sha256")?.Trim().ToLowerInvariant();
+        var size = root.TryGetProperty("file_size", out var fs) && fs.ValueKind == JsonValueKind.Number
+            && fs.TryGetInt64(out var n) ? n : 0;
+        var url = Str(root, "download_url") ?? "";
 
-        var current = CurrentVersion();
-        var latest = NormaliseVersion(tag);
+        // An empty latest_version means the site has no release yet — nothing to offer.
+        var hasUpdate = !string.IsNullOrEmpty(Str(root, "latest_version")) && CompareSemver(current, latest) < 0;
+
         return new UpdateInfo
         {
             CurrentVersion = current,
             LatestVersion = latest,
-            HasUpdate = CompareSemver(current, latest) < 0,
-            ReleaseName = string.IsNullOrEmpty(name) ? tag : name,
-            Notes = body,
-            PublishedAt = publishedAt,
-            DownloadUrl = downloadUrl,
-            AssetName = assetName,
+            HasUpdate = hasUpdate,
+            ReleaseName = $"Chanthra Studio v{latest}",
+            Notes = Str(root, "changelog") ?? "",
+            DownloadUrl = IsSiteUrl(url) ? url : "",
+            AssetName = Str(root, "filename") ?? "",
             AssetSizeBytes = size,
-            AssetSha256 = sha256,
+            AssetSha256 = sha is { Length: 64 } && sha.All(Uri.IsHexDigit) ? sha : null,
         };
     }
+
+    /// <summary>https on xman4289.com (or www.) — the only place a file may come from.</summary>
+    public static bool IsSiteUrl(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var u)
+        && u.Scheme == Uri.UriSchemeHttps
+        && (u.Host.Equals(SiteHost, StringComparison.OrdinalIgnoreCase)
+            || u.Host.Equals("www." + SiteHost, StringComparison.OrdinalIgnoreCase));
 
     public static string NormaliseVersion(string tag)
     {
@@ -139,22 +151,23 @@ public static class UpdateService
     }
 
     /// <summary>
-    /// Streams the asset to a temp file, reporting bytes downloaded and
+    /// Streams the file to a temp file, reporting bytes downloaded and
     /// total bytes via the progress callback. Returns the path to the
     /// downloaded file, or null on cancel/failure. Throws when the file
-    /// arrived but is not the one GitHub published — the caller must not
-    /// install it.
+    /// arrived but is not the one xman4289.com announced, or the site
+    /// answered with something that isn't the file — the caller shows the
+    /// message and must not install anything.
     /// </summary>
     public static async Task<string?> DownloadAsync(
         UpdateInfo info,
         IProgress<(long Downloaded, long Total)> progress,
         CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(info.DownloadUrl)) return null;
+        if (!IsSiteUrl(info.DownloadUrl)) return null;
 
         var tmpDir = Path.Combine(Path.GetTempPath(), "ChanthraStudio.Update");
         Directory.CreateDirectory(tmpDir);
-        // The name comes from the release JSON and ends up inside a batch
+        // The name comes from the update/check JSON and ends up inside a batch
         // script and a PowerShell command line; keep it to plain characters.
         var safeName = string.Concat(Path.GetFileName(info.AssetName)
             .Select(ch => char.IsAsciiLetterOrDigit(ch) || ch is '.' or '-' or '_' ? ch : '_'));
@@ -166,7 +179,17 @@ public static class UpdateService
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, info.DownloadUrl);
             using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+
+            // The site caps how many files it streams at once and answers 503 when full.
+            if (resp.StatusCode == HttpStatusCode.ServiceUnavailable)
+                throw new InvalidDataException("เซิร์ฟเวอร์ดาวน์โหลดไม่ว่างชั่วคราว — ลองใหม่ในอีกสักครู่");
             if (!resp.IsSuccessStatusCode) return null;
+
+            // A web page or a JSON error is not an update, whatever its status.
+            var mediaType = resp.Content.Headers.ContentType?.MediaType ?? "";
+            if (mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
+                || mediaType.Contains("json", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("เซิร์ฟเวอร์ไม่ได้ส่งไฟล์อัปเดตมา — ลองใหม่ภายหลัง");
 
             long total = resp.Content.Headers.ContentLength ?? info.AssetSizeBytes;
             long downloaded = 0;
@@ -186,8 +209,8 @@ public static class UpdateService
             }
 
             // It is about to be unpacked over the program itself: a cut-off
-            // download, or bytes that are not what GitHub lists for the
-            // release, must never get that far.
+            // download, or bytes that are not what update/check announced,
+            // must never get that far.
             if (info.AssetSizeBytes > 0 && downloaded != info.AssetSizeBytes)
                 throw new InvalidDataException(
                     $"ไฟล์อัปเดตไม่ครบ ({downloaded:N0} จาก {info.AssetSizeBytes:N0} ไบต์) — ลองดาวน์โหลดใหม่");
@@ -196,7 +219,7 @@ public static class UpdateService
                 var actual = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
                 if (actual != info.AssetSha256)
                     throw new InvalidDataException(
-                        "ไฟล์อัปเดตไม่ตรงกับที่ GitHub ประกาศไว้ (SHA-256 ไม่ตรง) — ไม่ติดตั้ง ลองใหม่ภายหลัง");
+                        "ไฟล์อัปเดตไม่ตรงกับที่ xman4289.com ประกาศไว้ (SHA-256 ไม่ตรง) — ไม่ติดตั้ง ลองใหม่ภายหลัง");
             }
 
             File.Move(partPath, localPath, overwrite: true);
@@ -238,8 +261,8 @@ public static class UpdateService
         static string Cmd(string s) => s.Replace("%", "%%");
         // PowerShell also ends a single-quoted string at the typographic
         // quotes (U+2018/U+2019/U+201A/U+201B); double those too.
-        static string Ps(string s) => s.Replace("'", "''").Replace("\u2018", "\u2018\u2018")
-            .Replace("\u2019", "\u2019\u2019").Replace("\u201A", "\u201A\u201A").Replace("\u201B", "\u201B\u201B");
+        static string Ps(string s) => s.Replace("'", "''").Replace("‘", "‘‘")
+            .Replace("’", "’’").Replace("‚", "‚‚").Replace("‛", "‛‛");
 
         // The helper:
         //  1. waits for our PID to exit
@@ -278,12 +301,12 @@ del ""%~f0""
     }
 
     /// <summary>
-    /// Used as a fallback for users without a license — opens the
-    /// release page in a browser instead of streaming the asset.
+    /// For users without a license (auto-install is license-only): opens the
+    /// download on xman4289.com in the browser, which saves the newest zip
+    /// for extracting over the install folder by hand.
     /// </summary>
-    public static void OpenReleasePage()
+    public static void OpenDownloadPage()
     {
-        var url = $"https://github.com/{Owner}/{Repo}/releases/latest";
-        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+        try { Process.Start(new ProcessStartInfo(DownloadPageUrl) { UseShellExecute = true }); } catch { }
     }
 }

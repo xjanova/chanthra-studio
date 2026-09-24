@@ -46,7 +46,7 @@ public sealed class UpdateViewModel : ObservableObject
 
     public IRelayCommand CheckCommand { get; }
     public IRelayCommand DownloadAndApplyCommand { get; }
-    public IRelayCommand OpenReleasePageCommand { get; }
+    public IRelayCommand OpenDownloadPageCommand { get; }
     public IRelayCommand CancelCommand { get; }
     public IRelayCommand SkipVersionCommand { get; }
 
@@ -54,7 +54,7 @@ public sealed class UpdateViewModel : ObservableObject
     {
         CheckCommand = new RelayCommand(async () => await CheckAsync(), () => !_isChecking && !_isDownloading);
         DownloadAndApplyCommand = new RelayCommand(async () => await DownloadAsync(), () => HasUpdate && !_isDownloading && LicenseGuard.Instance.IsLicensed);
-        OpenReleasePageCommand = new RelayCommand(UpdateService.OpenReleasePage);
+        OpenDownloadPageCommand = new RelayCommand(UpdateService.OpenDownloadPage);
         CancelCommand = new RelayCommand(() => _cts?.Cancel());
         SkipVersionCommand = new RelayCommand(SkipVersion, () => HasUpdate);
     }
@@ -92,13 +92,13 @@ public sealed class UpdateViewModel : ObservableObject
     public async Task CheckAsync()
     {
         IsChecking = true;
-        Status = "checking github...";
+        Status = "checking for updates...";
         try
         {
             var info = await UpdateService.CheckAsync();
             Info = info;
             Status = info is null
-                ? "could not reach github"
+                ? "could not check for updates — xman4289.com did not answer"
                 : info.HasUpdate
                     ? $"new version {info.LatestVersion} available · current {info.CurrentVersion}"
                     : $"up to date · {info.CurrentVersion}";

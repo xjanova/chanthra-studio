@@ -76,7 +76,8 @@ internal sealed class OpenRouterLlmProvider : ILlmProvider
         };
         msg.Headers.Authorization = new AuthenticationHeaderValue("Bearer", req.ApiKey);
         // Optional but nice — OpenRouter dashboards show traffic by app.
-        msg.Headers.Add("HTTP-Referer", "https://github.com/xjanova/chanthra-studio");
+        // Our product page, never the code host — the app must not name its repository anywhere.
+        msg.Headers.Add("HTTP-Referer", "https://xman4289.com/chanthra-studio");
         msg.Headers.Add("X-Title", "Chanthra Studio");
 
         var (resp, body) = await LlmHttp.SendAsync(msg, "OpenRouter", ct);

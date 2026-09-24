@@ -342,7 +342,7 @@ public sealed class SettingsViewModel : ObservableObject
 
     /// <summary>Toggle for the background update poller (T64 · 7.23).
     /// When false the app still ships <see cref="UpdateService"/> for
-    /// manual checks but the 6-hourly tick stops calling GitHub.</summary>
+    /// manual checks but the 6-hourly tick stops calling xman4289.com.</summary>
     public bool AutoCheckUpdates
     {
         get => _settings.AutoCheckUpdates;

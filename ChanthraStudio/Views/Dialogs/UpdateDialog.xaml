@@ -241,7 +241,7 @@
                             TextWrapping="Wrap">
                             <Run Text="ระบบอัพเดทอัตโนมัติต้องมี License key ที่ถูกต้องจาก " />
                             <Run Foreground="{StaticResource BrushGoldHi}" Text="xman4289.com " />
-                            <Run Text="หากยังไม่มี กดปุ่ม “เปิดหน้า GitHub Releases” เพื่อโหลดแบบ manual" />
+                            <Run Text="หากยังไม่มี กดปุ่ม “ดาวน์โหลดจากเว็บ” แล้วแตก zip ทับโฟลเดอร์เดิมเองแบบ manual" />
                         </TextBlock>
                     </Border>
 
@@ -257,8 +257,9 @@
                         <Button
                             Grid.Column="0"
                             Padding="12,8"
-                            Command="{Binding OpenReleasePageCommand}"
-                            Content="เปิดหน้า GitHub Releases"
+                            Command="{Binding OpenDownloadPageCommand}"
+                            Content="ดาวน์โหลดจากเว็บ"
+                            ToolTip="xman4289.com/chanthra-studio/download"
                             Style="{StaticResource ButtonPill}" />
                         <!--  Skip this version: persists info.LatestVersion to settings so
                              the periodic poller stops re-popping until a higher version ships.  -->

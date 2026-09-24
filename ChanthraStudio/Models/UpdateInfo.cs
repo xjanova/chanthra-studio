@@ -4,9 +4,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace ChanthraStudio.Models;
 
 /// <summary>
-/// Result of a "check for updates" call. Built from a GitHub Releases API
-/// response (releases/latest) augmented with the local installed version
-/// for comparison.
+/// Result of a "check for updates" call. Built from xman4289.com's
+/// update/check answer for this product, augmented with the local
+/// installed version for comparison.
 /// </summary>
 public sealed class UpdateInfo : ObservableObject
 {
@@ -17,20 +17,20 @@ public sealed class UpdateInfo : ObservableObject
     /// <summary>Human-readable name of the release ("v0.2.0 — Sound Atelier polish").</summary>
     public string ReleaseName { get; init; } = "";
 
-    /// <summary>Release body — Markdown from the GitHub release notes.</summary>
+    /// <summary>Release notes (Markdown) as the site publishes them.</summary>
     public string Notes { get; init; } = "";
 
     public DateTimeOffset PublishedAt { get; init; }
 
-    /// <summary>Direct asset URL (e.g. "ChanthraStudio-v0.2.0-portable.zip").</summary>
+    /// <summary>Where to fetch exactly this version's file — always https on xman4289.com.</summary>
     public string DownloadUrl { get; init; } = "";
 
     public string AssetName { get; init; } = "";
 
     public long AssetSizeBytes { get; init; }
 
-    /// <summary>Lower-case hex SHA-256 GitHub publishes for the asset
-    /// (<c>digest: "sha256:…"</c>); null when the release predates digests.</summary>
+    /// <summary>Lower-case hex SHA-256 the site announces for the file;
+    /// null when the release predates published digests.</summary>
     public string? AssetSha256 { get; init; }
 
     public string AssetSizeFormatted =>

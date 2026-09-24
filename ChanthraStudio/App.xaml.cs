@@ -153,7 +153,7 @@ public partial class App : Application
         Studio.ScheduleService.Start();
 
         // Fire and forget — the UI is responsive while the license validates
-        // and the update check pings GitHub. The status bar reflects the
+        // and the update check asks xman4289.com. The status bar reflects the
         // result via LicenseGuard.LicenseChanged.
         _ = BootAsync();
     }
@@ -352,7 +352,7 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Background loop that re-checks GitHub Releases every
+    /// Background loop that re-checks xman4289.com for a new version every
     /// <see cref="AppSettings.UpdateCheckIntervalHours"/>. First poll is
     /// 3s out so license validate settles first; subsequent polls fire on
     /// the configured cadence (clamped 1..168 hrs by AppSettings).
@@ -382,7 +382,7 @@ public partial class App : Application
     }
 
     /// <summary>One poll iteration. Skips when unlicensed, when the user
-    /// opted out, when GitHub returns nothing, or when the latest version
+    /// opted out, when the site returns nothing, or when the latest version
     /// matches <see cref="AppSettings.SkippedUpdateVersion"/>.</summary>
     private async Task PollForUpdateOnceAsync()
     {
