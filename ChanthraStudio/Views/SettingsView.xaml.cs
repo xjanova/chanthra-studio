@@ -63,7 +63,7 @@ public partial class SettingsView : UserControl
             LicenseBadgeLabel.Text = "not activated";
             LicenseBadgeLabel.Foreground = (Brush)FindResource("BrushText1");
             LicenseDetail.Text = string.IsNullOrEmpty(info.Message)
-                ? "Activate to unlock auto-update from GitHub Releases."
+                ? "Activate to unlock auto-update."
                 : info.Message;
         }
     }
@@ -77,7 +77,7 @@ public partial class SettingsView : UserControl
     private async void CheckForUpdates_Click(object sender, RoutedEventArgs e)
     {
         _updateVm ??= new UpdateViewModel();
-        UpdateStatus.Text = "checking github...";
+        UpdateStatus.Text = "checking for updates...";
         await _updateVm.CheckAsync();
         UpdateStatus.Text = _updateVm.Status;
         if (_updateVm.HasUpdate)

@@ -19,6 +19,10 @@ internal sealed class OpenAiLlmProvider : ILlmProvider
     private static readonly HttpClient Http = new();
 
     public string Id => "openai";
+
+    /// <summary>Used when no model chip is picked: cheap, fast, and takes a temperature.</summary>
+    public const string DefaultModel = "gpt-4o-mini";
+    public string? DefaultModelId => DefaultModel;
     public string DisplayName => "OpenAI";
     public string ApiKeyHint => "sk-… · platform.openai.com/api-keys";
     public ProviderKind Kind => ProviderKind.Llm;
@@ -49,17 +53,29 @@ internal sealed class OpenAiLlmProvider : ILlmProvider
             messages.Add(new JsonObject { ["role"] = "system", ["content"] = req.System });
         messages.Add(new JsonObject { ["role"] = "user", ["content"] = req.Prompt });
 
+        var model = string.IsNullOrEmpty(req.Model) ? DefaultModel : req.Model;
+        var reasoning = IsReasoningModel(model);
         var payload = new JsonObject
         {
-            ["model"] = string.IsNullOrEmpty(req.Model) ? "gpt-4o-mini" : req.Model,
+            ["model"] = model,
             ["messages"] = messages,
-            ["temperature"] = req.Temperature,
             // GPT-5.x / o-series REQUIRE max_completion_tokens and reject the
             // legacy max_tokens with a 400. max_completion_tokens is also
             // accepted by gpt-4o / 4o-mini, so it's the universal, future-proof
-            // choice. (verified 2026-06 against OpenAI's chat-completions docs)
-            ["max_completion_tokens"] = req.MaxTokens,
+            // choice. On reasoning models it also counts the hidden reasoning,
+            // so they get room for both. (verified 2026-06 against OpenAI's docs)
+            ["max_completion_tokens"] = reasoning ? Math.Max(req.MaxTokens, 16000) : req.MaxTokens,
         };
+        if (reasoning)
+        {
+            // Reasoning models reject a non-default temperature; effort is
+            // their knob, kept low for writing work.
+            payload["reasoning_effort"] = "low";
+        }
+        else
+        {
+            payload["temperature"] = req.Temperature;
+        }
 
         using var msg = new HttpRequestMessage(HttpMethod.Post, Endpoint)
         {
@@ -67,21 +83,34 @@ internal sealed class OpenAiLlmProvider : ILlmProvider
         };
         msg.Headers.Authorization = new AuthenticationHeaderValue("Bearer", req.ApiKey);
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromMinutes(2));
-        using var resp = await Http.SendAsync(msg, cts.Token);
-        var body = await resp.Content.ReadAsStringAsync(cts.Token);
-        if (!resp.IsSuccessStatusCode)
-            throw new InvalidOperationException(
-                $"OpenAI completion failed ({(int)resp.StatusCode}): {ExtractError(body) ?? body}");
+        var (resp, body) = await LlmHttp.SendAsync(msg, "OpenAI", ct);
+        using (resp)
+        {
+            if (!resp.IsSuccessStatusCode)
+                throw new InvalidOperationException(
+                    $"OpenAI completion failed ({(int)resp.StatusCode}): {ExtractError(body) ?? body}");
+        }
 
         var root = JsonNode.Parse(body);
-        var content = root?["choices"]?[0]?["message"]?["content"]?.GetValue<string>();
+        var choice = root?["choices"]?[0];
+        var content = choice?["message"]?["content"]?.GetValue<string>();
+        var refusal = choice?["message"]?["refusal"]?.GetValue<string>();
+        if (string.IsNullOrEmpty(content) && !string.IsNullOrEmpty(refusal))
+            throw new InvalidOperationException("OpenAI ปฏิเสธคำขอนี้: " + refusal);
+        var finish = choice?["finish_reason"]?.GetValue<string>();
         // OpenAI returns usage at root.usage.{prompt_tokens,completion_tokens,total_tokens}
         var inT = root?["usage"]?["prompt_tokens"]?.GetValue<int>() ?? 0;
         var outT = root?["usage"]?["completion_tokens"]?.GetValue<int>() ?? 0;
-        var model = root?["model"]?.GetValue<string>() ?? req.Model;
-        return new LlmResult(content ?? "", inT, outT, model);
+        var used = root?["model"]?.GetValue<string>() ?? model;
+        return new LlmResult(content ?? "", inT, outT, used, Truncated: finish == "length");
+    }
+
+    /// <summary>GPT-5.x and the o-series: no temperature, reasoning inside the token budget.</summary>
+    internal static bool IsReasoningModel(string model)
+    {
+        var m = model.ToLowerInvariant();
+        if (m.Contains('/')) m = m[(m.LastIndexOf('/') + 1)..];   // OpenRouter-style "openai/gpt-5.5"
+        return m.StartsWith("gpt-5") || m.StartsWith("o1") || m.StartsWith("o3") || m.StartsWith("o4");
     }
 
     private static string? ExtractError(string body)

@@ -9,6 +9,8 @@ public partial class UpdateDialog : Window
     {
         InitializeComponent();
         DataContext = vm;
+        // Closing by any route — a button or the X — abandons the download.
+        Closing += (_, _) => vm.CancelPending();
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();

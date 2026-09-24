@@ -107,7 +107,10 @@ public static class ActivityLog
         {
             try
             {
-                var path = Path.Combine(AppPaths.LogsFolder, $"chanthra-{DateTime.Now:yyyy-MM-dd}.log");
+                // Invariant digits: a th-TH machine would otherwise name the
+                // file after the Buddhist year (chanthra-2569-…).
+                var path = Path.Combine(AppPaths.LogsFolder,
+                    "chanthra-" + DateTime.Now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) + ".log");
                 // Single open per batch. FileShare.Read so a user tailing the
                 // log doesn't lock us out.
                 using var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read);
@@ -130,6 +133,14 @@ public static class ActivityLog
             }
         }
     }
+
+    /// <summary>
+    /// Write out everything queued so far, now, and keep logging. For the
+    /// moments before a dialog that may end the process; <see cref="Shutdown"/>
+    /// stops the writer for good, which silenced the log for the rest of a
+    /// session that went on after all.
+    /// </summary>
+    public static void Flush() => FlushOnce();
 
     /// <summary>
     /// Synchronous drain on process exit. Called from the ProcessExit hook

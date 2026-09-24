@@ -1,4 +1,4 @@
-// "WAN 2.1 · image → video" · WAN · img→video — Alibaba WAN 2.1 image-to-video. 81 frames @ 16fps. Upload an image; needs wan_2.1_i2v + clip vision.
+// "WAN 2.1 · image → video" · WAN · img→video — Alibaba WAN 2.1 image-to-video. 81 frames @ 16fps. Upload an image; needs wan_2.1_i2v + clip vision. Saves H.264 .mp4. 14B model — 24 GB card or a rented GPU.
 {
   "1": {
     "class_type": "UNETLoader",
@@ -98,14 +98,19 @@
     }
   },
   "13": {
-    "class_type": "SaveAnimatedWEBP",
+    "class_type": "CreateVideo",
     "inputs": {
+      "images": ["12", 0],
+      "fps": 16
+    }
+  },
+  "14": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": ["13", 0],
       "filename_prefix": "ChanthraStudio_WAN_i2v",
-      "fps": 16,
-      "lossless": false,
-      "quality": 80,
-      "method": "default",
-      "images": ["12", 0]
+      "format": "mp4",
+      "codec": "auto"
     }
   }
 }

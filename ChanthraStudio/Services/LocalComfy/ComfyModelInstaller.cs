@@ -14,6 +14,36 @@ namespace ChanthraStudio.Services.LocalComfy;
 public sealed record ModelDownloadProgress(string FileName, double Fraction, string Message);
 
 /// <summary>
+/// One bundle download in flight. Lives in <see cref="ComfyModelInstaller"/>,
+/// not in a page's ViewModel: the page is rebuilt every time the user comes
+/// back to it, and a 9 GB download must survive that — with its progress still
+/// visible, its cancel button still wired, and no second copy started beside it.
+/// </summary>
+public sealed class ModelDownloadJob
+{
+    internal ModelDownloadJob(GpuModelProfile profile) => Profile = profile;
+
+    public GpuModelProfile Profile { get; }
+    internal CancellationTokenSource Cts { get; } = new();
+    public Task Completion { get; internal set; } = Task.CompletedTask;
+
+    /// <summary>The latest report, so a page opened mid-download can show it at once.</summary>
+    public ModelDownloadProgress? Last { get; private set; }
+
+    /// <summary>Raised on a worker thread.</summary>
+    public event Action<ModelDownloadProgress>? Progressed;
+
+    public bool IsCancellationRequested => Cts.IsCancellationRequested;
+    public void Cancel() { try { Cts.Cancel(); } catch (ObjectDisposedException) { } }
+
+    internal void Report(ModelDownloadProgress p)
+    {
+        Last = p;
+        Progressed?.Invoke(p);
+    }
+}
+
+/// <summary>
 /// Fetches model weights into the studio's own model folder.
 ///
 /// <b>The catalog is shared with the rented-GPU route on purpose.</b> Those
@@ -55,6 +85,59 @@ public sealed class ComfyModelInstaller
     public static double RemainingGb(GpuModelProfile profile)
         => profile.Files.Where(f => !IsInstalled(f)).Sum(f => f.SizeGb);
 
+    private static readonly object JobsLock = new();
+    private static readonly Dictionary<string, ModelDownloadJob> Jobs = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The download running for a profile, or null.</summary>
+    public static ModelDownloadJob? ActiveJob(string profileKey)
+    {
+        lock (JobsLock) return Jobs.TryGetValue(profileKey, out var job) ? job : null;
+    }
+
+    /// <summary>
+    /// Start downloading a bundle, or hand back the download already running
+    /// for it — pressing the button twice, or on a rebuilt page, attaches to
+    /// the same job instead of racing it for the same files.
+    /// </summary>
+    public static ModelDownloadJob StartDownload(GpuModelProfile profile, string? hfToken)
+    {
+        lock (JobsLock)
+        {
+            if (Jobs.TryGetValue(profile.Key, out var running)) return running;
+
+            var job = new ModelDownloadJob(profile);
+            Jobs[profile.Key] = job;
+            job.Completion = Task.Run(async () =>
+            {
+                try
+                {
+                    await new ComfyModelInstaller().DownloadAsync(
+                        profile, hfToken, new InlineProgress(job.Report), job.Cts.Token);
+                }
+                finally
+                {
+                    lock (JobsLock) Jobs.Remove(profile.Key);
+                    job.Cts.Dispose();
+                }
+            });
+            return job;
+        }
+    }
+
+    /// <summary>Reports on the calling thread. <see cref="Progress{T}"/> would
+    /// post to whatever context happened to create it; the job's listeners
+    /// marshal for themselves.</summary>
+    private sealed class InlineProgress(Action<ModelDownloadProgress> report) : IProgress<ModelDownloadProgress>
+    {
+        public void Report(ModelDownloadProgress value) => report(value);
+    }
+
+    /// <summary>One lock per destination file. Two bundles share weights (the
+    /// WAN profiles share their text encoder and VAE); downloading both at once
+    /// must fetch each shared file once, not fight over its part file.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> FileLocks =
+        new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Download every file the profile needs that isn't already there.
     /// </summary>
@@ -71,13 +154,23 @@ public sealed class ComfyModelInstaller
         {
             var file = missing[i];
             var slot = i;
-            var inner = new Progress<double>(f =>
+            var inner = new InlineFraction(f =>
                 progress?.Report(new ModelDownloadProgress(
                     file.FileName,
                     (slot + f) / missing.Count,
                     $"{file.FileName} · {f * file.SizeGb:0.00} / {file.SizeGb:0.00} GB")));
 
-            await DownloadOneAsync(file, hfToken, inner, ct);
+            var gate = FileLocks.GetOrAdd(PathFor(file), _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync(ct);
+            try
+            {
+                // Another bundle may have fetched this shared file while we waited.
+                if (!IsInstalled(file)) await DownloadOneAsync(file, hfToken, inner, ct);
+            }
+            finally
+            {
+                gate.Release();
+            }
         }
 
         progress?.Report(new ModelDownloadProgress("", 1, $"{profile.DisplayName} พร้อมใช้งาน"));
@@ -165,6 +258,14 @@ public sealed class ComfyModelInstaller
                 $"{file.FileName} ได้มา {landed:N0} ไบต์ ควรได้ราว {expected:N0} — URL อาจถูกปิดหรือย้าย");
         }
 
+        // The catalog size is rounded, so the 90% floor above would also pass a
+        // transfer that stopped at 95%. The server's own length is exact: keep
+        // the part file (the next press resumes it) rather than install a
+        // truncated model.
+        if (resp.Content.Headers.ContentLength is long length && landed < existing + length)
+            throw new InvalidOperationException(
+                $"{file.FileName} โหลดไม่ครบ ({landed:N0} / {existing + length:N0} ไบต์) — กดดาวน์โหลดอีกครั้งเพื่อโหลดต่อ");
+
         // Rename last: the file only becomes "installed" once it is complete,
         // so a cancelled download is resumable rather than poisonous.
         if (File.Exists(dest)) File.Delete(dest);
@@ -175,5 +276,10 @@ public sealed class ComfyModelInstaller
     private static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { }
+    }
+
+    private sealed class InlineFraction(Action<double> report) : IProgress<double>
+    {
+        public void Report(double value) => report(value);
     }
 }

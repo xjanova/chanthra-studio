@@ -54,6 +54,20 @@ public sealed class GenerationService
 
     public event EventHandler<GenerationProgressEventArgs>? ProgressChanged;
 
+    /// <summary>
+    /// Something about a submitted shot the user should know although the
+    /// render goes ahead — an attached input the route cannot use. Raised on
+    /// the UI thread.
+    /// </summary>
+    public event EventHandler<string>? Notice;
+
+    private void RaiseNotice(string message)
+    {
+        ActivityLog.Warn("generation", message);
+        if (_ui.CheckAccess()) Notice?.Invoke(this, message);
+        else _ui.BeginInvoke(new Action(() => Notice?.Invoke(this, message)));
+    }
+
     public GenerationService(StudioContext ctx)
     {
         _ctx = ctx;
@@ -125,7 +139,24 @@ public sealed class GenerationService
         var warmup = new Progress<Gpu.GpuWarmupProgress>(p =>
             Raise(shot.Id, shot.Id, ShotStatus.Generating, Math.Clamp(p.Fraction * 15.0, 1, 15), null));
 
-        var worker = await gpu.EnsureWorkerAsync(profile.Key, warmup, ct);
+        // Cancelling during the warm-up has to reach it too: there is no
+        // prompt id yet, so the shot id stands in until the render starts —
+        // CancelByShotAsync finds it the same way.
+        using var warmCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _running[shot.Id] = warmCts;
+        _promptToShot[shot.Id] = shot.Id;
+        Gpu.GpuWorker worker;
+        try
+        {
+            worker = await gpu.EnsureWorkerAsync(profile.Key, warmup, warmCts.Token);
+        }
+        finally
+        {
+            _running.TryRemove(shot.Id, out _);
+            _promptToShot.TryRemove(shot.Id, out _);
+        }
+        ct.ThrowIfCancellationRequested();
+        warmCts.Token.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(worker.EndpointUrl))
             throw new Gpu.GpuRentalException(
                 $"{worker.Name} is ready but published no endpoint — release it from the GPU panel and try again.");
@@ -210,68 +241,10 @@ public sealed class GenerationService
             Audio = shot.Audio,
         };
 
-        var jobId = Guid.NewGuid().ToString("N").Substring(0, 16);
-        _ctx.Shots.Insert(shot);
-        WriteJobRow(shot.Id, jobId, "queued");
-
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        _running[jobId] = cts;
-        _promptToShot[jobId] = shot.Id;
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                Raise(jobId, shot.Id, ShotStatus.Generating, 1, null);
-                var progress = new Progress<double>(p => Raise(jobId, shot.Id, ShotStatus.Generating, p, null));
-                var outputUrl = await waiter(req, progress, cts.Token);
-
-                var ext = Path.GetExtension(new Uri(outputUrl).AbsolutePath);
-                if (string.IsNullOrEmpty(ext)) ext = ".mp4";
-                var safeName = SafeFilename($"{shot.Id}_{providerId}{ext}");
-                var dest = Path.Combine(AppPaths.MediaFolder, safeName);
-                using (var dl = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) })
-                {
-                    using var resp = await dl.GetAsync(outputUrl, cts.Token);
-                    resp.EnsureSuccessStatusCode();
-                    Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? ".");
-                    await using var fs = File.Create(dest);
-                    await resp.Content.CopyToAsync(fs, cts.Token);
-                }
-
-                WriteClipRow(shot.Id, dest, ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ? "videos" : "images");
-                WriteJobUpdate(jobId, "done", null);
-
-                try
-                {
-                    if (ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase))
-                        _ctx.Tracker.RecordSeconds(providerId, modelSlug, shot.DurationSec, "video");
-                    else
-                        _ctx.Tracker.RecordImages(providerId, modelSlug, 1, "image");
-                }
-                catch { }
-
-                Raise(jobId, shot.Id, ShotStatus.Done, 100, null, dest);
-            }
-            catch (OperationCanceledException)
-            {
-                WriteJobUpdate(jobId, "cancelled", null);
-                Raise(jobId, shot.Id, ShotStatus.Error, 0, "cancelled");
-            }
-            catch (Exception ex)
-            {
-                WriteJobUpdate(jobId, "error", ex.Message);
-                Raise(jobId, shot.Id, ShotStatus.Error, 0, ex.Message);
-            }
-            finally
-            {
-                _running.TryRemove(jobId, out _);
-                _promptToShot.TryRemove(jobId, out _);
-            }
-        });
-
-        return jobId;
+        return StartCloudJob(shot, providerId, modelSlug, ".mp4",
+            (progress, token) => waiter(req, progress, token), ct);
     }
+
 
     /// <summary>
     /// Cloud route through Runway Gen-3 (image-to-video only — the shot
@@ -311,66 +284,12 @@ public sealed class GenerationService
             DurationSec = shot.DurationSec,
         };
 
-        var jobId = Guid.NewGuid().ToString("N").Substring(0, 16);
-        _ctx.Shots.Insert(shot);
-        WriteJobRow(shot.Id, jobId, "queued");
-
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        _running[jobId] = cts;
-        _promptToShot[jobId] = shot.Id;
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                Raise(jobId, shot.Id, ShotStatus.Generating, 1, null);
-                var progress = new Progress<double>(p => Raise(jobId, shot.Id, ShotStatus.Generating, p, null));
-                var outputUrl = await provider.SubmitAndWaitAsync(req, progress, cts.Token);
-
-                // Runway returns .mp4 URLs valid for ~24 hours — pull it
-                // local so Library + Render film treat it like every other clip.
-                var safeName = SafeFilename($"{shot.Id}_runway.mp4");
-                var dest = Path.Combine(AppPaths.MediaFolder, safeName);
-                using (var dl = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) })
-                {
-                    using var resp = await dl.GetAsync(outputUrl, cts.Token);
-                    resp.EnsureSuccessStatusCode();
-                    Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? ".");
-                    await using var fs = File.Create(dest);
-                    await resp.Content.CopyToAsync(fs, cts.Token);
-                }
-
-                WriteClipRow(shot.Id, dest, "videos");
-                WriteJobUpdate(jobId, "done", null);
-
-                // Bill the call. Runway is per-second; PromptAugmenter doesn't
-                // map runway to a duration param itself, but UsageTracker
-                // picks up the per-second rate from ProviderCatalog if the
-                // user has runway pricing configured.
-                try { _ctx.Tracker.RecordSeconds("runway", req.Model, req.DurationSec, "video"); }
-                catch { }
-
-                Raise(jobId, shot.Id, ShotStatus.Done, 100, null, dest);
-            }
-            catch (OperationCanceledException)
-            {
-                WriteJobUpdate(jobId, "cancelled", null);
-                Raise(jobId, shot.Id, ShotStatus.Error, 0, "cancelled");
-            }
-            catch (Exception ex)
-            {
-                WriteJobUpdate(jobId, "error", ex.Message);
-                Raise(jobId, shot.Id, ShotStatus.Error, 0, ex.Message);
-            }
-            finally
-            {
-                _running.TryRemove(jobId, out _);
-                _promptToShot.TryRemove(jobId, out _);
-            }
-        });
-
-        return jobId;
+        // Runway returns .mp4 URLs valid for ~24 hours — pulled local so
+        // Library and Render film treat it like every other clip.
+        return StartCloudJob(shot, "runway", req.Model, ".mp4",
+            (progress, token) => provider.SubmitAndWaitAsync(req, progress, token), ct);
     }
+
 
     /// <summary>
     /// Cloud route through Kling AI (Kuaishou). Unlike Runway this supports
@@ -414,64 +333,11 @@ public sealed class GenerationService
             CamMode = shot.Cam.ToString().ToLowerInvariant(),
         };
 
-        var jobId = Guid.NewGuid().ToString("N").Substring(0, 16);
-        _ctx.Shots.Insert(shot);
-        WriteJobRow(shot.Id, jobId, "queued");
-
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        _running[jobId] = cts;
-        _promptToShot[jobId] = shot.Id;
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                Raise(jobId, shot.Id, ShotStatus.Generating, 1, null);
-                var progress = new Progress<double>(p => Raise(jobId, shot.Id, ShotStatus.Generating, p, null));
-                var outputUrl = await provider.SubmitAndWaitAsync(req, progress, cts.Token);
-
-                var safeName = SafeFilename($"{shot.Id}_kling.mp4");
-                var dest = Path.Combine(AppPaths.MediaFolder, safeName);
-                using (var dl = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) })
-                {
-                    using var resp = await dl.GetAsync(outputUrl, cts.Token);
-                    resp.EnsureSuccessStatusCode();
-                    Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? ".");
-                    await using var fs = File.Create(dest);
-                    await resp.Content.CopyToAsync(fs, cts.Token);
-                }
-
-                WriteClipRow(shot.Id, dest, "videos");
-                WriteJobUpdate(jobId, "done", null);
-                try
-                {
-                    _ctx.Tracker.RecordSeconds("kling",
-                        string.IsNullOrEmpty(model) ? Providers.Video.KlingVideoProvider.DefaultModel : model,
-                        shot.DurationSec, "video");
-                }
-                catch { }
-
-                Raise(jobId, shot.Id, ShotStatus.Done, 100, null, dest);
-            }
-            catch (OperationCanceledException)
-            {
-                WriteJobUpdate(jobId, "cancelled", null);
-                Raise(jobId, shot.Id, ShotStatus.Error, 0, "cancelled");
-            }
-            catch (Exception ex)
-            {
-                WriteJobUpdate(jobId, "error", ex.Message);
-                Raise(jobId, shot.Id, ShotStatus.Error, 0, ex.Message);
-            }
-            finally
-            {
-                _running.TryRemove(jobId, out _);
-                _promptToShot.TryRemove(jobId, out _);
-            }
-        });
-
-        return jobId;
+        var billedModel = string.IsNullOrEmpty(model) ? Providers.Video.KlingVideoProvider.DefaultModel : model;
+        return StartCloudJob(shot, "kling", billedModel, ".mp4",
+            (progress, token) => provider.SubmitAndWaitAsync(req, progress, token), ct);
     }
+
 
     /// <param name="endpoint">
     /// Which ComfyUI to talk to. Null means the local server configured in
@@ -510,8 +376,17 @@ public sealed class GenerationService
             // back to the bundled default if the saved name has been removed
             // from disk since last save.
             var workflowName = !string.IsNullOrEmpty(workflowOverride) ? workflowOverride : _ctx.Settings.ActiveWorkflow;
-            var descriptor = _ctx.Workflows.FindByName(workflowName)
-                          ?? _ctx.Workflows.Default();
+            var descriptor = _ctx.Workflows.FindByName(workflowName);
+            // A named workflow that has gone missing is an error, not a cue to
+            // quietly render the stock text-to-image graph instead — a video
+            // shot came back as a still with no explanation.
+            if (descriptor is null && !string.IsNullOrWhiteSpace(workflowName))
+            {
+                client.Dispose();
+                throw new ComfyUiException(
+                    $"ไม่พบเวิร์กโฟลว์ \"{workflowName}\" — ไฟล์อาจถูกลบหรือเปลี่ยนชื่อ เลือกเวิร์กโฟลว์ใหม่ในหน้า Generate");
+            }
+            descriptor ??= _ctx.Workflows.Default();
             var workflow = descriptor is not null
                 ? Workflow.LoadFromPath(descriptor.Path)
                 : Workflow.LoadDefault();
@@ -532,6 +407,23 @@ public sealed class GenerationService
                 baseH = (int)(baseH * 1.5);
             }
 
+            // Video models are trained at one resolution, and their cost is
+            // every pixel of every frame. Sizing a WAN 480p graph from the
+            // stills table (1024×576, or 1536×864 with HD on) asked an 8 GB card
+            // for three to six times the memory the model was built for. Keep
+            // the graph's own pixel budget and only turn it to the shot's aspect.
+            var isVideo = workflow.ProducesVideo();
+            if (isVideo && workflow.LatentSize() is { } native)
+                (baseW, baseH) = FitAspect(native.Width * native.Height, shot.Aspect);
+
+            // An animated .webp is a single still to every player in the
+            // studio, so a finished video render used to arrive as one frame.
+            // Save through the engine's own H.264 writer instead when it has one.
+            if (workflow.HasAnimatedImageSaver()
+                && await client.HasNodeAsync("SaveVideo", ct)
+                && await client.HasNodeAsync("CreateVideo", ct))
+                workflow.NormalizeVideoOutputs();
+
             // Fold camera/motion/style/HD into the prompt so the controls
             // the user can see in the composer actually shape the output.
             // Without this, those sliders/toggles were UI lies.
@@ -549,7 +441,12 @@ public sealed class GenerationService
             // the user has taken the sampler over — silently overriding their 12
             // steps with 36 because a different toggle is on is exactly the
             // behaviour the override switches exist to end.
-            if (shot.Hd4k && !comfy.OverrideSampler)
+            // Only on classic CFG graphs: Flux, SDXL-Lightning and Hunyuan run at
+            // CFG 1–2 by design, and 7.5 burns them; a video graph at 36 steps
+            // is an hour of GPU time the user did not ask for.
+            var sampler = workflow.InputsOf("KSampler");
+            var classicCfg = sampler?["cfg"] is JsonValue cfgNode && cfgNode.TryGetValue<double>(out var cfgValue) && cfgValue >= 3;
+            if (shot.Hd4k && !comfy.OverrideSampler && !isVideo && classicCfg)
                 workflow.SetSteps(36).SetCfg(7.5);
 
             // Seed, size, sampler, LoRAs, clip skip and video length all land
@@ -582,8 +479,13 @@ public sealed class GenerationService
             {
                 client.Dispose();
                 throw new ComfyUiException(
-                    "This workflow requires a reference image (LoadImage node). " +
-                    "Drag-drop or browse an image in the Generate panel first.");
+                    "workflow นี้ต้องใช้ภาพอ้างอิง (มีโหนด LoadImage) — ลากภาพมาวาง หรือกดเลือกภาพในแผง Generate ก่อน");
+            }
+            else if (!string.IsNullOrEmpty(shot.ReferenceImagePath))
+            {
+                // Rendering on without it is right, doing it silently is not:
+                // the user attached a face expecting it to be kept.
+                RaiseNotice($"workflow \"{(string.IsNullOrEmpty(workflowName) ? "ที่ใช้อยู่" : workflowName)}\" ไม่มีช่องรับภาพ (LoadImage) — ภาพอ้างอิงที่แนบไว้จะไม่ถูกใช้ในช็อตนี้ เลือก workflow แบบ image-to-video ถ้าต้องการล็อกหน้าตัวละคร");
             }
 
             // Auto-substitute model names in EVERY loader node (checkpoint,
@@ -592,12 +494,12 @@ public sealed class GenerationService
             // has "flux1-dev-fp8.safetensors". We use FuzzyResolve below.
             await AutoFixModelReferencesAsync(client, workflow, shot, ct);
 
-            var promptId = await client.SubmitPromptAsync(workflow.Nodes, ct);
-            // Persist the shot's full composer state before the job row so
-            // the FK from generation_jobs.shot_id resolves cleanly and so a
-            // relaunch can rebuild the storyboard with prompts intact.
+            // Persist the shot BEFORE submitting: if the write failed after
+            // the prompt was queued, the render ran with nobody listening for
+            // it — and on a rented card, billed for output nobody collected.
             _ctx.Shots.Insert(shot);
-            WriteJobRow(shot.Id, promptId, "queued");
+            var promptId = await client.SubmitPromptAsync(workflow.Nodes, ct);
+            WriteJobRow(shot.Id, promptId, "queued", endpoint?.WorkerId is null ? "comfyui" : "rentgpu");
 
             var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             _running[promptId] = cts;
@@ -667,9 +569,9 @@ public sealed class GenerationService
                 Status = ShotStatus.Generating,
             };
 
-            var promptId = await client.SubmitPromptAsync(nodes, ct);
             _ctx.Shots.Insert(shot);
-            WriteJobRow(shot.Id, promptId, "queued");
+            var promptId = await client.SubmitPromptAsync(nodes, ct);
+            WriteJobRow(shot.Id, promptId, "queued", "comfyui");
 
             var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             _running[promptId] = cts;
@@ -711,36 +613,47 @@ public sealed class GenerationService
     /// </summary>
     public async Task CancelAllAsync()
     {
-        var touched = new List<ComfyEndpoint>();
+        var touched = new List<(ComfyEndpoint, string)>();
         foreach (var (promptId, _) in _promptToShot.ToArray())
         {
+            // Read where it went BEFORE cancelling: the listener's cleanup
+            // removes that entry, and losing the race skipped the server-side
+            // cancel so the job kept rendering.
+            if (_promptToEndpoint.TryGetValue(promptId, out var ep)) touched.Add((ep, promptId));
             if (_running.TryRemove(promptId, out var cts))
             {
                 try { cts.Cancel(); } catch { }
             }
             _promptToShot.TryRemove(promptId, out _);
-            if (_promptToEndpoint.TryGetValue(promptId, out var ep)) touched.Add(ep);
         }
-        await InterruptEndpointsAsync(touched);
+        await CancelOnServersAsync(touched);
     }
 
     /// <summary>
-    /// Fire /interrupt at each distinct server we actually sent work to.
-    /// Blanket-interrupting the local server (the old behaviour) both missed
-    /// rented workers and stopped unrelated local queue items.
+    /// Cancel each prompt on the server it was actually sent to — the local
+    /// engine or a rented worker — by prompt id, so a job waiting in the queue
+    /// is removed rather than left to run later, and other people's work on
+    /// the same server is not interrupted in its place.
     /// </summary>
-    private async Task InterruptEndpointsAsync(IEnumerable<ComfyEndpoint> endpoints)
+    private static async Task CancelOnServersAsync(IEnumerable<(ComfyEndpoint Endpoint, string PromptId)> jobs)
     {
-        foreach (var ep in endpoints.DistinctBy(e => e.Url))
-        {
-            if (string.IsNullOrWhiteSpace(ep.Url)) continue;
-            try
+        // One call per server, all servers at once, with a short timeout: done
+        // one prompt at a time on the default two-minute client, "cancel all"
+        // against a rented worker that had died took two minutes per job.
+        var perServer = jobs
+            .Where(j => !string.IsNullOrWhiteSpace(j.Endpoint.Url))
+            .GroupBy(j => (j.Endpoint.Url, j.Endpoint.Token))
+            .Select(async g =>
             {
-                using var c = new ComfyUiClient(ep.Url, clientId: null, authToken: ep.Token);
-                await c.InterruptAsync();
-            }
-            catch { /* best effort — the CTS has already stopped our side */ }
-        }
+                try
+                {
+                    using var c = new ComfyUiClient(g.Key.Url, clientId: null, authToken: g.Key.Token,
+                                                    timeout: TimeSpan.FromSeconds(8));
+                    await c.CancelPromptsAsync(g.Select(j => j.PromptId).Distinct().ToList());
+                }
+                catch { /* best effort — the CTS has already stopped our side */ }
+            });
+        await Task.WhenAll(perServer);
     }
 
     /// <summary>Snapshot count of currently-running prompt ids. Drives the
@@ -749,34 +662,37 @@ public sealed class GenerationService
 
     public async Task CancelByShotAsync(string shotId)
     {
-        var touched = new List<ComfyEndpoint>();
+        var touched = new List<(ComfyEndpoint, string)>();
         foreach (var (promptId, sid) in _promptToShot.ToArray())
         {
             if (sid != shotId) continue;
+            // Only ComfyUI-routed prompts have an endpoint recorded, so this
+            // replaces the old "does it parse as a Guid?" heuristic with the
+            // actual fact of where the job went. Read before cancelling (see
+            // CancelAllAsync).
+            if (_promptToEndpoint.TryGetValue(promptId, out var ep)) touched.Add((ep, promptId));
             if (_running.TryRemove(promptId, out var cts))
             {
                 try { cts.Cancel(); } catch { }
             }
             _promptToShot.TryRemove(promptId, out _);
-            // Only ComfyUI-routed prompts have an endpoint recorded, so this
-            // replaces the old "does it parse as a Guid?" heuristic with the
-            // actual fact of where the job went.
-            if (_promptToEndpoint.TryGetValue(promptId, out var ep)) touched.Add(ep);
         }
-        await InterruptEndpointsAsync(touched);
+        await CancelOnServersAsync(touched);
     }
 
     public async Task CancelAsync(string promptId)
     {
+        _promptToEndpoint.TryGetValue(promptId, out var ep);
         if (_running.TryRemove(promptId, out var cts))
-            cts.Cancel();
+        {
+            try { cts.Cancel(); } catch { }
+        }
         // Replicate cancellation is handled by the linked CTS above — the
-        // poll loop checks ct on every tick. ComfyUI also gets a hard
-        // /interrupt so the in-flight prompt stops chewing GPU — on the
-        // machine it was actually sent to, which for a rented worker is not
-        // the local server.
-        if (_promptToEndpoint.TryGetValue(promptId, out var ep))
-            await InterruptEndpointsAsync(new[] { ep });
+        // poll loop checks ct on every tick. ComfyUI also gets told directly
+        // so the prompt stops chewing GPU — on the machine it was actually
+        // sent to, which for a rented worker is not the local server.
+        if (ep is not null)
+            await CancelOnServersAsync(new[] { (ep, promptId) });
     }
 
     /// <summary>
@@ -828,12 +744,31 @@ public sealed class GenerationService
             CamMode = shot.Cam.ToString().ToLowerInvariant(),
         };
 
-        // Replicate ids are unique enough to use as our internal jobId.
-        // We mint a temporary one until the first poll returns the real one,
-        // so the storyboard card has something to bind progress against.
+        // Replicate returns a public CDN URL — pulled down into media/ so the
+        // rest of the app treats it the same as a ComfyUI output.
+        return StartCloudJob(shot, "replicate", req.Model, ".mp4",
+            (progress, token) => provider.SubmitAndWaitAsync(req, progress, token), ct);
+    }
+
+
+    /// <summary>
+    /// What every cloud route does once its request is built: record the job,
+    /// submit and wait in the background, bill, download, and raise the same
+    /// Done event the ComfyUI route raises.
+    /// </summary>
+    /// <remarks>
+    /// Four routes carried their own copy of this, and all four billed only
+    /// after a successful download (the vendor charges either way), reported
+    /// an HTTP timeout as "cancelled", held a whole video in memory with a
+    /// five-minute cap, and named the file after the shot alone — so a second
+    /// take of the same shot overwrote the first one's file.
+    /// </remarks>
+    private string StartCloudJob(Shot shot, string providerId, string model, string defaultExt,
+        Func<IProgress<double>, CancellationToken, Task<string>> submitAndWait, CancellationToken ct)
+    {
         var jobId = Guid.NewGuid().ToString("N").Substring(0, 16);
         _ctx.Shots.Insert(shot);
-        WriteJobRow(shot.Id, jobId, "queued");
+        WriteJobRow(shot.Id, jobId, "queued", providerId);
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _running[jobId] = cts;
@@ -844,49 +779,41 @@ public sealed class GenerationService
             try
             {
                 Raise(jobId, shot.Id, ShotStatus.Generating, 1, null);
-                var progress = new Progress<double>(p => Raise(jobId, shot.Id, ShotStatus.Generating, p, null));
+                var progress = new Progress<double>(p => Raise(jobId, shot.Id, ShotStatus.Generating, Math.Min(99, p), null));
+                var outputUrl = await submitAndWait(progress, cts.Token);
 
-                var outputUrl = await provider.SubmitAndWaitAsync(req, progress, cts.Token);
-
-                // Replicate returns a public CDN URL — pull it down into
-                // media/ so the rest of the app (Library, Render film) treats
-                // it the same as a ComfyUI output.
                 var ext = Path.GetExtension(new Uri(outputUrl).AbsolutePath);
-                if (string.IsNullOrEmpty(ext)) ext = ".mp4";
-                var safeName = SafeFilename($"{shot.Id}_replicate{ext}");
-                var dest = Path.Combine(AppPaths.MediaFolder, safeName);
-                using (var dl = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) })
-                {
-                    using var resp = await dl.GetAsync(outputUrl, cts.Token);
-                    resp.EnsureSuccessStatusCode();
-                    Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? ".");
-                    await using var fs = File.Create(dest);
-                    await resp.Content.CopyToAsync(fs, cts.Token);
-                }
+                if (string.IsNullOrEmpty(ext)) ext = defaultExt;
+                var isVideo = MediaKind.RendersAsVideo("x" + ext);
 
-                WriteClipRow(shot.Id, dest, ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ? "videos" : "images");
-                WriteJobUpdate(jobId, "done", null);
-
-                // Bill the cloud call. Video models price per second of
-                // duration; image models price per image. The catalog
-                // entry's UsdPerSecond OR UsdPerImage drives the choice
-                // — both fall back to 0 for free / unknown slugs, so
-                // we can record either way without overcounting.
+                // Bill as soon as the vendor has rendered — it charges whether
+                // or not our download then succeeds.
                 try
                 {
-                    if (ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase))
-                        _ctx.Tracker.RecordSeconds("replicate", req.Model, shot.DurationSec, "video");
-                    else
-                        _ctx.Tracker.RecordImages("replicate", req.Model, 1, "image");
+                    if (isVideo) _ctx.Tracker.RecordSeconds(providerId, model, shot.DurationSec, "video");
+                    else _ctx.Tracker.RecordImages(providerId, model, 1, "image");
                 }
                 catch { }
 
+                var dest = Path.Combine(AppPaths.MediaFolder, SafeFilename($"{shot.Id}_{providerId}_{jobId[..6]}{ext}"));
+                await DownloadWithRetryAsync(outputUrl, dest, cts.Token);
+
+                var clipId = WriteClipRow(shot.Id, dest);
+                await RecordDurationAsync(clipId, dest);
+                WriteJobUpdate(jobId, "done", null);
                 Raise(jobId, shot.Id, ShotStatus.Done, 100, null, dest);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {
                 WriteJobUpdate(jobId, "cancelled", null);
                 Raise(jobId, shot.Id, ShotStatus.Error, 0, "cancelled");
+            }
+            catch (OperationCanceledException)
+            {
+                // A network timeout, not the user: say so.
+                var msg = $"{providerId}: หมดเวลารอการตอบกลับ — งานอาจยังเรนเดอร์อยู่ที่ผู้ให้บริการ ลองดูในหน้าเว็บของเขา";
+                WriteJobUpdate(jobId, "error", msg);
+                Raise(jobId, shot.Id, ShotStatus.Error, 0, msg);
             }
             catch (Exception ex)
             {
@@ -895,12 +822,58 @@ public sealed class GenerationService
             }
             finally
             {
-                _running.TryRemove(jobId, out _);
+                if (_running.TryRemove(jobId, out var own)) own.Dispose();
                 _promptToShot.TryRemove(jobId, out _);
             }
         });
 
         return jobId;
+    }
+
+    private static readonly System.Net.Http.HttpClient DownloadHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
+
+    /// <summary>Stream a finished render to disk: into a .part file that is
+    /// renamed only when complete, with two retries for a dropped connection,
+    /// so a failure never leaves a truncated file that looks like a clip.</summary>
+    private static async Task DownloadWithRetryAsync(string url, string dest, CancellationToken ct)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? ".");
+        var part = dest + ".part";
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                using var cap = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cap.CancelAfter(TimeSpan.FromMinutes(30));
+                using var resp = await DownloadHttp.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, cap.Token);
+                resp.EnsureSuccessStatusCode();
+                await using (var fs = File.Create(part))
+                await using (var net = await resp.Content.ReadAsStreamAsync(cap.Token))
+                    await net.CopyToAsync(fs, cap.Token);
+                File.Move(part, dest, overwrite: true);
+                return;
+            }
+            catch (Exception) when (!ct.IsCancellationRequested && attempt < 3)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(3 * attempt), ct);
+            }
+            finally
+            {
+                try { if (File.Exists(part)) File.Delete(part); } catch { }
+            }
+        }
+    }
+
+    /// <summary>Store a video's real length on its clip row (it was always 0).</summary>
+    private async Task RecordDurationAsync(string? clipId, string path)
+    {
+        if (clipId is null || !MediaKind.RendersAsVideo(path)) return;
+        try
+        {
+            if (await new FFmpegService(_ctx).ProbeDurationSecAsync(path) is double sec)
+                _ctx.Clips.SetDuration(clipId, (int)Math.Round(sec * 1000));
+        }
+        catch { /* the clip is usable without it */ }
     }
 
     /// <summary>Resolve the user's picked model for a cloud provider from the
@@ -933,14 +906,18 @@ public sealed class GenerationService
             var wsTask = Task.Run(() => StreamWsProgressAsync(client, shot, promptId, wsCts.Token));
 
             // Polling completion detector — authoritative.
-            var completed = await PollHistoryUntilDoneAsync(client, promptId, shot, ct);
+            var (completed, lostReason) = await PollHistoryUntilDoneAsync(client, promptId, ct);
             wsCts.Cancel();
             try { await wsTask; } catch { /* expected on cancel */ }
 
+            // A cancel ends the poll too; without this it was reported as
+            // "timed out", which sent people looking for a server problem.
+            ct.ThrowIfCancellationRequested();
+
             if (completed is null)
             {
-                WriteJobUpdate(promptId, "error", "history empty after timeout");
-                Raise(promptId, shot.Id, ShotStatus.Error, 0, "ComfyUI returned no history (timed out)");
+                WriteJobUpdate(promptId, "error", lostReason);
+                Raise(promptId, shot.Id, ShotStatus.Error, 0, lostReason);
                 return;
             }
 
@@ -955,39 +932,71 @@ public sealed class GenerationService
                 return;
             }
 
-            // Download every output file the workflow produced.
+            // Download every output file the workflow produced. Previews
+            // (type "temp") are skipped when real outputs exist — a graph with
+            // a PreviewImage ahead of its SaveVideo made the preview the
+            // shot's media. The primary file is the most "finished" kind:
+            // video, then image, then audio.
+            var outputs = Workflow.ExtractOutputs(completed).ToList();
+            if (outputs.Any(o => o.Type == "output")) outputs = outputs.Where(o => o.Type == "output").ToList();
+            var ordered = outputs.OrderBy(o => MediaKind.RendersAsVideo(o.Filename) ? 0
+                                             : MediaKind.IsImage(o.Filename) ? 1 : 2).ToList();
+
             string? primaryPath = null;
             int downloaded = 0;
-            foreach (var output in Workflow.ExtractOutputs(completed))
+            var failures = new List<string>();
+            foreach (var output in ordered)
             {
                 var safeName = SafeFilename(shot.Id + "_" + Path.GetFileName(output.Filename));
                 var dest = Path.Combine(AppPaths.MediaFolder, safeName);
                 try
                 {
-                    await client.DownloadFileAsync(output.Filename, output.Subfolder, output.Type, dest, ct);
+                    await DownloadComfyOutputAsync(client, output, dest, ct);
                     primaryPath ??= dest;
-                    WriteClipRow(shot.Id, dest, output.Kind);
+                    var clipId = WriteClipRow(shot.Id, dest);
+                    await RecordDurationAsync(clipId, dest);
                     downloaded++;
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
-                    Raise(promptId, shot.Id, ShotStatus.Error, 0, $"download failed for {output.Filename}: {ex.Message}");
+                    failures.Add($"{output.Filename}: {ex.Message}");
                 }
             }
 
             if (downloaded == 0)
             {
-                WriteJobUpdate(promptId, "error", "no output files in history");
-                Raise(promptId, shot.Id, ShotStatus.Error, 0,
-                    "ComfyUI finished but reported no SaveImage / video outputs. Workflow may be missing a save node.");
+                // "No outputs" and "outputs we could not fetch" are different
+                // problems with different fixes; the second used to be
+                // reported as the first ("check your save node").
+                var msg = ordered.Count == 0
+                    ? "ComfyUI ทำงานเสร็จแต่ไม่มีไฟล์ผลลัพธ์ — เวิร์กโฟลว์อาจไม่มีโหนด Save"
+                    : "เรนเดอร์เสร็จแต่ดาวน์โหลดผลลัพธ์ไม่สำเร็จ: " + string.Join(" · ", failures);
+                WriteJobUpdate(promptId, "error", msg);
+                Raise(promptId, shot.Id, ShotStatus.Error, 0, msg);
                 return;
             }
+            if (failures.Count > 0)
+                ActivityLog.Warn("generation", $"{failures.Count} of {ordered.Count} outputs failed to download: {string.Join(" · ", failures)}");
 
             WriteJobUpdate(promptId, "done", null);
             Raise(promptId, shot.Id, ShotStatus.Done, 100, null, primaryPath);
         }
         catch (OperationCanceledException)
         {
+            // Whoever cancelled — the Queue, Auto Pilot's own token — the engine
+            // has to hear it as well. Only the Queue's buttons used to tell it,
+            // so a cancelled Auto Pilot left its prompt rendering (and a rented
+            // card billing) with nobody listening. Harmless when already told.
+            try
+            {
+                using var drop = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                await client.CancelPromptsAsync(new[] { promptId }, drop.Token);
+            }
+            catch { /* the server may be gone; nothing more to do */ }
             WriteJobUpdate(promptId, "cancelled", null);
             Raise(promptId, shot.Id, ShotStatus.Error, 0, "cancelled");
         }
@@ -998,7 +1007,7 @@ public sealed class GenerationService
         }
         finally
         {
-            _running.TryRemove(promptId, out _);
+            if (_running.TryRemove(promptId, out var own)) own.Dispose();
             _promptToShot.TryRemove(promptId, out _);
             _promptToEndpoint.TryRemove(promptId, out var ep);
 
@@ -1020,50 +1029,87 @@ public sealed class GenerationService
 
     /// <summary>
     /// Polls /history every 1.5s until the prompt's record carries outputs
-    /// or status=error. Returns the inner record, or null on cancel/timeout.
+    /// or status=error. Returns the inner record, or null with the reason the
+    /// job was given up on (null record and null reason on cancel).
     /// </summary>
-    private static async Task<JsonObject?> PollHistoryUntilDoneAsync(
-        ComfyUiClient client, string promptId, Shot shot, CancellationToken ct)
+    /// <remarks>
+    /// There is deliberately no fixed time limit. The old 15-minute ceiling
+    /// counted from submit, so a video render on a consumer card — or any job
+    /// that waited in the queue behind another — was declared dead while
+    /// ComfyUI went on rendering it. The wait now ends when the prompt is in
+    /// neither the history nor the queue (the engine restarted, or someone
+    /// cleared it), or when the server stops answering for ten minutes.
+    /// </remarks>
+    private static async Task<(JsonObject? Record, string Reason)> PollHistoryUntilDoneAsync(
+        ComfyUiClient client, string promptId, CancellationToken ct)
     {
-        // Hard ceiling so we don't dangle forever on a hung server (15 minutes).
-        var deadline = DateTime.UtcNow.AddMinutes(15);
-        var firstSeen = false;
+        var lastAlive = DateTime.UtcNow;
+        var lastReachable = DateTime.UtcNow;
+        var lastQueueCheck = DateTime.MinValue;
+        var hardCap = DateTime.UtcNow.AddHours(12);
 
-        while (!ct.IsCancellationRequested && DateTime.UtcNow < deadline)
+        while (!ct.IsCancellationRequested && DateTime.UtcNow < hardCap)
         {
             try
             {
                 await Task.Delay(1500, ct);
             }
-            catch (OperationCanceledException) { return null; }
+            catch (OperationCanceledException) { return (null, ""); }
 
-            JsonObject? record;
+            JsonObject? record = null;
             try
             {
                 record = await client.GetHistoryAsync(promptId, ct);
+                lastReachable = DateTime.UtcNow;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return (null, "");
             }
             catch
             {
-                continue;  // transient network glitch, try again
+                // Transient network glitch — judged below by how long it lasts.
             }
-            if (record is null)
+
+            if (record is not null)
             {
-                // History entry not present yet — server still queueing it.
+                var status = record["status"] as JsonObject;
+                if (status?["status_str"]?.GetValue<string>() == "error") return (record, "");
+
+                // Outputs filled in once SaveImage/SaveVideo/etc. has run.
+                if (record["outputs"] is JsonObject outputs && outputs.Count > 0) return (record, "");
+
+                // Finished with nothing saved: hand it back so the caller can
+                // say "no outputs" instead of waiting here forever.
+                if (status?["completed"] is JsonValue done && done.TryGetValue<bool>(out var isDone) && isDone)
+                    return (record, "");
+                lastAlive = DateTime.UtcNow;
                 continue;
             }
-            firstSeen = true;
 
-            var statusStr = record["status"]?["status_str"]?.GetValue<string>();
-            if (statusStr == "error") return record;
+            if ((DateTime.UtcNow - lastReachable) > TimeSpan.FromMinutes(10))
+                return (null, "ComfyUI ไม่ตอบมา 10 นาทีแล้ว — เอนจินอาจปิดตัวไปหรือเครื่องหลุดจากเน็ต");
 
-            // Outputs filled in once SaveImage/SaveAnimatedWEBP/etc. has run.
-            if (record["outputs"] is JsonObject outputs && outputs.Count > 0)
-                return record;
+            if ((DateTime.UtcNow - lastQueueCheck).TotalSeconds < 10) continue;
+            lastQueueCheck = DateTime.UtcNow;
 
-            // Otherwise the prompt is still queued or running. Keep polling.
-            _ = firstSeen;  // (kept for future "first heartbeat" telemetry)
+            var queue = await client.GetQueuedPromptIdsAsync(ct);
+            if (queue is not { } q) continue;
+            lastReachable = DateTime.UtcNow;
+            if (q.Running.Contains(promptId) || q.Pending.Contains(promptId))
+            {
+                lastAlive = DateTime.UtcNow;
+                continue;
+            }
+
+            // In neither list and no history: ComfyUI writes history and drops
+            // the queue entry in one step, so a short grace covers the rest.
+            if ((DateTime.UtcNow - lastAlive) > TimeSpan.FromSeconds(60))
+                return (null, "ComfyUI ไม่มีงานนี้ในคิวหรือประวัติแล้ว — เอนจินอาจถูกเปิดใหม่หรือคิวถูกล้าง");
         }
-        return null;
+        return ct.IsCancellationRequested
+            ? (null, "")
+            : (null, "งานนี้รันเกิน 12 ชั่วโมง จึงเลิกรอผล");
     }
 
     /// <summary>WebSocket reader that only updates progress for our prompt id.
@@ -1089,7 +1135,10 @@ public sealed class GenerationService
                     // the only job running (so the bar still moves on the
                     // common single-shot case).
                     var ours = e.PromptId == promptId || (e.PromptId is null && _running.Count == 1);
-                    if (ours) Raise(promptId, shot.Id, ShotStatus.Generating, frac * 100, null);
+                    // Held below 100 while working: after the sampler come VAE
+                    // decode and the video encode, minutes on a video graph,
+                    // and a bar parked at 100% for that long reads as hung.
+                    if (ours) Raise(promptId, shot.Id, ShotStatus.Generating, Math.Min(99, frac * 100), null);
                 }
                 else if (e.Type == "executing" && e.PromptId == promptId)
                 {
@@ -1117,6 +1166,8 @@ public sealed class GenerationService
         {
             if (m is not JsonArray pair || pair.Count < 2) continue;
             var kind = pair[0]?.GetValue<string>();
+            if (kind == "execution_interrupted")
+                return "งานถูกหยุดจากนอกสตูดิโอ (เช่นกดหยุดในหน้า ComfyUI เอง)";
             if (kind != "execution_error") continue;
             var details = pair[1] as JsonObject;
             var ex = details?["exception_message"]?.GetValue<string>();
@@ -1138,16 +1189,17 @@ public sealed class GenerationService
             _ui.BeginInvoke(new Action(() => ProgressChanged?.Invoke(this, args)));
     }
 
-    private void WriteJobRow(string shotId, string promptId, string status)
+    private void WriteJobRow(string shotId, string promptId, string status, string provider)
     {
         try
         {
             using var c = _ctx.Db.Open();
+            // The provider column said 'comfyui' for every route.
             c.Execute("""
                 INSERT INTO generation_jobs (id, shot_id, provider, status, submitted_at)
-                VALUES ($id, $shotId, 'comfyui', $status, $now)
+                VALUES ($id, $shotId, $provider, $status, $now)
                 """,
-                new { id = promptId, shotId, status, now = DateTimeOffset.UtcNow.ToUnixTimeSeconds() });
+                new { id = promptId, shotId, provider, status, now = DateTimeOffset.UtcNow.ToUnixTimeSeconds() });
         }
         catch (Exception ex)
         {
@@ -1178,10 +1230,12 @@ public sealed class GenerationService
         }
     }
 
-    private void WriteClipRow(string shotId, string filePath, string kind)
+    /// <summary>Insert a clips row and return its id (null when the write failed).</summary>
+    private string? WriteClipRow(string shotId, string filePath)
     {
         try
         {
+            var id = Guid.NewGuid().ToString("N");
             using var c = _ctx.Db.Open();
             c.Execute("""
                 INSERT INTO clips (id, shot_id, duration_ms, file_path, created_at)
@@ -1189,16 +1243,58 @@ public sealed class GenerationService
                 """,
                 new
                 {
-                    id = Guid.NewGuid().ToString("N"),
+                    id,
                     shotId,
                     path = filePath,
                     now = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 });
+            return id;
         }
         catch (Exception ex)
         {
             ActivityLog.Error("generation", $"WriteClipRow {System.IO.Path.GetFileName(filePath)}", ex);
+            return null;
         }
+    }
+
+    /// <summary>Fetch one ComfyUI output with two retries, via a .part file.</summary>
+    private static async Task DownloadComfyOutputAsync(ComfyUiClient client, OutputFile output, string dest, CancellationToken ct)
+    {
+        var part = dest + ".part";
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await client.DownloadFileAsync(output.Filename, output.Subfolder, output.Type, part, ct);
+                File.Move(part, dest, overwrite: true);
+                return;
+            }
+            catch (Exception) when (!ct.IsCancellationRequested && attempt < 3)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(3 * attempt), ct);
+            }
+            finally
+            {
+                try { if (File.Exists(part)) File.Delete(part); } catch { }
+            }
+        }
+    }
+
+    /// <summary>A width × height near <paramref name="pixels"/> in the shot's
+    /// aspect, on the 16-pixel grid video latents need.</summary>
+    private static (int W, int H) FitAspect(int pixels, AspectRatio aspect)
+    {
+        var ratio = aspect switch
+        {
+            AspectRatio.Wide => 16.0 / 9.0,
+            AspectRatio.Vertical => 9.0 / 16.0,
+            AspectRatio.Cinema => 1280.0 / 544.0,
+            _ => 1.0,
+        };
+        var h = Math.Sqrt(pixels / ratio);
+        var w = h * ratio;
+        static int Snap(double v) => Math.Max(16, (int)Math.Round(v / 16.0) * 16);
+        return (Snap(w), Snap(h));
     }
 
     private static string SafeFilename(string raw)

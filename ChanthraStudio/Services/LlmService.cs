@@ -48,9 +48,21 @@ public sealed class LlmService
             Temperature = temperature,
             MaxTokens = maxTokens,
         };
-        var result = await provider.CompleteAsync(req, ct);
+        LlmResult result;
+        try
+        {
+            result = await provider.CompleteAsync(req, ct);
+        }
+        catch (InvalidOperationException ex) when (Explain(ex.Message, provider.DisplayName) is { } thai)
+        {
+            // The vendors' own words ("invalid x-api-key", "Missing
+            // Authentication header") say what broke, not what to do.
+            throw new InvalidOperationException(thai, ex);
+        }
 
         // Record usage. Best-effort — never break the call on a tracker error.
+        // Recorded before the checks below: the vendor bills a cut-off or
+        // empty answer all the same.
         try
         {
             _ctx.Tracker.RecordTokens(
@@ -60,7 +72,33 @@ public sealed class LlmService
         }
         catch { }
 
+        // A cut-off answer used to be returned as if complete: the storyboard
+        // parser then failed on half a JSON document with a raw exception.
+        if (result.Truncated)
+            throw new InvalidOperationException(
+                $"คำตอบจาก {provider.DisplayName} ยาวเกินเพดานเลยถูกตัดกลางคัน — ลดจำนวนคลิป/ความยาวแล้วลองใหม่ หรือเลือกโมเดลอื่นในหน้า Settings");
+        if (string.IsNullOrWhiteSpace(result.Text))
+            throw new InvalidOperationException(
+                $"{provider.DisplayName} ตอบกลับมาว่างเปล่า — ลองอีกครั้ง หรือเลือกโมเดลอื่นในหน้า Settings");
+
         return result.Text;
+    }
+
+    /// <summary>A Thai, actionable line for the HTTP failures users can fix
+    /// themselves; null leaves the vendor's message as it is.</summary>
+    private static string? Explain(string message, string provider)
+    {
+        if (message.Contains("(401)") || message.Contains("(403)")
+            || message.Contains("API key not valid", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Incorrect API key", StringComparison.OrdinalIgnoreCase))
+            return $"API key ของ {provider} ไม่ถูกต้องหรือหมดอายุ — วางคีย์ใหม่ในหน้า Settings แล้วกด Probe";
+        if (message.Contains("(402)"))
+            return $"เครดิตใน {provider} ไม่พอ — เติมเงินในบัญชี หรือเลือกโมเดลฟรี/ถูกกว่าในหน้า Settings";
+        if (message.Contains("(429)"))
+            return $"{provider} ปฏิเสธเพราะเรียกถี่เกินไปหรือโควตาหมด — รอสักครู่แล้วลองใหม่";
+        if (message.Contains("(404)"))
+            return $"{provider} ไม่รู้จักโมเดลที่เลือก — เลือกรุ่นอื่นในหน้า Settings";
+        return null;
     }
 
     // -------- Domain templates -------------------------------------------
@@ -94,7 +132,7 @@ public sealed class LlmService
         var prompt = string.IsNullOrWhiteSpace(brief)
             ? "Write a fortune-telling voice-over for the audience visiting today."
             : $"Brief: {brief}\n\nWrite the voice-over now.";
-        return CompleteAsync(system, prompt, temperature: 0.85, maxTokens: 1024, ct);
+        return CompleteAsync(system, prompt, temperature: 0.85, maxTokens: 2048, ct);
     }
 
     /// <summary>
@@ -120,7 +158,7 @@ public sealed class LlmService
 
             Return only the expanded prompt, one paragraph, no labels.
             """;
-        return CompleteAsync(system, draft, temperature: 0.8, maxTokens: 600, ct);
+        return CompleteAsync(system, draft, temperature: 0.8, maxTokens: 1024, ct);
     }
 
     /// <summary>
@@ -180,7 +218,7 @@ public sealed class LlmService
             $"Number of clips: {Math.Clamp(clipCount, 1, 8)}, each about {clipDurationSec:0} seconds\n" +
             $"Voice direction: {voiceNote}\n\n" +
             "Write the storyboard JSON now.";
-        return CompleteAsync(system, user, temperature: 0.85, maxTokens: 3200, ct);
+        return CompleteAsync(system, user, temperature: 0.85, maxTokens: 8000, ct);
     }
 
     /// <summary>
@@ -231,6 +269,6 @@ public sealed class LlmService
         var user = string.IsNullOrWhiteSpace(description)
             ? "A cinematic SDXL portrait, soft light."
             : description;
-        return CompleteAsync(system, user, temperature: 0.3, maxTokens: 1800, ct);
+        return CompleteAsync(system, user, temperature: 0.3, maxTokens: 4000, ct);
     }
 }

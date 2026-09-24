@@ -22,14 +22,10 @@
         <KeyBinding Key="Y" Modifiers="Control" Command="{Binding RedoCommand}" />
         <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveProjectCommand}" />
         <KeyBinding Key="O" Modifiers="Control" Command="{Binding LoadProjectCommand}" />
-        <!--  NLE-style hotkeys. Mirrors Premiere/Resolve where possible.  -->
-        <KeyBinding Key="Delete" Command="{Binding DeleteSelectedSlotCommand}" />
-        <KeyBinding Key="Back" Command="{Binding DeleteSelectedSlotCommand}" />
-        <KeyBinding Key="Left" Command="{Binding NavSelectedLeftCommand}" />
-        <KeyBinding Key="Right" Command="{Binding NavSelectedRightCommand}" />
-        <KeyBinding Key="J" Command="{Binding NudgePlayheadBackCommand}" />
-        <KeyBinding Key="L" Command="{Binding NudgePlayheadForwardCommand}" />
-        <KeyBinding Key="C" Command="{Binding RazorAtPlayheadCommand}" />
+        <!--  The single-key NLE hotkeys (Delete, arrows, J/L/C) live in
+              Editor_PreviewKeyDown: as KeyBindings they fired while typing,
+              so on a Thai keyboard "แสง" in a title razored a slot (แ = C)
+              and moved the playhead (ส = L).  -->
     </UserControl.InputBindings>
 
     <Grid>
@@ -196,7 +192,7 @@
                                                 <Grid>
                                                     <Border Background="{StaticResource BrushSurface03}" />
                                                     <Image
-                                                        Source="{Binding FilePath, Converter={StaticResource ClipPathToImage}}"
+                                                        Source="{Binding ThumbPath, Converter={StaticResource ClipPathToImage}}"
                                                         Stretch="UniformToFill" />
                                                 </Grid>
                                             </Border>
@@ -440,7 +436,7 @@
                                                     <Border Width="120" Height="68" CornerRadius="4" ClipToBounds="True">
                                                         <Grid>
                                                             <Border Background="{StaticResource BrushSurface03}" />
-                                                            <Image Source="{Binding FilePath, Converter={StaticResource ClipPathToImage}}" Stretch="UniformToFill" />
+                                                            <Image Source="{Binding Clip.ThumbPath, Converter={StaticResource ClipPathToImage}}" Stretch="UniformToFill" />
                                                             <Border Margin="3" Padding="4,1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="{StaticResource BrushBlackOverlay55}" CornerRadius="3">
                                                                 <TextBlock Style="{StaticResource TextMonoGold}" FontSize="11" Text="{Binding DurationSec, StringFormat={}{0:F1}s}" />
                                                             </Border>
@@ -894,7 +890,7 @@
                                                     </Border.InputBindings>
                                                     <Grid>
                                                         <Border Height="48" CornerRadius="4,4,0,0" ClipToBounds="True">
-                                                            <Image Source="{Binding FilePath, Converter={StaticResource ClipPathToImage}}" Stretch="UniformToFill" />
+                                                            <Image Source="{Binding Clip.ThumbPath, Converter={StaticResource ClipPathToImage}}" Stretch="UniformToFill" />
                                                         </Border>
                                                         <Border VerticalAlignment="Bottom" Padding="4,2" Background="{StaticResource BrushBlackOverlay65}" CornerRadius="0,0,4,4">
                                                             <TextBlock Style="{StaticResource TextMonoGold}" FontSize="11" Text="{Binding StartSec, StringFormat={}@{0:F1}s}" />
@@ -1126,8 +1122,7 @@
                         <Run Foreground="{StaticResource BrushGoldHi}" Text="{Binding TotalDurationLabel, Mode=OneWay}" />
                     </TextBlock>
                 </StackPanel>
-                <Button Grid.Column="1" Padding="26,8" Command="{Binding RenderCommand}" Content="✦  Render film" Style="{StaticResource ButtonPillGold}"
-                        IsEnabled="{Binding IsRendering, Converter={StaticResource InvBoolToVis}, FallbackValue=True}" />
+                <Button Grid.Column="1" Padding="26,8" Command="{Binding RenderCommand}" Content="✦  Render film" Style="{StaticResource ButtonPillGold}" />
             </Grid>
         </Border>
     </Grid>

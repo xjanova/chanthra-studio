@@ -8,8 +8,14 @@ namespace ChanthraStudio.ViewModels;
 
 public sealed class StatusBarViewModel : ObservableObject
 {
-    private string _connectionLabel = "Connected";
+    // Was a fixed "Connected" with a pulsing green dot, whatever the state of
+    // anything. Now it is the studio's own ComfyUI engine, as it really is.
+    private string _connectionLabel = "ComfyUI · —";
     public string ConnectionLabel { get => _connectionLabel; set => SetProperty(ref _connectionLabel, value); }
+
+    private bool _connectionOk;
+    /// <summary>Drives the dot: lit only while the engine answers.</summary>
+    public bool ConnectionOk { get => _connectionOk; set => SetProperty(ref _connectionOk, value); }
 
     private string _gpuLabel = "GPU detecting...";
     public string GpuLabel { get => _gpuLabel; set => SetProperty(ref _gpuLabel, value); }
@@ -167,6 +173,33 @@ public sealed class StatusBarViewModel : ObservableObject
         {
             telemetry.SnapshotReceived += OnGpuSnapshot;
         }
+
+        var engine = (System.Windows.Application.Current as App)?.Studio.ComfyEngine;
+        if (engine is not null)
+        {
+            engine.Changed += () =>
+            {
+                var app = System.Windows.Application.Current;
+                if (app is null) return;
+                app.Dispatcher.BeginInvoke(() => ApplyEngine(engine));
+            };
+            ApplyEngine(engine);
+        }
+    }
+
+    private void ApplyEngine(Services.LocalComfy.ComfyEngine engine)
+    {
+        ConnectionOk = engine.State == Services.LocalComfy.ComfyEngineState.Running;
+        ConnectionLabel = engine.State switch
+        {
+            Services.LocalComfy.ComfyEngineState.Running => "ComfyUI · พร้อม",
+            Services.LocalComfy.ComfyEngineState.Starting => "ComfyUI · กำลังเปิด",
+            Services.LocalComfy.ComfyEngineState.Installing => "ComfyUI · กำลังติดตั้ง",
+            Services.LocalComfy.ComfyEngineState.Removing => "ComfyUI · กำลังลบ",
+            Services.LocalComfy.ComfyEngineState.Failed => "ComfyUI · เปิดไม่สำเร็จ",
+            Services.LocalComfy.ComfyEngineState.NotInstalled => "ComfyUI · ยังไม่ติดตั้ง",
+            _ => "ComfyUI · ปิดอยู่",
+        };
     }
 
     private void OnGpuSnapshot(GpuSnapshot s)

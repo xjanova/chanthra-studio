@@ -46,6 +46,8 @@ public partial class EditorView : UserControl
             // MainViewModel, so a plain `is null` guard never fires.
             if (DataContext is not EditorViewModel)
                 DataContext = new EditorViewModel(App.Current.Studio);
+            // Resume autosave; Unloaded pauses it.
+            (DataContext as EditorViewModel)?.StartAutosaveTimer();
 
             // Subscribe to VM.Selected changes so the MediaElement reloads its
             // source whenever the user clicks a different timeline slot.
@@ -261,7 +263,13 @@ public partial class EditorView : UserControl
     /// </summary>
     private void Editor_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.OriginalSource is TextBox) return;
+        // Keys typed into a field belong to the field — on any keyboard
+        // layout, since e.Key is the physical key.
+        if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase or PasswordBox
+            || Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or PasswordBox
+            || e.OriginalSource is ComboBox { IsEditable: true })
+            return;
+
         if (e.Key == Key.Space)
         {
             if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
@@ -269,7 +277,28 @@ public partial class EditorView : UserControl
             else
                 PreviewPlayPause_Click(this, new RoutedEventArgs());
             e.Handled = true;
+            return;
         }
+
+        if (Keyboard.Modifiers != ModifierKeys.None || DataContext is not EditorViewModel vm) return;
+
+        // Arrows stay with a focused slider or list, where they already mean something.
+        var arrowsTaken = e.OriginalSource is System.Windows.Controls.Primitives.RangeBase
+                          or System.Windows.Controls.Primitives.Selector
+                          or ListBoxItem;
+        System.Windows.Input.ICommand? command = e.Key switch
+        {
+            Key.Delete or Key.Back => vm.DeleteSelectedSlotCommand,
+            Key.Left when !arrowsTaken => vm.NavSelectedLeftCommand,
+            Key.Right when !arrowsTaken => vm.NavSelectedRightCommand,
+            Key.J => vm.NudgePlayheadBackCommand,
+            Key.L => vm.NudgePlayheadForwardCommand,
+            Key.C => vm.RazorAtPlayheadCommand,
+            _ => null,
+        };
+        if (command is null || !command.CanExecute(null)) return;
+        command.Execute(null);
+        e.Handled = true;
     }
 
     // --------- T36: Timeline play mode ---------

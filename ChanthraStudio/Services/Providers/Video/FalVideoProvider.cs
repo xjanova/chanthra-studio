@@ -39,6 +39,7 @@ public sealed class FalVideoProvider : IVideoProvider
     /// <summary>Default video model slug. ltx-video is fast + cheap and
     /// accepts plain text prompts, making it a sensible "click run" default.</summary>
     public const string DefaultModel = "fal-ai/ltx-video";
+    public string? DefaultModelId => DefaultModel;
 
     private const string QueueBase = "https://queue.fal.run";
     private static readonly HttpClient _http = new()

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json.Nodes;
 
@@ -175,7 +176,7 @@ public sealed class Workflow
 
     public Workflow SetFilenamePrefix(string prefix)
     {
-        var inputs = InputsOf("SaveImage");
+        var inputs = InputsOf("SaveImage") ?? InputsOf("SaveVideo");
         if (inputs is not null) inputs["filename_prefix"] = prefix;
         return this;
     }
@@ -269,18 +270,87 @@ public sealed class Workflow
     /// the auto-checkpoint-pick logic for these.</summary>
     public bool UsesUnetLoader() => InputsOf("UNETLoader") is not null;
 
-    /// <summary>True if the workflow saves animated/video output (so the
-    /// caller knows to expect a .webp/.mp4/.gif rather than a still .png).</summary>
+    /// <summary>Output nodes that write moving pictures.</summary>
+    private static readonly HashSet<string> VideoSavers = new(StringComparer.Ordinal)
+    {
+        "SaveVideo", "CreateVideo", "SaveWEBM", "SaveAnimatedWEBP", "SaveAnimatedPNG", "VHS_VideoCombine",
+    };
+
+    /// <summary>Savers whose output the rest of the studio cannot play: an
+    /// animated .webp or .png is a still to WPF, to MediaElement and to ffmpeg's
+    /// decoder alike, so a finished 81-frame render arrived as one frame.</summary>
+    private static readonly HashSet<string> AnimatedImageSavers = new(StringComparer.Ordinal)
+    {
+        "SaveAnimatedWEBP", "SaveAnimatedPNG",
+    };
+
+    /// <summary>True if the workflow saves animated/video output rather than
+    /// a still — which changes how it is sized and how long it may run.</summary>
     public bool ProducesVideo()
     {
         foreach (var (_, node) in Nodes)
         {
             if (node is not JsonObject obj) continue;
             var ct = obj["class_type"]?.GetValue<string>();
-            if (ct == "SaveAnimatedWEBP" || ct == "VHS_VideoCombine" || ct == "SaveAnimatedPNG")
-                return true;
+            if (ct is not null && VideoSavers.Contains(ct)) return true;
         }
         return false;
+    }
+
+    /// <summary>True when an output node writes an animated image the studio
+    /// cannot play (see <see cref="NormalizeVideoOutputs"/>).</summary>
+    public bool HasAnimatedImageSaver()
+    {
+        foreach (var (_, node) in Nodes)
+            if (node is JsonObject obj && obj["class_type"]?.GetValue<string>() is { } ct
+                && AnimatedImageSavers.Contains(ct))
+                return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Rewrite animated-image savers into ComfyUI's core <c>CreateVideo</c> →
+    /// <c>SaveVideo</c> pair, so the render lands as an H.264 .mp4 that the
+    /// Library, the editor preview and the ffmpeg renderer can all play.
+    /// Only call this when the server has both nodes.
+    /// </summary>
+    /// <returns>How many savers were rewritten.</returns>
+    public int NormalizeVideoOutputs()
+    {
+        var nextId = 1 + Nodes.Select(kv => int.TryParse(kv.Key, System.Globalization.NumberStyles.Integer,
+                                                          System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0)
+                              .DefaultIfEmpty(0).Max();
+        var rewritten = 0;
+        foreach (var (id, node) in Nodes.ToList())
+        {
+            if (node is not JsonObject obj) continue;
+            if (obj["class_type"]?.GetValue<string>() is not { } ct || !AnimatedImageSavers.Contains(ct)) continue;
+            if (obj["inputs"] is not JsonObject inputs || inputs["images"] is not JsonArray images) continue;
+
+            var fps = inputs["fps"] is JsonValue f && f.TryGetValue<double>(out var fv) && fv > 0 ? fv : 16.0;
+            var prefix = inputs["filename_prefix"]?.GetValue<string>() ?? "ChanthraStudio";
+
+            var createId = (nextId++).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            Nodes[createId] = new JsonObject
+            {
+                ["class_type"] = "CreateVideo",
+                ["inputs"] = new JsonObject { ["images"] = images.DeepClone(), ["fps"] = fps },
+            };
+            // The saver keeps its id so anything reporting on it still lines up.
+            Nodes[id] = new JsonObject
+            {
+                ["class_type"] = "SaveVideo",
+                ["inputs"] = new JsonObject
+                {
+                    ["video"] = new JsonArray(createId, 0),
+                    ["filename_prefix"] = prefix,
+                    ["format"] = "mp4",
+                    ["codec"] = "auto",
+                },
+            };
+            rewritten++;
+        }
+        return rewritten;
     }
 
     /// <summary>

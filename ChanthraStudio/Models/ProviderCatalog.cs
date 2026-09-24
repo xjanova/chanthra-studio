@@ -57,6 +57,39 @@ public static class ProviderCatalog
     public static ProviderInfo? FindById(string id) =>
         All.FirstOrDefault(p => p.Id == id);
 
+    /// <summary>
+    /// Prices for ids that left the chip lists but can still be a user's saved
+    /// model — or still answer for accounts that used them (Gemini 2.5), or
+    /// redirect to a successor (grok-3 → grok-4.3, billed at 4.3's rate).
+    /// Pricing only: they are not offered as choices. Without these, every
+    /// call on such a model was recorded at $0.
+    /// </summary>
+    public static IReadOnlyDictionary<string, IReadOnlyList<ModelOption>> RetiredTokenModels { get; } =
+        new Dictionary<string, IReadOnlyList<ModelOption>>
+        {
+            ["anthropic"] = new[]
+            {
+                new ModelOption("claude-opus-4-6", "Claude Opus 4.6", "legacy", InputUsdPer1M: 5, OutputUsdPer1M: 25),
+                new ModelOption("claude-sonnet-4-5", "Claude Sonnet 4.5", "legacy", InputUsdPer1M: 3, OutputUsdPer1M: 15),
+                new ModelOption("claude-opus-4-0", "Claude Opus 4.0", "legacy", InputUsdPer1M: 15, OutputUsdPer1M: 75),
+                new ModelOption("claude-sonnet-4-0", "Claude Sonnet 4.0", "legacy", InputUsdPer1M: 3, OutputUsdPer1M: 15),
+            },
+            ["gemini"] = new[]
+            {
+                new ModelOption("gemini-2.5-pro", "Gemini 2.5 Pro", "legacy", InputUsdPer1M: 1.25, OutputUsdPer1M: 10),
+                new ModelOption("gemini-2.5-flash", "Gemini 2.5 Flash", "legacy", InputUsdPer1M: 0.30, OutputUsdPer1M: 2.50),
+                new ModelOption("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite", "legacy", InputUsdPer1M: 0.10, OutputUsdPer1M: 0.40),
+                new ModelOption("gemini-2.0-flash-001", "Gemini 2.0 Flash", "legacy", InputUsdPer1M: 0.10, OutputUsdPer1M: 0.40),
+            },
+            ["grok"] = new[]
+            {
+                new ModelOption("grok-3", "Grok 3 → 4.3", "legacy", InputUsdPer1M: 1.25, OutputUsdPer1M: 2.50),
+                new ModelOption("grok-3-mini", "Grok 3 Mini → 4.3", "legacy", InputUsdPer1M: 1.25, OutputUsdPer1M: 2.50),
+                new ModelOption("grok-4", "Grok 4 → 4.3", "legacy", InputUsdPer1M: 1.25, OutputUsdPer1M: 2.50),
+                new ModelOption("grok-4-fast", "Grok 4 Fast → 4.3", "legacy", InputUsdPer1M: 1.25, OutputUsdPer1M: 2.50),
+            },
+        };
+
     public static IReadOnlyList<ProviderInfo> All { get; } = new[]
     {
         // ───────────────────── LLM providers ─────────────────────
@@ -78,22 +111,25 @@ public static class ProviderCatalog
                 new ModelOption("gpt-5.5", "GPT-5.5", "best", "$5 / $30 per 1M tok",
                     "Flagship · เก่งสุด สำหรับงาน reasoning + coding ซับซ้อน",
                     InputUsdPer1M: 5, OutputUsdPer1M: 30),
-                new ModelOption("gpt-5.5-pro", "GPT-5.5 Pro", "best", null,
-                    "ชั้นพรีเมียม ตอบแม่นกว่า · ราคาต่อรอง",
-                    InputUsdPer1M: 15, OutputUsdPer1M: 75),
+                new ModelOption("gpt-5.5-pro", "GPT-5.5 Pro", "best", "$30 / $180",
+                    "ชั้นพรีเมียม ตอบแม่นกว่า · แพงมาก",
+                    InputUsdPer1M: 30, OutputUsdPer1M: 180),
                 new ModelOption("gpt-5.4", "GPT-5.4", null, "$2.50 / $15",
                     "Frontier · งานทั่วไประดับมือโปร",
                     InputUsdPer1M: 2.50, OutputUsdPer1M: 15),
-                new ModelOption("gpt-5.4-mini", "GPT-5.4 mini", "fast", null,
+                new ModelOption("gpt-5.4-mini", "GPT-5.4 mini", "fast", "$0.75 / $4.50",
                     "เร็วกว่า ถูกกว่า สำหรับ chat ทั่วไป",
-                    InputUsdPer1M: 0.40, OutputUsdPer1M: 1.60),
+                    InputUsdPer1M: 0.75, OutputUsdPer1M: 4.50),
                 new ModelOption("gpt-5.4-nano", "GPT-5.4 nano", "cheap", "$0.20 / $1.25",
-                    "ราคาประหยัดสุด · งาน batch · classify",
+                    "ราคาประหยัด · งาน batch · classify",
                     InputUsdPer1M: 0.20, OutputUsdPer1M: 1.25),
-                new ModelOption("gpt-5", "GPT-5", "legacy", null, "รุ่นก่อน · ยังใช้ได้",
-                    InputUsdPer1M: 5, OutputUsdPer1M: 15),
-                new ModelOption("gpt-5-mini", "GPT-5 mini", "legacy", null, null,
-                    InputUsdPer1M: 0.30, OutputUsdPer1M: 1.20),
+                new ModelOption("gpt-4o-mini", "GPT-4o mini", "cheap", "$0.15 / $0.60",
+                    "ค่าเริ่มต้น · ถูกที่สุด · ตอบเร็ว",
+                    InputUsdPer1M: 0.15, OutputUsdPer1M: 0.60),
+                new ModelOption("gpt-5", "GPT-5", "legacy", "$1.25 / $10", "รุ่นก่อน · ยังใช้ได้",
+                    InputUsdPer1M: 1.25, OutputUsdPer1M: 10),
+                new ModelOption("gpt-5-mini", "GPT-5 mini", "legacy", "$0.25 / $2", null,
+                    InputUsdPer1M: 0.25, OutputUsdPer1M: 2),
             },
             FreeTierNote: "ไม่มี free tier · ต้องเติมเครดิตขั้นต่ำ $5"),
 
@@ -111,25 +147,24 @@ public static class ProviderCatalog
             },
             Models: new[]
             {
-                new ModelOption("claude-opus-4-7", "Claude Opus 4.7", "best", "$15 / $75 per 1M tok",
-                    "Flagship · best at agentic coding + image up to 2576px",
-                    InputUsdPer1M: 15, OutputUsdPer1M: 75),
-                new ModelOption("claude-sonnet-4-6", "Claude Sonnet 4.6", "best", "$3 / $15",
-                    "94% computer-use accuracy · เกือบเทียบ Opus 4 รุ่นก่อน",
-                    InputUsdPer1M: 3, OutputUsdPer1M: 15),
-                new ModelOption("claude-opus-4-6", "Claude Opus 4.6", null, "$15 / $75", null,
-                    InputUsdPer1M: 15, OutputUsdPer1M: 75),
-                new ModelOption("claude-sonnet-4-5", "Claude Sonnet 4.5", null, "$3 / $15", null,
+                new ModelOption("claude-opus-5", "Claude Opus 5", "best", "$5 / $25 per 1M tok",
+                    "ค่าเริ่มต้น · เก่งที่สุดในราคา Opus · คิดก่อนตอบอัตโนมัติ",
+                    InputUsdPer1M: 5, OutputUsdPer1M: 25),
+                new ModelOption("claude-sonnet-5", "Claude Sonnet 5", "fast", "$2 / $10",
+                    "เร็วและคุ้ม สำหรับงานเขียนทั่วไป",
+                    InputUsdPer1M: 2, OutputUsdPer1M: 10),
+                new ModelOption("claude-fable-5-1", "Claude Fable 5.1", "best", "$10 / $50",
+                    "รุ่นที่เก่งที่สุด · งานยาวและซับซ้อน",
+                    InputUsdPer1M: 10, OutputUsdPer1M: 50),
+                new ModelOption("claude-opus-4-8", "Claude Opus 4.8", null, "$5 / $25", null,
+                    InputUsdPer1M: 5, OutputUsdPer1M: 25),
+                new ModelOption("claude-opus-4-7", "Claude Opus 4.7", null, "$5 / $25", null,
+                    InputUsdPer1M: 5, OutputUsdPer1M: 25),
+                new ModelOption("claude-sonnet-4-6", "Claude Sonnet 4.6", null, "$3 / $15", null,
                     InputUsdPer1M: 3, OutputUsdPer1M: 15),
                 new ModelOption("claude-haiku-4-5", "Claude Haiku 4.5", "cheap", "$1 / $5",
-                    "เร็วและถูก สำหรับ batch/classify",
+                    "เร็วและถูก สำหรับงานสั้น",
                     InputUsdPer1M: 1, OutputUsdPer1M: 5),
-                new ModelOption("claude-opus-4-0", "Claude Opus 4.0", "legacy", null,
-                    "deprecate มิ.ย. 2026 — เปลี่ยนไป 4.6/4.7",
-                    InputUsdPer1M: 15, OutputUsdPer1M: 75),
-                new ModelOption("claude-sonnet-4-0", "Claude Sonnet 4.0", "legacy", null,
-                    "deprecate มิ.ย. 2026",
-                    InputUsdPer1M: 3, OutputUsdPer1M: 15),
             },
             FreeTierNote: "$5 เครดิตทดลอง · พอ chat ราว 200-500 ข้อ"),
 
@@ -147,25 +182,17 @@ public static class ProviderCatalog
             },
             Models: new[]
             {
-                new ModelOption("gemini-3.1-pro", "Gemini 3.1 Pro", "best", "$1.25-15 / 1M tok",
-                    "Reasoning-first · 1M context · adaptive thinking",
-                    InputUsdPer1M: 1.25, OutputUsdPer1M: 15),
-                new ModelOption("gemini-3-flash", "Gemini 3 Flash", "fast",
-                    null, "Balanced speed + capability",
-                    InputUsdPer1M: 0.30, OutputUsdPer1M: 2.50),
-                new ModelOption("gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite", "cheap",
-                    "$0.10-3 / 1M", "ราคาประหยัดสุด",
-                    InputUsdPer1M: 0.10, OutputUsdPer1M: 3),
-                new ModelOption("gemini-2.5-pro", "Gemini 2.5 Pro", null, "$1.25-15",
-                    "1M context · adaptive thinking",
-                    InputUsdPer1M: 1.25, OutputUsdPer1M: 15),
-                new ModelOption("gemini-2.5-flash", "Gemini 2.5 Flash", "fast", null, null,
-                    InputUsdPer1M: 0.30, OutputUsdPer1M: 2.50),
-                new ModelOption("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite", "cheap", null, null,
-                    InputUsdPer1M: 0.10, OutputUsdPer1M: 0.40),
-                new ModelOption("gemini-2.0-flash-001", "Gemini 2.0 Flash", "legacy",
-                    null, "shutdown 1 มิ.ย. 2026",
-                    InputUsdPer1M: 0.10, OutputUsdPer1M: 0.40),
+                new ModelOption("gemini-3.8-flash", "Gemini 3.8 Flash", "best", "$0.75 / $3.75 per 1M tok",
+                    "ค่าเริ่มต้น · รุ่นเสถียรล่าสุด · 1M context",
+                    InputUsdPer1M: 0.75, OutputUsdPer1M: 3.75),
+                new ModelOption("gemini-3.5-flash", "Gemini 3.5 Flash", null, "$1.50 / $9", null,
+                    InputUsdPer1M: 1.5, OutputUsdPer1M: 9),
+                new ModelOption("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite", "cheap", "$0.30 / $2.50",
+                    "งานปริมาณมาก ราคาประหยัด",
+                    InputUsdPer1M: 0.30, OutputUsdPer1M: 2.5),
+                new ModelOption("gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite", "cheap", "$0.25 / $1.50",
+                    "ถูกที่สุด",
+                    InputUsdPer1M: 0.25, OutputUsdPer1M: 1.5),
             },
             FreeTierNote: "Free tier · 15 RPM, 1M tokens/day, 1500 requests/day"),
 
@@ -185,17 +212,22 @@ public static class ProviderCatalog
             {
                 new ModelOption("openrouter/free", "Free auto-router", "free", null,
                     "เลือก free model ที่เหมาะสมที่สุดให้อัตโนมัติ"),
-                new ModelOption("qwen/qwen-3.6-plus", "Qwen 3.6 Plus", "free", null,
-                    "1M context · always-on CoT · #2 บน OpenRouter"),
-                new ModelOption("qwen/qwen3-coder-480b", "Qwen3 Coder 480B", "free", null,
-                    "free coder ที่แรงสุด · 262K context"),
-                new ModelOption("step/step-3.5-flash", "Step 3.5 Flash", "free", null,
-                    "262K context · #3 ranking"),
-                new ModelOption("anthropic/claude-opus-4-7", "Claude Opus 4.7 (passthrough)", "best"),
-                new ModelOption("openai/gpt-5.5", "GPT-5.5 (passthrough)", "best"),
-                new ModelOption("google/gemini-3.1-pro", "Gemini 3.1 Pro (passthrough)", "best"),
-                new ModelOption("deepseek/deepseek-v3", "DeepSeek V3", "free"),
-                new ModelOption("meta-llama/llama-3.3-70b-instruct:free", "Llama 3.3 70B (free)", "free"),
+                new ModelOption("qwen/qwen3.8-27b:free", "Qwen 3.8 27B (free)", "free", null,
+                    "262K context"),
+                new ModelOption("nvidia/nemotron-3-super-120b-a12b:free", "Nemotron 3 Super (free)", "free", null,
+                    "262K context"),
+                new ModelOption("deepseek/deepseek-v4-flash", "DeepSeek V4 Flash", "cheap", "$0.09 / $0.18",
+                    null, InputUsdPer1M: 0.089, OutputUsdPer1M: 0.177),
+                new ModelOption("stepfun/step-3.5-flash", "Step 3.5 Flash", "cheap", "$0.10 / $0.30",
+                    null, InputUsdPer1M: 0.1, OutputUsdPer1M: 0.3),
+                new ModelOption("anthropic/claude-opus-5", "Claude Opus 5 (passthrough)", "best", "$5 / $25",
+                    null, InputUsdPer1M: 5, OutputUsdPer1M: 25),
+                new ModelOption("anthropic/claude-sonnet-5", "Claude Sonnet 5 (passthrough)", null, "$2 / $10",
+                    null, InputUsdPer1M: 2, OutputUsdPer1M: 10),
+                new ModelOption("openai/gpt-5.5", "GPT-5.5 (passthrough)", "best", "$5 / $30",
+                    null, InputUsdPer1M: 5, OutputUsdPer1M: 30),
+                new ModelOption("google/gemini-3.8-flash", "Gemini 3.8 Flash (passthrough)", "fast", "$0.75 / $3.75",
+                    null, InputUsdPer1M: 0.75, OutputUsdPer1M: 3.75),
             },
             FreeTierNote: "Free models · 20 req/min, 50-200 req/day"),
 
@@ -213,18 +245,17 @@ public static class ProviderCatalog
             },
             Models: new[]
             {
-                new ModelOption("grok-4", "Grok 4", "best", "$3 / $15 per 1M tok",
-                    "Flagship · reasoning ดี · 256K context",
-                    InputUsdPer1M: 3, OutputUsdPer1M: 15),
-                new ModelOption("grok-4-fast", "Grok 4 Fast", "fast", null,
-                    "เร็ว ถูก · context ยาวมาก",
-                    InputUsdPer1M: 0.20, OutputUsdPer1M: 0.50),
-                new ModelOption("grok-3", "Grok 3", null, "$3 / $15",
-                    "default · เสถียร ใช้ได้ทุกบัญชี",
-                    InputUsdPer1M: 3, OutputUsdPer1M: 15),
-                new ModelOption("grok-3-mini", "Grok 3 Mini", "cheap", null,
-                    "เล็ก เร็ว ราคาประหยัด",
-                    InputUsdPer1M: 0.30, OutputUsdPer1M: 0.50),
+                new ModelOption("grok-4.3", "Grok 4.3", "cheap", "$1.25 / $2.50 per 1M tok",
+                    "ค่าเริ่มต้น · รุ่นที่ xAI แนะนำสำหรับงานทั่วไป · 1M context",
+                    InputUsdPer1M: 1.25, OutputUsdPer1M: 2.50),
+                new ModelOption("grok-4.7", "Grok 4.7", "best", "$2 / $6",
+                    "รุ่นใหม่ล่าสุด · เก่งที่สุด",
+                    InputUsdPer1M: 2, OutputUsdPer1M: 6),
+                new ModelOption("grok-4.6", "Grok 4.6", null, "$2 / $6", null,
+                    InputUsdPer1M: 2, OutputUsdPer1M: 6),
+                new ModelOption("grok-4.20-0309-non-reasoning", "Grok 4.20 (non-reasoning)", "fast", "$1.25 / $2.50",
+                    "ตอบทันทีไม่ต้องคิดก่อน · 2M context",
+                    InputUsdPer1M: 1.25, OutputUsdPer1M: 2.50),
             },
             FreeTierNote: "ไม่มี free tier ถาวร · ต้องเติมเครดิต"),
 
@@ -269,19 +300,19 @@ public static class ProviderCatalog
             Models: new[]
             {
                 new ModelOption("eleven_v3", "Eleven v3", "best", null,
-                    "ใหม่สุด · expressive · 70+ ภาษา · alpha",
+                    "ค่าเริ่มต้น · รุ่นเดียวที่รองรับภาษาไทย · 70+ ภาษา · สูงสุด 5,000 ตัวอักษร/ครั้ง",
                     UsdPerChar: 0.30 / 1_000.0),  // ~$0.30 per 1K chars on Creator+
-                new ModelOption("eleven_multilingual_v2", "Multilingual v2", "best", null,
-                    "29 ภาษา · เสียงนุ่ม · เหมาะกับงานคุณภาพสูง",
+                new ModelOption("eleven_multilingual_v2", "Multilingual v2", null, null,
+                    "29 ภาษา · ไม่รองรับภาษาไทย",
                     UsdPerChar: 0.30 / 1_000.0),
                 new ModelOption("eleven_flash_v2_5", "Flash v2.5", "fast", null,
-                    "75ms latency · 32 ภาษา · realtime",
+                    "75ms latency · 32 ภาษา · ไม่รองรับภาษาไทย",
                     UsdPerChar: 0.15 / 1_000.0),
-                new ModelOption("eleven_turbo_v2_5", "Turbo v2.5", "fast", null,
-                    "เร็ว · ราคาประหยัด",
+                new ModelOption("eleven_turbo_v2_5", "Turbo v2.5", "legacy", null,
+                    "เลิกพัฒนาแล้ว ใช้ Flash v2.5 แทน · ไม่รองรับภาษาไทย",
                     UsdPerChar: 0.15 / 1_000.0),
             },
-            FreeTierNote: "Free tier · 10K chars/เดือน · v3 + multilingual ใช้ได้"),
+            FreeTierNote: "Free tier · 10K chars/เดือน · เสียงไทยต้องใช้ Eleven v3"),
 
         // ───────────────────── Video / image generation ─────────────────────
 

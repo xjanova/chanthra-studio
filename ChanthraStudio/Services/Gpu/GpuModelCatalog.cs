@@ -143,7 +143,10 @@ public static class GpuModelCatalog
             DisplayName = "SDXL · stills",
             Description = "SDXL base plus the 4-step Lightning checkpoint for fast drafts.",
             MinVramGb = 12,
-            Workflows = { "sdxl_text2img", "sdxl_image2image", "sdxl_lightning_4step", "sdxl_lora_stack" },
+            // sdxl_lora_stack is not listed: its LoRA files are the user's own and
+            // not in this download, so a rental for it paid for the warm-up and then
+            // failed on "references models that aren't installed".
+            Workflows = { "sdxl_text2img", "sdxl_image2image", "sdxl_lightning_4step" },
             Files =
             {
                 new() { Url = $"{HfSdxl}/sd_xl_base_1.0.safetensors", Folder = "checkpoints", FileName = "sd_xl_base_1.0.safetensors", SizeGb = 6.46 },
@@ -182,6 +185,22 @@ public static class GpuModelCatalog
                 new() { Url = $"{HfWan}/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors", Folder = "text_encoders", FileName = "umt5_xxl_fp8_e4m3fn_scaled.safetensors", SizeGb = 6.27 },
                 new() { Url = $"{HfWan}/vae/wan_2.1_vae.safetensors", Folder = "vae", FileName = "wan_2.1_vae.safetensors", SizeGb = 0.24 },
                 new() { Url = $"{HfWan}/clip_vision/clip_vision_h.safetensors", Folder = "clip_vision", FileName = "clip_vision_h.safetensors", SizeGb = 1.18 },
+            },
+        },
+        new GpuModelProfile
+        {
+            Key = "wan21_t2v_small",
+            DisplayName = "WAN 2.1 1.3B · text → video",
+            Description = "The video profile that fits an 8 GB card: 33 frames at 832×480 from a text prompt, "
+                        + "saved as .mp4. Slower and softer than the 14B models, but it renders on your own GPU for free.",
+            MinVramGb = 8,
+            Workflows = { "wan_text2video_1_3b" },
+            Files =
+            {
+                // Sizes are content-length readings (GiB), re-verified 2026-09-23.
+                new() { Url = $"{HfWan}/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors", Folder = "diffusion_models", FileName = "wan2.1_t2v_1.3B_fp16.safetensors", SizeGb = 2.64 },
+                new() { Url = $"{HfWan}/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors", Folder = "text_encoders", FileName = "umt5_xxl_fp8_e4m3fn_scaled.safetensors", SizeGb = 6.27 },
+                new() { Url = $"{HfWan}/vae/wan_2.1_vae.safetensors", Folder = "vae", FileName = "wan_2.1_vae.safetensors", SizeGb = 0.24 },
             },
         },
         new GpuModelProfile

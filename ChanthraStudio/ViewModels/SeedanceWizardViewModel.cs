@@ -51,6 +51,10 @@ public sealed class SeedMaterial : ObservableObject
     /// <summary>Filename (when attached) or a free label. Display only.</summary>
     public string Label { get => _label; set => SetProperty(ref _label, value); }
 
+    /// <summary>Full path of the attached file, if one was picked — what the
+    /// Composer needs to upload it as the reference image.</summary>
+    public string? FilePath { get; set; }
+
     private string _role = "";
     /// <summary>What this material is FOR — "first frame", "main character",
     /// "camera movement", "voice tone"… This is the half Seedance users most
@@ -159,10 +163,12 @@ public sealed class SeedanceWizardViewModel : ObservableObject
         // Commands
         SetModeCommand = new RelayCommand<string>(SetMode);
         SelectTemplateCommand = new RelayCommand<string>(SelectTemplate);
-        SelectShotCommand = new RelayCommand<string>(id => SelectFrom(ShotTypes, id));
-        SelectMoveCommand = new RelayCommand<string>(id => SelectFrom(CameraMoves, id));
-        SelectAspectCommand = new RelayCommand<string>(id => SelectFrom(Aspects, id));
-        SelectResolutionCommand = new RelayCommand<string>(id => SelectFrom(Resolutions, id));
+        // Each pick rebuilds the prompt: the chip used to light up while the
+        // copied prompt still carried the previous lens, move, frame or size.
+        SelectShotCommand = new RelayCommand<string>(id => { SelectFrom(ShotTypes, id); Recompute(); });
+        SelectMoveCommand = new RelayCommand<string>(id => { SelectFrom(CameraMoves, id); Recompute(); });
+        SelectAspectCommand = new RelayCommand<string>(id => { SelectFrom(Aspects, id); Recompute(); });
+        SelectResolutionCommand = new RelayCommand<string>(id => { SelectFrom(Resolutions, id); Recompute(); });
 
         AddMaterialCommand = new RelayCommand<string>(AddMaterial);
         RemoveMaterialCommand = new RelayCommand<SeedMaterial>(RemoveMaterial);
@@ -467,6 +473,29 @@ public sealed class SeedanceWizardViewModel : ObservableObject
     }
 
     private string ActiveLabel(ObservableCollection<PickOption> set) => set.FirstOrDefault(o => o.IsActive)?.Label ?? "";
+
+    /// <summary>The picked frame, for the Composer hand-off.</summary>
+    public string ActiveAspectId => Aspects.FirstOrDefault(o => o.IsActive)?.Id ?? "16:9";
+
+    /// <summary>The picked camera move and output size, for the Composer hand-off.</summary>
+    public string ActiveMoveId => CameraMoves.FirstOrDefault(o => o.IsActive)?.Id ?? "locked";
+    public string ActiveResolutionId => Resolutions.FirstOrDefault(o => o.IsActive)?.Id ?? "1080p";
+
+    /// <summary>
+    /// The attached image the Composer should upload as its reference: the one
+    /// whose role names the first frame or the character, else the first image.
+    /// </summary>
+    public string? PrimaryImagePath
+    {
+        get
+        {
+            var images = Materials.Where(m => m.Kind == MaterialKind.Image
+                                              && !string.IsNullOrEmpty(m.FilePath) && System.IO.File.Exists(m.FilePath)).ToList();
+            return (images.FirstOrDefault(m => m.Role.Contains("first frame", StringComparison.OrdinalIgnoreCase))
+                    ?? images.FirstOrDefault(m => m.Role.Contains("character", StringComparison.OrdinalIgnoreCase))
+                    ?? images.FirstOrDefault())?.FilePath;
+        }
+    }
 
     private string BuildPrompt()
     {

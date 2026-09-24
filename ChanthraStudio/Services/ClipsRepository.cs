@@ -82,6 +82,20 @@ public sealed class ClipsRepository
         c.Execute("DELETE FROM clips WHERE id = $id", new { id = clipId });
     }
 
+    public void SetPoster(string clipId, string posterPath)
+    {
+        using var c = _db.Open();
+        c.Execute("UPDATE clips SET poster_path = $p WHERE id = $id", new { id = clipId, p = posterPath });
+    }
+
+    /// <summary>Record a clip's real length (ms). Rows were written with 0
+    /// for every generated video, so nothing downstream knew how long it was.</summary>
+    public void SetDuration(string clipId, int durationMs)
+    {
+        using var c = _db.Open();
+        c.Execute("UPDATE clips SET duration_ms = $d WHERE id = $id", new { id = clipId, d = durationMs });
+    }
+
     private sealed class ClipRow
     {
         public string Id { get; set; } = "";

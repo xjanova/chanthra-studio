@@ -39,6 +39,7 @@ public sealed class RunwayVideoProvider : IVideoProvider
 
     /// <summary>Default model slug used when <see cref="VideoRequest.Model"/> is empty.</summary>
     public const string DefaultModel = "gen3a_turbo";
+    public string? DefaultModelId => DefaultModel;
 
     private static readonly HttpClient _http = new()
     {

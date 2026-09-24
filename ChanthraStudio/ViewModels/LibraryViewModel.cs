@@ -69,10 +69,6 @@ public sealed class LibraryViewModel : ObservableObject, IDisposable
 
     public IRelayCommand<string> SetKindFilterCommand { get; private set; } = null!;
 
-    private static readonly System.Collections.Generic.HashSet<string> _imageExts = new(System.StringComparer.OrdinalIgnoreCase)
-    { ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff" };
-    private static readonly System.Collections.Generic.HashSet<string> _videoExts = new(System.StringComparer.OrdinalIgnoreCase)
-    { ".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v" };
     public IRelayCommand<Clip> OpenClipCommand { get; }
     public IRelayCommand<Clip> RevealCommand { get; }
     public IRelayCommand<Clip> CopyPathCommand { get; }
@@ -161,6 +157,8 @@ public sealed class LibraryViewModel : ObservableObject, IDisposable
             _allClips.Add(c);
         }
         ApplyFilter();
+        // Video cards have nothing to draw until a still is pulled out of them.
+        _ctx.Posters.EnsurePosters(_allClips);
     }
 
     /// <summary>Project <see cref="_allClips"/> through the SearchBus query
@@ -196,11 +194,12 @@ public sealed class LibraryViewModel : ObservableObject, IDisposable
     private bool MatchesKind(string fileName)
     {
         if (_kindFilter == "all") return true;
-        var ext = System.IO.Path.GetExtension(fileName);
+        // One classifier for the whole app (MediaKind): the chips used their
+        // own lists, and .ts / .mpg / .wmv fell into neither.
         return _kindFilter switch
         {
-            "image" => _imageExts.Contains(ext),
-            "video" => _videoExts.Contains(ext),
+            "image" => MediaKind.IsImage(fileName),
+            "video" => MediaKind.IsVideo(fileName),
             _       => true,
         };
     }
@@ -246,21 +245,38 @@ public sealed class LibraryViewModel : ObservableObject, IDisposable
     private void DeleteClip(Clip? clip)
     {
         if (clip is null) return;
+        var ok = System.Windows.MessageBox.Show(
+            $"ลบ {clip.FileName} และไฟล์บนดิสก์?",
+            "ยืนยันการลบ",
+            System.Windows.MessageBoxButton.OKCancel,
+            System.Windows.MessageBoxImage.Warning);
+        if (ok != System.Windows.MessageBoxResult.OK) return;
         try
         {
-            // Best-effort: drop the file (if present) + the DB row. We don't
-            // confirm — the toast undo is on the wishlist for a later phase.
+            // The file goes first, and the row only if it did: a locked file
+            // (open in the editor preview, or being rendered) used to lose its
+            // row anyway and sit on disk where the app could no longer see it.
             if (File.Exists(clip.FilePath))
             {
-                try { File.Delete(clip.FilePath); } catch { /* read-only / locked, leave it */ }
+                try { File.Delete(clip.FilePath); }
+                catch (Exception ex)
+                {
+                    ShowToast($"ลบไม่ได้ — ไฟล์ถูกเปิดใช้อยู่ ({ex.Message})", "err");
+                    return;
+                }
             }
+            if (!string.IsNullOrEmpty(clip.PosterPath))
+            {
+                try { if (File.Exists(clip.PosterPath)) File.Delete(clip.PosterPath); } catch { /* cache file */ }
+            }
+            PostingService.ForgetCaption(clip.Id);
             _ctx.Clips.DeleteClip(clip.Id);
             Clips.Remove(clip);
             _allClips.Remove(clip);
             HasClips = Clips.Count > 0;
-            ShowToast($"Deleted {clip.FileName}", "ok");
+            ShowToast($"ลบ {clip.FileName} แล้ว", "ok");
         }
-        catch (Exception ex) { ShowToast($"Delete failed: {ex.Message}", "err"); }
+        catch (Exception ex) { ShowToast($"ลบไม่สำเร็จ: {ex.Message}", "err"); }
     }
 
     /// <summary>Confirm-then-delete every currently-checked clip. Files come
@@ -270,33 +286,44 @@ public sealed class LibraryViewModel : ObservableObject, IDisposable
     private void DeleteSelected()
     {
         var victims = Clips.Where(c => c.IsSelected).ToList();
-        if (victims.Count == 0) { ShowToast("No clips selected.", "warn"); return; }
+        if (victims.Count == 0) { ShowToast("ยังไม่ได้เลือกคลิป", "warn"); return; }
         var ok = System.Windows.MessageBox.Show(
-            $"Delete {victims.Count} selected clip{(victims.Count == 1 ? "" : "s")} and their files?",
-            "Confirm bulk delete",
+            $"ลบ {victims.Count} คลิปที่เลือก พร้อมไฟล์บนดิสก์?",
+            "ยืนยันการลบหลายคลิป",
             System.Windows.MessageBoxButton.OKCancel,
             System.Windows.MessageBoxImage.Warning);
         if (ok != System.Windows.MessageBoxResult.OK) return;
 
-        int filesDropped = 0;
+        int deleted = 0, locked = 0;
         foreach (var clip in victims)
         {
             try
             {
+                // Same rule as the single delete: the row goes only with its
+                // file. A locked file used to lose its row and linger on disk
+                // where the Library could no longer show it.
                 if (File.Exists(clip.FilePath))
                 {
-                    try { File.Delete(clip.FilePath); filesDropped++; }
-                    catch { /* locked / read-only — DB row still goes */ }
+                    try { File.Delete(clip.FilePath); }
+                    catch { locked++; continue; }
                 }
+                if (!string.IsNullOrEmpty(clip.PosterPath))
+                {
+                    try { if (File.Exists(clip.PosterPath)) File.Delete(clip.PosterPath); } catch { /* cache file */ }
+                }
+                PostingService.ForgetCaption(clip.Id);
                 _ctx.Clips.DeleteClip(clip.Id);
                 _allClips.Remove(clip);
                 Clips.Remove(clip);
+                deleted++;
             }
             catch { /* per-clip best effort — keep deleting the rest */ }
         }
         HasClips = Clips.Count > 0;
         UpdateSelectionState();
-        ShowToast($"Deleted {victims.Count} · {filesDropped} files removed from disk", "ok");
+        ShowToast(locked == 0
+            ? $"ลบแล้ว {deleted} คลิป"
+            : $"ลบแล้ว {deleted} คลิป · อีก {locked} คลิปลบไม่ได้เพราะไฟล์ถูกเปิดใช้อยู่", locked == 0 ? "ok" : "warn");
     }
 
     private async System.Threading.Tasks.Task RenderFilmAsync()
@@ -308,7 +335,7 @@ public sealed class LibraryViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var defaultName = $"film_{DateTime.UtcNow:yyyyMMdd_HHmmss}";
+        var defaultName = $"film_{DateTime.Now.ToString("yyyyMMdd_HHmmss", System.Globalization.CultureInfo.InvariantCulture)}";
         var dialog = new Views.Dialogs.RenderFilmDialog(_ctx, selected.Count, defaultName)
         {
             Owner = System.Windows.Application.Current?.MainWindow,
@@ -361,21 +388,26 @@ public sealed class LibraryViewModel : ObservableObject, IDisposable
         dialog.ShowDialog();
         if (!dialog.Confirmed || string.IsNullOrEmpty(dialog.ProviderId)) return;
 
-        ShowToast($"Posting to {dialog.ProviderId}…", "info");
+        ShowToast($"กำลังโพสต์ไป {dialog.ProviderId}…", "info");
         var result = await _ctx.Posting.PostAsync(dialog.ProviderId, clip, dialog.Caption);
         if (result.Ok)
         {
             var idHint = string.IsNullOrEmpty(result.PostId) ? "" : $" · {result.PostId}";
-            ShowToast($"Posted ✓{idHint}", "ok");
+            ShowToast($"โพสต์แล้ว ✓{idHint}", "ok");
         }
         else
         {
-            ShowToast($"Post failed: {result.Error}", "err");
+            ShowToast($"โพสต์ไม่สำเร็จ: {result.Error}", "err");
         }
     }
 
     private static string BuildDefaultCaption(Clip clip)
     {
+        // A post that failed earlier (Auto Pilot, a schedule, or here) left
+        // its caption behind — retrying should not lose the hashtags.
+        var pending = PostingService.PendingCaption(clip.Id);
+        if (!string.IsNullOrWhiteSpace(pending)) return pending;
+
         // Sensible starter — user almost always edits this. Includes the
         // brand mark + the shot id so multi-shot threads stay traceable.
         return $"✦ {System.IO.Path.GetFileNameWithoutExtension(clip.FileName)}";
@@ -387,7 +419,7 @@ public sealed class LibraryViewModel : ObservableObject, IDisposable
         ToastKind = kind;
         try
         {
-            await System.Threading.Tasks.Task.Delay(2800);
+            await System.Threading.Tasks.Task.Delay(kind switch { "err" => 15000, "warn" => 6000, _ => 2800 });  // errors stay long enough to read
             if (ToastMessage == message) ToastMessage = null;
         }
         catch { }

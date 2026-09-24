@@ -107,9 +107,31 @@ public sealed class UsageTracker
     /// <summary>Look up per-1M token pricing. Falls back to (0, 0) for free models or unknown slugs.</summary>
     private static (double InUsdPer1M, double OutUsdPer1M) LookupTokenPricing(string providerId, string modelSlug)
     {
-        var info = ProviderCatalog.FindById(providerId);
-        var model = info?.Models.FirstOrDefault(m => m.Slug == modelSlug);
+        var model = FindTokenModel(ProviderCatalog.FindById(providerId)?.Models, modelSlug)
+                    ?? (ProviderCatalog.RetiredTokenModels.TryGetValue(providerId, out var retired)
+                        ? FindTokenModel(retired, modelSlug) : null);
         return (model?.InputUsdPer1M ?? 0, model?.OutputUsdPer1M ?? 0);
+    }
+
+    /// <summary>
+    /// The catalog entry for the model a response names. Vendors answer with
+    /// the dated snapshot ("claude-haiku-4-5-20251001", "gpt-4o-mini-2024-07-18")
+    /// rather than the alias that was sent, and an exact-only match recorded
+    /// every such call at $0. The suffix must be a date/version — digits and
+    /// dashes — so "gpt-5.4-pro" is never priced as "gpt-5.4".
+    /// </summary>
+    internal static ProviderCatalog.ModelOption? FindTokenModel(
+        IReadOnlyList<ProviderCatalog.ModelOption>? models, string modelSlug)
+    {
+        if (models is null || string.IsNullOrEmpty(modelSlug)) return null;
+        var exact = models.FirstOrDefault(m => m.Slug == modelSlug);
+        if (exact is not null) return exact;
+        return models
+            .Where(m => modelSlug.Length > m.Slug.Length + 1
+                        && modelSlug.StartsWith(m.Slug + "-", StringComparison.Ordinal)
+                        && modelSlug[(m.Slug.Length + 1)..].All(c => char.IsAsciiDigit(c) || c == '-'))
+            .OrderByDescending(m => m.Slug.Length)
+            .FirstOrDefault();
     }
 
     private static double LookupCharPricing(string providerId, string modelSlug)

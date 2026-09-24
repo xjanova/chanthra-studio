@@ -308,16 +308,30 @@ public sealed class NleProjectFiles
     }
 
     /// <summary>
-    /// Look the project's clip refs back up in the Library by file path
-    /// (most stable identifier across sessions) with shot id as a
-    /// fallback for files that were renamed on disk.
+    /// Look the project's clip refs back up by file path — in the Library
+    /// first, then on disk.
     /// </summary>
+    /// <remarks>
+    /// The Library list holds only the newest 100 clips, and imported footage
+    /// has no Library row at all, so a file that was plainly still on disk
+    /// came back "missing". The old fallback — the first clip with the same
+    /// shot id — was worse: every imported clip shares the empty shot id, so a
+    /// project reopened with a different file in that slot and no warning.
+    /// A path that no longer exists is reported missing, never substituted.
+    /// </remarks>
     private static Clip? ResolveClip(EditorViewModel vm, string filePath, string shotId)
     {
         var byPath = vm.LibraryClips.FirstOrDefault(c =>
             string.Equals(c.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
         if (byPath is not null) return byPath;
-        return vm.LibraryClips.FirstOrDefault(c => c.ShotId == shotId);
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath)) return null;
+        return new Clip
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            ShotId = shotId ?? "",
+            FilePath = filePath,
+            CreatedAt = File.GetLastWriteTimeUtc(filePath),
+        };
     }
 
     private static string SafeFile(string raw)

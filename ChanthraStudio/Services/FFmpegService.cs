@@ -38,28 +38,43 @@ public sealed class FFmpegService
             return _resolved = overridePath;
 
         // 2. well-known locations
-        var candidates = new[]
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var candidates = new List<string>
         {
             @"C:\ffmpeg\bin\ffmpeg.exe",
             @"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Microsoft", "WinGet", "Packages", "Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe",
-                "ffmpeg-8.0.1-full_build", "bin", "ffmpeg.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Microsoft", "WinGet", "Links", "ffmpeg.exe"),
+            Path.Combine(local, "Microsoft", "WinGet", "Links", "ffmpeg.exe"),
         };
+        // winget unpacks into a folder named after the exact build
+        // ("ffmpeg-8.0.1-full_build"); a hard-coded version stopped matching
+        // the moment winget upgraded it.
+        try
+        {
+            var packages = Path.Combine(local, "Microsoft", "WinGet", "Packages");
+            if (Directory.Exists(packages))
+                foreach (var pkg in Directory.EnumerateDirectories(packages, "*FFmpeg*"))
+                    foreach (var build in Directory.EnumerateDirectories(pkg, "ffmpeg-*"))
+                        candidates.Add(Path.Combine(build, "bin", "ffmpeg.exe"));
+        }
+        catch { /* unreadable profile folder — fall through to PATH */ }
+
         foreach (var p in candidates)
         {
             if (File.Exists(p)) return _resolved = p;
         }
 
-        // 3. system PATH probe
-        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
-        foreach (var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        // 3. PATH — the process's own copy, then the user and machine values
+        // from the registry, so ffmpeg installed while the app is open is
+        // found without a restart.
+        var paths = string.Join(Path.PathSeparator.ToString(),
+            Environment.GetEnvironmentVariable("PATH") ?? "",
+            Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "",
+            Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine) ?? "");
+        foreach (var dir in paths.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
             try
             {
-                var p = Path.Combine(dir.Trim(), "ffmpeg.exe");
+                var p = Path.Combine(Environment.ExpandEnvironmentVariables(dir.Trim()), "ffmpeg.exe");
                 if (File.Exists(p)) return _resolved = p;
             }
             catch { /* skip malformed entries */ }
@@ -124,6 +139,11 @@ public sealed class FFmpegService
                 return sec;
             }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The user's cancel, not the probe's own five-second limit.
+            throw;
+        }
         catch (Exception ex)
         {
             ActivityLog.Warn("ffprobe", $"duration probe failed for {Path.GetFileName(filePath)}: {ex.Message}");
@@ -154,7 +174,7 @@ public sealed class FFmpegService
             _hasAudioCache[filePath] = has;
             return has;
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             ActivityLog.Warn("ffprobe", $"audio probe failed for {Path.GetFileName(filePath)}: {ex.Message}");
@@ -221,7 +241,18 @@ public sealed class FFmpegService
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
         }
-        await proc.WaitForExitAsync(ct);
+
+        // Cancelling used to stop the wait and nothing else: ffmpeg carried on
+        // to the end — a full 4K render after the user pressed cancel — and a
+        // re-render under the same name then fought it for the output file.
+        using (ct.Register(() =>
+        {
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); }
+            catch { /* already gone */ }
+        }))
+        {
+            await proc.WaitForExitAsync(ct);
+        }
         return (stdout.ToString(), stderr.ToString(), proc.ExitCode);
     }
 }

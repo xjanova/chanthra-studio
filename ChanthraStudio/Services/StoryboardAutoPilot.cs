@@ -84,7 +84,11 @@ public sealed class StoryboardAutoPilot
 
             // ── 3. Library rows ──────────────────────────────────────────────
             progress?.Report(new(AutoPilotStep.Saving, "บันทึกเข้า Library…", mediaByIndex.Count, mediaByIndex.Count));
-            var clip = WriteLibraryRows(spec, finalPath, mediaByIndex);
+            // The planned durations say nothing about what the engines really
+            // returned; the Library and the post should carry the film's own.
+            double? filmSec = null;
+            try { filmSec = await _ctx.FFmpeg.ProbeDurationSecAsync(finalPath, ct); } catch (OperationCanceledException) { throw; } catch { }
+            var clip = WriteLibraryRows(spec, finalPath, filmSec);
 
             // ── 4. Facebook ──────────────────────────────────────────────────
             if (!postToFacebook)
@@ -148,6 +152,17 @@ public sealed class StoryboardAutoPilot
                 tcs.TrySetResult((false, null, e.Error ?? "generation failed"));
         }
 
+        // Shots this run submitted and has not seen finish. A cancel or a
+        // timeout used to leave them rendering — and billing — after the run
+        // had already reported failure.
+        var inFlight = new ConcurrentDictionary<string, byte>();
+        void CancelInFlight()
+        {
+            foreach (var id in inFlight.Keys)
+                _ = _ctx.Generation.CancelByShotAsync(id);
+        }
+        using var onCancel = ct.Register(CancelInFlight);
+
         _ctx.Generation.ProgressChanged += OnProgress;
         try
         {
@@ -199,27 +214,47 @@ public sealed class StoryboardAutoPilot
 
                 var tcs = new TaskCompletionSource<(bool, string?, string?)>(TaskCreationOptions.RunContinuationsAsynchronously);
                 pending[shot.Id] = tcs;
+                // Registered before the submit so a cancel during a rented
+                // card's warm-up reaches it too.
+                inFlight[shot.Id] = 0;
+                _ = tcs.Task.ContinueWith(_ => inFlight.TryRemove(shot.Id, out byte _), TaskScheduler.Default);
 
                 clip.ShotId = shot.Id;
                 clip.Status = ShotStatus.Queue;
                 clip.Progress = 0;
                 try
                 {
-                    await _ctx.Generation.SubmitAsync(shot, routeOverride: route, workflowOverride: workflowOverride);
+                    // The run's token goes with the job: a cancel that lands
+                    // while this clip is still being submitted reaches it too.
+                    // A run that simply ends only disposes the source, so the
+                    // clips it leaves rendering keep going (and are reused).
+                    await _ctx.Generation.SubmitAsync(shot, ct, route, workflowOverride);
                     if (clip.Status == ShotStatus.Queue) clip.Status = ShotStatus.Generating;
+                }
+                catch (Exception) when (ct.IsCancellationRequested)
+                {
+                    clip.Status = ShotStatus.Error;
+                    throw new OperationCanceledException(ct);
                 }
                 catch (Exception ex)
                 {
                     clip.Status = ShotStatus.Error;
+                    inFlight.TryRemove(shot.Id, out _);
+                    // The clips already submitted keep going: a re-run after
+                    // fixing this one reuses them instead of paying twice.
                     throw new InvalidOperationException($"CLIP {clip.Index} ส่งเข้า Queue ไม่ผ่าน: {ex.Message}", ex);
                 }
                 waits.Add((clip, tcs.Task));
             }
 
-            // Wait for the batch, reporting done-count as clips land. Engines
-            // cap themselves at 8–15 min; 45 min covers an 8-clip board with
-            // queueing without ever hanging forever.
-            var deadline = Task.Delay(TimeSpan.FromMinutes(45), ct);
+            // Wait for the batch, reporting done-count as clips land. Cloud
+            // engines cap themselves at 8–15 min, but a local card renders the
+            // clips one after another and a rented one first spends 10–40 min
+            // warming up, so their share of the budget grows with the board.
+            var slow = clips.Count(c => c.Route is "comfyui" or "rentgpu");
+            var budget = TimeSpan.FromMinutes(Math.Min(6 * 60,
+                45 + 20 * slow + (clips.Any(c => c.Route == "rentgpu") ? 45 : 0)));
+            var deadline = Task.Delay(budget, ct);
             var done = 0;
             var results = new string?[waits.Count];
             var remaining = waits.Select((w, i) => (w.Clip, w.Task, Index: i)).ToList();
@@ -232,7 +267,11 @@ public sealed class StoryboardAutoPilot
                 // token) — distinguish it so cancel doesn't read as a timeout.
                 ct.ThrowIfCancellationRequested();
                 if (finished == deadline)
-                    throw new TimeoutException("รอเกิน 45 นาที — บางคลิปยังไม่เสร็จ (ดูสถานะใน Queue)");
+                {
+                    CancelInFlight();
+                    throw new TimeoutException(
+                        $"รอเกิน {budget.TotalMinutes:0} นาที — ยกเลิกคลิปที่รอบนี้ส่งไปแล้ว (คลิปที่กด Queue เองยังทำงานต่อ) คลิปที่เสร็จแล้วจะถูกใช้ซ้ำเมื่อกด Auto Pilot อีกครั้ง");
+                }
 
                 var hit = remaining.First(r => r.Task == finished);
                 remaining.Remove(hit);
@@ -256,8 +295,6 @@ public sealed class StoryboardAutoPilot
 
     // ── Step 2 — assemble ─────────────────────────────────────────────────────
 
-    private static readonly string[] ImageExts = { ".png", ".jpg", ".jpeg", ".webp", ".bmp" };
-
     /// <summary>Conform every input to the board aspect (scale + pad, 30 fps,
     /// yuv420p, 48 kHz stereo — silence synthesised where an engine returned a
     /// mute track or a still image) and concat into one MP4 in the media folder.</summary>
@@ -266,8 +303,10 @@ public sealed class StoryboardAutoPilot
         var ffmpeg = _ctx.FFmpeg.TryResolve()
             ?? throw new InvalidOperationException("ไม่พบ ffmpeg");
         var (w, h) = VideoTargetSize(spec.AspectId);
-        var outPath = Path.Combine(AppPaths.MediaFolder,
-            $"board-{DateTime.Now:yyyyMMdd-HHmmss}.mp4");
+        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        var outPath = Path.Combine(AppPaths.MediaFolder, $"board-{stamp}.mp4");
+        for (var n = 2; File.Exists(outPath); n++)
+            outPath = Path.Combine(AppPaths.MediaFolder, $"board-{stamp}-{n}.mp4");
 
         var args = new List<string> { "-y", "-hide_banner", "-loglevel", "error" };
         var filter = new System.Text.StringBuilder();
@@ -281,7 +320,11 @@ public sealed class StoryboardAutoPilot
         {
             var path = inputs[i];
             var clipDur = spec.Clips.Count > i ? spec.Clips[i].DurationSec : 8;
-            var isImage = ImageExts.Contains(Path.GetExtension(path).ToLowerInvariant());
+            if (MediaKind.IsAnimatedWebp(path))
+                throw new InvalidOperationException(
+                    $"CLIP {i + 1} เป็นภาพเคลื่อนไหว WebP ซึ่ง ffmpeg อ่านไม่ได้ — ตั้งให้ workflow บันทึกเป็นวิดีโอ (SaveVideo) แล้วสร้างคลิปนี้ใหม่");
+            // A GIF moves, so it is a video input here, not a still.
+            var isImage = MediaKind.IsImage(path) && !MediaKind.RendersAsVideo(path);
 
             int videoIn;
             if (isImage)
@@ -363,11 +406,11 @@ public sealed class StoryboardAutoPilot
 
     // ── Step 3 — library rows ─────────────────────────────────────────────────
 
-    private Clip WriteLibraryRows(StoryboardSpec spec, string finalPath, List<string> parts)
+    private Clip WriteLibraryRows(StoryboardSpec spec, string finalPath, double? filmSec)
     {
         var shotId = "board-" + Guid.NewGuid().ToString("N")[..8];
         var clipId = Guid.NewGuid().ToString("N");
-        var durationMs = (int)(spec.Clips.Sum(c => c.DurationSec) * 1000);
+        var durationMs = (int)((filmSec ?? spec.Clips.Sum(c => c.DurationSec)) * 1000);
         try
         {
             using var c = _ctx.Db.Open();

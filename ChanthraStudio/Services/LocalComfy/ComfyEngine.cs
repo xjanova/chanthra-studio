@@ -17,6 +17,7 @@ public enum ComfyEngineState
     Starting,
     Running,
     Failed,
+    Removing,
 }
 
 /// <summary>What the machine's GPU looks like, as far as we can tell.</summary>
@@ -175,9 +176,21 @@ public sealed class ComfyEngine : IDisposable
 
     // ---------------------------------------------------------------- install
 
-    public async Task InstallAsync(ComfyFlavour flavour, CancellationToken ct = default)
+    private CancellationTokenSource? _installCts;
+
+    /// <summary>Stop an install in progress. Owned here rather than by a page:
+    /// pages are rebuilt on every visit and would lose the token.</summary>
+    public void CancelInstall()
     {
-        await _gate.WaitAsync(ct);
+        try { _installCts?.Cancel(); } catch (ObjectDisposedException) { }
+    }
+
+    public async Task InstallAsync(ComfyFlavour flavour, CancellationToken external = default)
+    {
+        await _gate.WaitAsync(external);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(external);
+        _installCts = cts;
+        var ct = cts.Token;
         try
         {
             // Installing over a running engine would replace files the process
@@ -191,7 +204,11 @@ public sealed class ComfyEngine : IDisposable
             var progress = new Progress<ComfyInstallProgress>(p =>
                 Set(ComfyEngineState.Installing, p.Stage, p.Message, p.Fraction));
 
-            Stamp = await new ComfyInstaller().InstallAsync(Root, flavour, progress, ct);
+            // Off the UI thread: extraction and the directory swap are minutes
+            // of synchronous disk work, and awaiting them from the dispatcher
+            // froze the window with the progress bar stuck at "extracting".
+            var root = Root;
+            Stamp = await Task.Run(() => new ComfyInstaller().InstallAsync(root, flavour, progress, ct), ct);
             UseOwnEngine = true;
             Set(ComfyEngineState.Stopped, "installed", $"ComfyUI {Stamp.Tag}", 1);
             ActivityLog.Info("comfy", $"engine installed: {Stamp.Tag} ({Stamp.Flavour})");
@@ -210,25 +227,70 @@ public sealed class ComfyEngine : IDisposable
         }
         finally
         {
+            _installCts = null;
             _gate.Release();
         }
     }
 
     /// <summary>Delete the engine. Weights are untouched — they live elsewhere
     /// precisely so this is a cheap thing to do.</summary>
-    public void Uninstall()
+    /// <remarks>
+    /// Removes only what the installer created. The root is a folder the user
+    /// can type in, so it may be <c>D:\Tools</c> or a parent of the models
+    /// folder; deleting it wholesale would take everything else in there too.
+    /// </remarks>
+    public async Task UninstallAsync()
     {
-        StopInternal();
+        // The models folder is a setting too; if someone pointed it inside the
+        // engine, removing the engine would take 20–30 GB of weights with it
+        // while the dialog promised the weights were safe.
+        var modelsFull = Path.GetFullPath(ModelsRoot).TrimEnd('\\') + "\\";
+        foreach (var owned in new[] { ComfyPaths.PortableDir(Root), ComfyPaths.CacheDir(Root) })
+        {
+            var ownedFull = Path.GetFullPath(owned).TrimEnd('\\') + "\\";
+            if (modelsFull.StartsWith(ownedFull, StringComparison.OrdinalIgnoreCase))
+            {
+                LastError = $"โฟลเดอร์โมเดล ({ModelsRoot}) อยู่ในโฟลเดอร์เอนจิน — ย้ายโฟลเดอร์โมเดลออกก่อน แล้วค่อยลบเอนจิน";
+                Set(State, "failed", LastError);
+                return;
+            }
+        }
+
+        await _gate.WaitAsync();
         try
         {
-            if (Directory.Exists(Root)) Directory.Delete(Root, recursive: true);
+            StopInternal();
+            Set(ComfyEngineState.Removing, "removing", "กำลังลบเอนจิน…", 0);
+            var root = Root;
+            await Task.Run(() =>
+            {
+                DeleteDir(ComfyPaths.PortableDir(root));
+                DeleteDir(ComfyPaths.CacheDir(root));
+                DeleteDir(Path.Combine(root, "staging"));
+                foreach (var f in new[] { ComfyPaths.StampFile(root), ComfyPaths.LogFile(root), Path.Combine(root, "staging.ok") })
+                    if (File.Exists(f)) File.Delete(f);
+                // The root itself goes only when nothing of the user's is left in it.
+                if (Directory.Exists(root) && !Directory.EnumerateFileSystemEntries(root).Any())
+                    Directory.Delete(root);
+            });
             Stamp = null;
             Set(ComfyEngineState.NotInstalled, "removed", "ลบเอนจินแล้ว (โมเดลยังอยู่ครบ)", 0);
         }
         catch (Exception ex)
         {
             LastError = ex.Message;
+            // Whatever survived is no longer a working install.
+            Stamp = ComfyInstaller.ReadStamp(Root);
             Set(ComfyEngineState.Failed, "failed", ex.Message);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        static void DeleteDir(string dir)
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
         }
     }
 
@@ -347,6 +409,11 @@ public sealed class ComfyEngine : IDisposable
     /// tells us the vendor but little else. Everything here is advisory — it
     /// picks a default in the installer dropdown, and the user can override it.
     /// </summary>
+    private static readonly Lazy<GpuFacts> CachedGpu = new(DetectGpu, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    /// <summary>The card does not change while the app runs; ask once.</summary>
+    public static GpuFacts DetectGpuCached() => CachedGpu.Value;
+
     public static GpuFacts DetectGpu()
     {
         try

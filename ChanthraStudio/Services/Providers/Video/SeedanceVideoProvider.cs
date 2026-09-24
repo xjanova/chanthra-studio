@@ -40,6 +40,7 @@ public sealed class SeedanceVideoProvider : IVideoProvider
     /// Seedance 2.0 (2026-01-28 snapshot). Fast variant:
     /// <c>dreamina-seedance-2-0-fast-260128</c>.</summary>
     public const string DefaultModel = "dreamina-seedance-2-0-260128";
+    public string? DefaultModelId => DefaultModel;
 
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(2) };
 

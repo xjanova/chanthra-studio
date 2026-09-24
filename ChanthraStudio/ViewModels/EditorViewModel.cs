@@ -258,7 +258,7 @@ public sealed class EditorViewModel : ObservableObject
     }
     public bool HasSelection => _selected is not null;
 
-    private string _outputName = $"film_{DateTime.UtcNow:yyyyMMdd_HHmmss}";
+    private string _outputName = $"film_{DateTime.Now.ToString("yyyyMMdd_HHmmss", System.Globalization.CultureInfo.InvariantCulture)}";
     public string OutputName { get => _outputName; set => SetProperty(ref _outputName, value); }
 
     private string _audioPath = "";
@@ -477,7 +477,11 @@ public sealed class EditorViewModel : ObservableObject
     public string ToastKind { get => _toastKind; set => SetProperty(ref _toastKind, value); }
 
     private bool _isRendering;
-    public bool IsRendering { get => _isRendering; set => SetProperty(ref _isRendering, value); }
+    public bool IsRendering
+    {
+        get => _isRendering;
+        set { if (SetProperty(ref _isRendering, value)) RenderCommand?.NotifyCanExecuteChanged(); }
+    }
 
     public IRelayCommand RefreshCommand { get; }
     public IRelayCommand<Clip> AddClipCommand { get; }
@@ -608,13 +612,23 @@ public sealed class EditorViewModel : ObservableObject
         TitleTimeline.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasTitles));
         ClearTimelineCommand = new RelayCommand(() =>
         {
-            if (Timeline.Count == 0 && OverlayTimeline.Count == 0) return;
+            if (Timeline.Count == 0 && OverlayTimeline.Count == 0 && TitleTimeline.Count == 0 && AudioTracks.Count == 0) return;
+            var ok = System.Windows.MessageBox.Show(
+                "ล้างไทม์ไลน์ทั้งหมด (คลิป, overlay, ไตเติล และแทร็กเสียง)?\nกด Ctrl+Z เพื่อย้อนกลับได้",
+                "ล้างไทม์ไลน์", System.Windows.MessageBoxButton.OKCancel, System.Windows.MessageBoxImage.Warning);
+            if (ok != System.Windows.MessageBoxResult.OK) return;
             PushUndo();
             foreach (var t in Timeline) t.PropertyChanged -= OnSlotChanged;
             Timeline.Clear();
             OverlayTimeline.Clear();
+            // Titles and audio used to survive "clear" invisibly and still
+            // land in the next render.
+            TitleTimeline.Clear();
+            AudioTracks.Clear();
             Selected = null;
             SelectedOverlay = null;
+            SelectedTitle = null;
+            SelectedAudio = null;
             RecomputeTotal();
         });
         BrowseAudioCommand = new RelayCommand(BrowseAudio);
@@ -626,6 +640,17 @@ public sealed class EditorViewModel : ObservableObject
         RenderCommand = new AsyncRelayCommand(RenderAsync, () => !IsRendering && Timeline.Count > 0);
 
         Timeline.CollectionChanged += (_, _) => RecomputeTotal();
+        // The command only re-asks CanExecute when told to. It used to be told
+        // once, after a render — so the button, disabled while the timeline
+        // was empty at startup, stayed disabled with clips on it.
+        Timeline.CollectionChanged += (_, _) => RenderCommand.NotifyCanExecuteChanged();
+
+        // Autosave watches the tracks for the ViewModel's whole life; the
+        // timer itself is paused and resumed as the tab is left and revisited.
+        HookDirtyTracking(Timeline);
+        HookDirtyTracking(OverlayTimeline);
+        HookDirtyTracking(TitleTimeline);
+        HookDirtyTracking(AudioTracks);
 
         if (_ctx is not null) Refresh();
         else SeedDesignTime();
@@ -636,6 +661,7 @@ public sealed class EditorViewModel : ObservableObject
         if (_ctx is null) return;
         LibraryClips.Clear();
         foreach (var c in _ctx.Clips.RecentClips(100)) LibraryClips.Add(c);
+        _ctx.Posters.EnsurePosters(LibraryClips);
 
         AudioTakes.Clear();
         foreach (var t in _ctx.VoiceService.ListTakes(15)) AudioTakes.Add(t);
@@ -767,6 +793,7 @@ public sealed class EditorViewModel : ObservableObject
 
     private void AddTitle()
     {
+        PushUndo();
         var defaultStart = TotalDuration > 0.5 ? TotalDuration / 2 : 0;
         var slot = new TitleSlot
         {
@@ -785,6 +812,7 @@ public sealed class EditorViewModel : ObservableObject
     private void RemoveTitle(TitleSlot? slot)
     {
         if (slot is null) return;
+        PushUndo();
         TitleTimeline.Remove(slot);
         if (ReferenceEquals(SelectedTitle, slot)) SelectedTitle = TitleTimeline.LastOrDefault();
     }
@@ -814,6 +842,7 @@ public sealed class EditorViewModel : ObservableObject
     private void AddAudioFromPath(string path, double volume)
     {
         if (string.IsNullOrEmpty(path)) return;
+        PushUndo();
         var slot = new AudioSlot
         {
             FilePath = path,
@@ -829,6 +858,7 @@ public sealed class EditorViewModel : ObservableObject
     private void RemoveAudio(AudioSlot? slot)
     {
         if (slot is null) return;
+        PushUndo();
         AudioTracks.Remove(slot);
         if (ReferenceEquals(SelectedAudio, slot)) SelectedAudio = AudioTracks.LastOrDefault();
     }
@@ -1146,9 +1176,14 @@ public sealed class EditorViewModel : ObservableObject
     /// Idempotent — flipping true repeatedly costs nothing.</summary>
     private void MarkDirty() => _autosaveDirty = true;
 
-    private void StartAutosaveTimer()
+    /// <summary>Start (or resume) the 60 s autosave. Idempotent: the view
+    /// stops it when the tab is left and calls this again on return — it used
+    /// to be started only in the constructor, so the first tab switch ended
+    /// autosave for the rest of the session.</summary>
+    public void StartAutosaveTimer()
     {
         if (_ctx is null) return;
+        if (_autosaveTimer is not null) { _autosaveTimer.Start(); return; }
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
         if (dispatcher is null) return;
         _autosaveTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background, dispatcher)
@@ -1162,14 +1197,27 @@ public sealed class EditorViewModel : ObservableObject
             _ctx.NleProjectFiles.Autosave(this);
         };
         _autosaveTimer.Start();
+    }
 
-        // Any change to the four timeline collections marks the project
-        // dirty; the per-slot DurationSec/StartSec/etc. changes also
-        // mark via the existing OnSlotChanged hook below.
-        Timeline.CollectionChanged += (_, _) => MarkDirty();
-        OverlayTimeline.CollectionChanged += (_, _) => MarkDirty();
-        TitleTimeline.CollectionChanged += (_, _) => MarkDirty();
-        AudioTracks.CollectionChanged += (_, _) => MarkDirty();
+    /// <summary>Any add, remove or edit on a track marks the project dirty —
+    /// including a slot's duration, grade or a title's text, which used to go
+    /// unsaved because only the collections themselves were watched.</summary>
+    private void HookDirtyTracking<T>(ObservableCollection<T> items) where T : System.ComponentModel.INotifyPropertyChanged
+    {
+        items.CollectionChanged += (_, e) =>
+        {
+            MarkDirty();
+            if (e.OldItems is not null)
+                foreach (System.ComponentModel.INotifyPropertyChanged item in e.OldItems) item.PropertyChanged -= OnItemChangedForDirty;
+            if (e.NewItems is not null)
+                foreach (System.ComponentModel.INotifyPropertyChanged item in e.NewItems) item.PropertyChanged += OnItemChangedForDirty;
+        };
+    }
+
+    private void OnItemChangedForDirty(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(TimelineSlot.IsSelected) or nameof(TimelineSlot.IsDropTarget)) return;
+        MarkDirty();
     }
 
     /// <summary>
@@ -1203,7 +1251,6 @@ public sealed class EditorViewModel : ObservableObject
     public void StopAutosaveTimer()
     {
         try { _autosaveTimer?.Stop(); } catch { }
-        _autosaveTimer = null;
     }
 
     /// <summary>Dismiss the autosave recovery banner without restoring —
@@ -1290,9 +1337,21 @@ public sealed class EditorViewModel : ObservableObject
     }
 
     // ---------- Undo / redo (T24 · refactored 7.14 into UndoStack<T>) ----------
+    // A snapshot holds every setting on every track. It used to keep only
+    // (clip, duration) for main slots and nothing for titles or audio, so any
+    // undo rebuilt the slots at defaults — a slot's push-in, grade and trim
+    // were silently erased by pressing Ctrl+Z on an unrelated change.
+    private sealed record SlotState(Clip Clip, double Dur, double Trim,
+        double ZoomStart, double ZoomEnd, double PanStartX, double PanStartY, double PanEndX, double PanEndY,
+        double Brightness, double Contrast, double Saturation);
+    private sealed record OverlayState(Clip Clip, double Start, double Dur, double Scale, string Pos);
+    private sealed record TitleState(string Text, double Start, double Dur, int FontSize, string Color, string Pos);
+    private sealed record AudioState(string Path, double Start, double Volume, double FadeIn, double FadeOut, string Label);
     private sealed record TimelineSnapshot(
-        IReadOnlyList<(Clip Clip, double Dur)> Main,
-        IReadOnlyList<(Clip Clip, double Start, double Dur, double Scale, string Pos)> Overlay);
+        IReadOnlyList<SlotState> Main,
+        IReadOnlyList<OverlayState> Overlay,
+        IReadOnlyList<TitleState> Titles,
+        IReadOnlyList<AudioState> Audio);
 
     private readonly Services.UndoStack<TimelineSnapshot> _undo;
 
@@ -1317,8 +1376,12 @@ public sealed class EditorViewModel : ObservableObject
     }
 
     private TimelineSnapshot CaptureSnapshot()
-        => new(Timeline.Select(s => (s.Clip, s.DurationSec)).ToList(),
-               OverlayTimeline.Select(o => (o.Clip, o.StartSec, o.DurationSec, o.Scale, o.Position)).ToList());
+        => new(Timeline.Select(s => new SlotState(s.Clip, s.DurationSec, s.TrimStartSec,
+                   s.ZoomStartPct, s.ZoomEndPct, s.PanStartX, s.PanStartY, s.PanEndX, s.PanEndY,
+                   s.Brightness, s.Contrast, s.Saturation)).ToList(),
+               OverlayTimeline.Select(o => new OverlayState(o.Clip, o.StartSec, o.DurationSec, o.Scale, o.Position)).ToList(),
+               TitleTimeline.Select(t => new TitleState(t.Text, t.StartSec, t.DurationSec, t.FontSize, t.Color, t.Position)).ToList(),
+               AudioTracks.Select(a => new AudioState(a.FilePath, a.StartSec, a.Volume, a.FadeInSec, a.FadeOutSec, a.Label)).ToList());
 
     private void ApplySnapshot(TimelineSnapshot snap)
     {
@@ -1332,20 +1395,27 @@ public sealed class EditorViewModel : ObservableObject
         // Detach handlers from old slots before discarding.
         foreach (var s in Timeline) s.PropertyChanged -= OnSlotChanged;
         Timeline.Clear();
-        foreach (var (clip, dur) in snap.Main)
+        foreach (var st in snap.Main)
         {
-            var slot = new TimelineSlot { Clip = clip, DurationSec = dur };
+            var slot = new TimelineSlot
+            {
+                Clip = st.Clip, DurationSec = st.Dur, TrimStartSec = st.Trim,
+                ZoomStartPct = st.ZoomStart, ZoomEndPct = st.ZoomEnd,
+                PanStartX = st.PanStartX, PanStartY = st.PanStartY, PanEndX = st.PanEndX, PanEndY = st.PanEndY,
+                Brightness = st.Brightness, Contrast = st.Contrast, Saturation = st.Saturation,
+            };
             slot.PropertyChanged += OnSlotChanged;
             Timeline.Add(slot);
         }
         OverlayTimeline.Clear();
-        foreach (var (clip, start, dur, scale, pos) in snap.Overlay)
-        {
-            OverlayTimeline.Add(new OverlaySlot
-            {
-                Clip = clip, StartSec = start, DurationSec = dur, Scale = scale, Position = pos,
-            });
-        }
+        foreach (var o in snap.Overlay)
+            OverlayTimeline.Add(new OverlaySlot { Clip = o.Clip, StartSec = o.Start, DurationSec = o.Dur, Scale = o.Scale, Position = o.Pos });
+        TitleTimeline.Clear();
+        foreach (var t in snap.Titles)
+            TitleTimeline.Add(new TitleSlot { Text = t.Text, StartSec = t.Start, DurationSec = t.Dur, FontSize = t.FontSize, Color = t.Color, Position = t.Pos });
+        AudioTracks.Clear();
+        foreach (var a in snap.Audio)
+            AudioTracks.Add(new AudioSlot { FilePath = a.Path, StartSec = a.Start, Volume = a.Volume, FadeInSec = a.FadeIn, FadeOutSec = a.FadeOut, Label = a.Label });
 
         // Re-select by file path so undo/redo doesn't blow away the user's
         // inspector focus. Falls back to last slot if the previously-selected
@@ -1358,6 +1428,8 @@ public sealed class EditorViewModel : ObservableObject
                            ? OverlayTimeline.FirstOrDefault(o => o.Clip.FilePath == prevOverlaySelectedPath)
                            : null)
                         ?? OverlayTimeline.LastOrDefault();
+        SelectedTitle = TitleTimeline.LastOrDefault();
+        SelectedAudio = AudioTracks.LastOrDefault();
         RecomputeTotal();
     }
 
@@ -1377,7 +1449,7 @@ public sealed class EditorViewModel : ObservableObject
         ToastKind = kind;
         try
         {
-            await Task.Delay(2800);
+            await System.Threading.Tasks.Task.Delay(kind switch { "err" => 15000, "warn" => 6000, _ => 2800 });  // errors stay long enough to read
             if (ToastMessage == msg) ToastMessage = "";
         }
         catch { }

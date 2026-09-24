@@ -40,10 +40,10 @@ public sealed class ComfyUiClient : IDisposable
     /// requests — including the WebSocket handshake, which is why the token
     /// is applied there too rather than only on the HTTP client.
     /// </param>
-    public ComfyUiClient(string baseUrl, string? clientId = null, string? authToken = null)
+    public ComfyUiClient(string baseUrl, string? clientId = null, string? authToken = null, TimeSpan? timeout = null)
     {
         _baseUri = new Uri(baseUrl.TrimEnd('/') + "/");
-        _http = new HttpClient { BaseAddress = _baseUri, Timeout = TimeSpan.FromMinutes(2) };
+        _http = new HttpClient { BaseAddress = _baseUri, Timeout = timeout ?? TimeSpan.FromMinutes(2) };
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         _authToken = string.IsNullOrWhiteSpace(authToken) ? null : authToken;
         if (_authToken is not null)
@@ -142,6 +142,62 @@ public sealed class ComfyUiClient : IDisposable
         catch
         {
             return (-1, -1);
+        }
+    }
+
+    /// <summary>
+    /// The prompt ids currently running and waiting. Null when the server
+    /// cannot be reached — which callers must not read as "not queued".
+    /// </summary>
+    /// <remarks>Each queue item is <c>[number, prompt_id, prompt, extra_data, outputs]</c>.</remarks>
+    public async Task<(HashSet<string> Running, HashSet<string> Pending)?> GetQueuedPromptIdsAsync(
+        CancellationToken ct = default)
+    {
+        try
+        {
+            using var resp = await _http.GetAsync("queue", ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            var json = JsonNode.Parse(await resp.Content.ReadAsStringAsync(ct)) as JsonObject;
+            return (Ids(json?["queue_running"]), Ids(json?["queue_pending"]));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+
+        static HashSet<string> Ids(JsonNode? list)
+        {
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            if (list is not JsonArray arr) return set;
+            foreach (var item in arr)
+                if (item is JsonArray a && a.Count > 1 && a[1] is JsonValue v && v.TryGetValue<string>(out var id))
+                    set.Add(id);
+            return set;
+        }
+    }
+
+    /// <summary>True when the server has a node class. Older ComfyUI builds and
+    /// external servers may lack newer core nodes such as SaveVideo.</summary>
+    public async Task<bool> HasNodeAsync(string classType, CancellationToken ct = default)
+    {
+        try
+        {
+            using var resp = await _http.GetAsync($"object_info/{Uri.EscapeDataString(classType)}", ct);
+            if (!resp.IsSuccessStatusCode) return false;
+            var json = JsonNode.Parse(await resp.Content.ReadAsStringAsync(ct)) as JsonObject;
+            return json?[classType] is JsonObject;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -291,11 +347,15 @@ public sealed class ComfyUiClient : IDisposable
         }
     }
 
-    /// <summary>Fetch the history record for a completed prompt id.</summary>
+    /// <summary>Fetch the history record for a completed prompt id. Null means
+    /// "not in history yet"; an error status throws, because a 502 from the
+    /// proxy in front of a dead rented worker is not an answer — reading it as
+    /// one kept a job "rendering" on a machine that no longer existed.</summary>
     public async Task<JsonObject?> GetHistoryAsync(string promptId, CancellationToken ct = default)
     {
         using var resp = await _http.GetAsync($"history/{Uri.EscapeDataString(promptId)}", ct);
-        if (!resp.IsSuccessStatusCode) return null;
+        if (!resp.IsSuccessStatusCode)
+            throw new ComfyUiException($"history HTTP {(int)resp.StatusCode}");
         var json = await resp.Content.ReadAsStringAsync(ct);
         var root = JsonNode.Parse(json) as JsonObject;
         return root?[promptId] as JsonObject;
@@ -312,11 +372,46 @@ public sealed class ComfyUiClient : IDisposable
         await resp.Content.CopyToAsync(fs, ct);
     }
 
-    /// <summary>Cancel a queued or running prompt.</summary>
+    /// <summary>Stop whatever the server is running right now, whoever queued it.
+    /// The Models panel's "interrupt" button; renders cancel with
+    /// <see cref="CancelPromptAsync"/> instead.</summary>
     public async Task InterruptAsync(CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, "interrupt");
         await _http.SendAsync(req, ct);
+    }
+
+    /// <summary>
+    /// Cancel one prompt, wherever it is in the queue.
+    ///
+    /// A bare <c>/interrupt</c> stops only the prompt that is running at that
+    /// moment. Cancelling a prompt still waiting behind another one used to
+    /// stop the other one instead, and the cancelled prompt then ran anyway
+    /// when its turn came. So: take it out of the pending list, and interrupt
+    /// it only if it is the one running (servers that predate the
+    /// <c>prompt_id</c> field ignore it and interrupt as before).
+    /// </summary>
+    public Task CancelPromptAsync(string promptId, CancellationToken ct = default)
+        => CancelPromptsAsync(new[] { promptId }, ct);
+
+    /// <summary>Cancel several prompts on this server: one queue deletion for
+    /// all of them, then a targeted interrupt for each (only the running one
+    /// is affected).</summary>
+    public async Task CancelPromptsAsync(IReadOnlyCollection<string> promptIds, CancellationToken ct = default)
+    {
+        if (promptIds.Count == 0) return;
+        var ids = new JsonArray();
+        foreach (var id in promptIds) ids.Add(id);
+        var delete = new JsonObject { ["delete"] = ids };
+        using (var body = new StringContent(delete.ToJsonString(), Encoding.UTF8, "application/json"))
+        using (await _http.PostAsync("queue", body, ct)) { }
+
+        foreach (var id in promptIds)
+        {
+            var interrupt = new JsonObject { ["prompt_id"] = id };
+            using var body = new StringContent(interrupt.ToJsonString(), Encoding.UTF8, "application/json");
+            using (await _http.PostAsync("interrupt", body, ct)) { }
+        }
     }
 
     /// <summary>

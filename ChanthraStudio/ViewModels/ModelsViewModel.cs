@@ -109,7 +109,12 @@ public sealed partial class ModelsViewModel : ObservableObject
             var probe = await client.ProbeAsync();
             if (!probe.Ok)
             {
-                ServerStatus = $"unreachable · {probe.Status}";
+                // "Target machine actively refused it" is Windows for "nothing
+                // is listening": say that, and where, in words a user can act on.
+                var refused = probe.Status?.Contains("refused", StringComparison.OrdinalIgnoreCase) == true;
+                ServerStatus = refused
+                    ? $"ComfyUI ยังไม่ได้เปิดที่ {_ctx.Settings.ComfyUiUrl} — ติดตั้งหรือเปิดเอนจินด้านล่าง หรือแก้ URL ในหน้า Settings"
+                    : $"ติดต่อ ComfyUI ที่ {_ctx.Settings.ComfyUiUrl} ไม่ได้ · {probe.Status}";
                 StatusKind = "err";
                 // Not just "0 queued": this early return used to skip the queue
                 // read entirely, leaving the card showing its "—" placeholder

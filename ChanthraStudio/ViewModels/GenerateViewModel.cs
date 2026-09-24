@@ -35,8 +35,8 @@ public sealed class GenerateViewModel : ObservableObject
     private string _prompt = "ราชินีจันทรา on a throne of black silk and floating lotuses; ribbons of crimson smoke; gold halo splitting into eight beams; sloooow camera push, 24fps cinematic.";
     public string Prompt { get => _prompt; set => SetProperty(ref _prompt, value); }
 
-    private string _sceneLabel = "Scene 03 · Shot 02";
-    public string SceneLabel { get => _sceneLabel; set => SetProperty(ref _sceneLabel, value); }
+    /// <summary>The shot Summon will create next — was a fixed "Scene 03 · Shot 02".</summary>
+    public string SceneLabel => $"Next · Shot {Storyboard.Count + 1:D2}";
 
     public ObservableCollection<WorkflowDescriptor> Workflows { get; } = new();
 
@@ -54,6 +54,8 @@ public sealed class GenerateViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _activeRoute, value)) return;
+            OnPropertyChanged(nameof(DurationIsWorkflowOwned));
+            OnPropertyChanged(nameof(Breadcrumb));
             if (value is not null && _ctx is not null)
             {
                 _ctx.Settings.ActiveVideo = value.Id;
@@ -61,6 +63,14 @@ public sealed class GenerateViewModel : ObservableObject
             }
         }
     }
+
+    /// <summary>
+    /// A ComfyUI render is as long as its workflow's frame count (or the
+    /// Models page's override) — the Duration slider reaches the cloud
+    /// engines only. The Composer says so under the slider rather than let
+    /// it look like it works on every route.
+    /// </summary>
+    public bool DurationIsWorkflowOwned => _activeRoute?.Id is "comfyui" or "rentgpu";
 
     private WorkflowDescriptor? _activeWorkflow;
     public WorkflowDescriptor? ActiveWorkflow
@@ -81,8 +91,8 @@ public sealed class GenerateViewModel : ObservableObject
 
     public IRelayCommand RefreshWorkflowsCommand { get; }
 
-    public string EngineLabel => ActiveWorkflow?.DisplayName ?? "Chanthra · Sora-Lyra v2.4";
-    public string EngineSpec => ActiveWorkflow?.Spec ?? "1080p · 24fps · text+image→video";
+    public string EngineLabel => ActiveWorkflow?.DisplayName ?? "ยังไม่ได้เลือก workflow";
+    public string EngineSpec => ActiveWorkflow?.Spec ?? "";
 
     private AspectRatio _aspect = AspectRatio.Wide;
     public AspectRatio Aspect { get => _aspect; set => SetProperty(ref _aspect, value); }
@@ -131,8 +141,22 @@ public sealed class GenerateViewModel : ObservableObject
     private string _credits = "";
     public string Credits { get => _credits; set => SetProperty(ref _credits, value); }
 
-    private string _breadcrumb = "Projects › The Empress";
-    public string Breadcrumb { get => _breadcrumb; set => SetProperty(ref _breadcrumb, value); }
+    /// <summary>Where the next shot goes — was a fixed "Projects › The Empress"
+    /// naming a project system the app does not have.</summary>
+    public string Breadcrumb => $"Composer › {_activeRoute?.DisplayName ?? "—"}";
+
+    /// <summary>Header of the timeline strip: the real shot count and length
+    /// (it read "32 FPS · DCI 1080" with fixed 8-second ticks).</summary>
+    public string TimelineLabel
+    {
+        get
+        {
+            var total = Storyboard.Sum(s => s.DurationSec);
+            return Storyboard.Count == 0
+                ? "TIMELINE · ยังไม่มีช็อต"
+                : $"TIMELINE · {Storyboard.Count} SHOTS · ≈{total:0.#}s";
+        }
+    }
 
     /// <summary>
     /// The shot whose preview occupies the centre Stage. Defaults to the
@@ -148,6 +172,7 @@ public sealed class GenerateViewModel : ObservableObject
             if (SetProperty(ref _activeShot, value))
             {
                 OnPropertyChanged(nameof(StageImagePath));
+                OnPropertyChanged(nameof(StageVideoPath));
                 OnPropertyChanged(nameof(HasActiveShot));
                 OnPropertyChanged(nameof(ShotMetaShot));
                 OnPropertyChanged(nameof(ShotMetaFrame));
@@ -163,6 +188,14 @@ public sealed class GenerateViewModel : ObservableObject
     /// the brand poster when no shot has rendered yet.</summary>
     public string StageImagePath =>
         _activeShot?.VideoUrl ?? _activeShot?.ThumbUrl ?? "/Assets/Brand/empress-wide.png";
+
+    /// <summary>
+    /// The finished render when it is a video file on disk. An Image cannot
+    /// show an .mp4, so the Stage kept the brand poster up after every video
+    /// render and the result could only be seen in an outside player.
+    /// </summary>
+    public string? StageVideoPath =>
+        _activeShot?.VideoUrl is { } v && MediaKind.IsVideo(v) && System.IO.File.Exists(v) ? v : null;
 
     public string ShotMetaShot => _activeShot is null ? "SHOT —" : $"SHOT {_activeShot.Number}";
     public string ShotMetaFrame => _activeShot is null
@@ -329,6 +362,8 @@ public sealed class GenerateViewModel : ObservableObject
             if (e.OldItems is not null)
                 foreach (Shot s in e.OldItems) s.PropertyChanged -= OnStoryboardShotPropertyChanged;
             OnPropertyChanged(nameof(QueueCount));
+            OnPropertyChanged(nameof(SceneLabel));
+            OnPropertyChanged(nameof(TimelineLabel));
         };
 
         SetAspectCommand = new RelayCommand<string>(s =>
@@ -361,6 +396,7 @@ public sealed class GenerateViewModel : ObservableObject
         }
 
         _ctx.Generation.ProgressChanged += OnGenerationProgress;
+        _ctx.Generation.Notice += (_, message) => ShowToast(message, "warn");
         LoadWorkflows();
         LoadVideoRoutes();
         RebuildStoryboardFromHistory();
@@ -386,6 +422,8 @@ public sealed class GenerateViewModel : ObservableObject
         {
             _activeRoute = match;
             OnPropertyChanged(nameof(ActiveRoute));
+            OnPropertyChanged(nameof(DurationIsWorkflowOwned));
+            OnPropertyChanged(nameof(Breadcrumb));
         }
     }
 
@@ -556,7 +594,7 @@ public sealed class GenerateViewModel : ObservableObject
             LoadWorkflows();   // rescan disk + select the new workflow by name
 
             var comfy = VideoRoutes.FirstOrDefault(r => r.Id == "comfyui");
-            if (comfy is not null) { _activeRoute = comfy; OnPropertyChanged(nameof(ActiveRoute)); }
+            if (comfy is not null) { _activeRoute = comfy; OnPropertyChanged(nameof(ActiveRoute)); OnPropertyChanged(nameof(DurationIsWorkflowOwned)); OnPropertyChanged(nameof(Breadcrumb)); }
 
             ShowToast($"AI workflow ready ({graph.Nodes.Count} nodes) — summoning on ComfyUI…", "ok");
             await SummonSceneAsync();
@@ -612,15 +650,29 @@ public sealed class GenerateViewModel : ObservableObject
             ShowToast("Submitting…", "info");
             var promptId = await _ctx.Generation.SubmitAsync(shot);
             shot.Status = ShotStatus.Generating;
-            ShowToast($"Queued · {promptId[..8]}", "ok");
+            // A warning raised while submitting (an unusable reference image)
+            // must not be wiped a moment later by the routine "queued" line.
+            if (ToastMessage is null || ToastKind is not ("warn" or "err"))
+                ShowToast($"Queued · {promptId[..Math.Min(8, promptId.Length)]}", "ok");
             // The card progress + final completion arrive via OnGenerationProgress.
+        }
+        catch (OperationCanceledException ex) when (ex.InnerException is not TimeoutException)
+        {
+            // Cancel all during a rented card's warm-up lands here; it is the
+            // user's own choice, not "The operation was canceled." in red.
+            // (An HTTP timeout also arrives as a cancellation, wrapping a
+            // TimeoutException — that one falls through to the error below.)
+            shot.Status = ShotStatus.Error;
+            ShowToast("ยกเลิกแล้ว", "info");
+            IsGenerating = Storyboard.Any(s => s.Status == ShotStatus.Generating);
+            if (!IsGenerating) StopGeneratingTimer();
         }
         catch (Exception ex)
         {
             shot.Status = ShotStatus.Error;
             ShowToast(ex.Message, "err");
-            IsGenerating = false;
-            StopGeneratingTimer();
+            IsGenerating = Storyboard.Any(s => s.Status == ShotStatus.Generating);
+            if (!IsGenerating) StopGeneratingTimer();
         }
     }
 
@@ -678,7 +730,10 @@ public sealed class GenerateViewModel : ObservableObject
             // VideoUrl change alone doesn't republish StageImagePath because
             // it's a derived property on the VM, not on the Shot.
             if (ReferenceEquals(_activeShot, shot))
+            {
                 OnPropertyChanged(nameof(StageImagePath));
+                OnPropertyChanged(nameof(StageVideoPath));
+            }
         }
 
         if (e.Status == ShotStatus.Done)
@@ -730,7 +785,9 @@ public sealed class GenerateViewModel : ObservableObject
         ToastKind = kind;
         try
         {
-            await Task.Delay(3500);
+            // Errors and warnings need reading time; 3.5 s was gone before
+            // the eye got back from the storyboard.
+            await Task.Delay(kind switch { "err" => 12000, "warn" => 9000, _ => 3500 });
             if (ToastMessage == message) ToastMessage = null;
         }
         catch { }

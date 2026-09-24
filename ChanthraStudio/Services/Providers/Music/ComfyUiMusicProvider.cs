@@ -173,11 +173,26 @@ public class ComfyUiMusicProvider : IMusicProvider
         ComfyUiClient client, string promptId, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow + RenderTimeout;
+        var failuresInARow = 0;
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
 
-            var history = await client.GetHistoryAsync(promptId, ct);
+            System.Text.Json.Nodes.JsonObject? history;
+            try
+            {
+                history = await client.GetHistoryAsync(promptId, ct);
+                failuresInARow = 0;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                // A blip is retried; two minutes of nothing but errors is a
+                // server that has gone away.
+                if (++failuresInARow >= 60)
+                    throw new ComfyUiException("ComfyUI stopped answering while the music rendered: " + ex.Message);
+                await Task.Delay(TimeSpan.FromSeconds(2), ct);
+                continue;
+            }
             if (history is not null)
             {
                 // ComfyUI records a failed run in history too, with the error

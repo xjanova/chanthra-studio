@@ -29,8 +29,13 @@ public sealed class SlideshowRenderer
         public IReadOnlyList<Clip> Clips { get; init; } = Array.Empty<Clip>();
         public double SecondsPerClip { get; init; } = 3.0;
         public int Fps { get; init; } = 30;
-        public int Width { get; init; } = 1920;
-        public int Height { get; init; } = 1080;
+
+        // H.264 in yuv420p needs even dimensions; 21:9 at 3840 wide worked
+        // out to 1645 high and libx264 refused the whole render.
+        private readonly int _width = 1920, _height = 1080;
+        public int Width { get => _width; init => _width = Math.Max(2, value & ~1); }
+        public int Height { get => _height; init => _height = Math.Max(2, value & ~1); }
+
         public string OutputName { get; init; } = "";
 
         /// <summary>Quality tier — drives ffmpeg's <c>-crf</c> + <c>-preset</c>.
@@ -207,11 +212,30 @@ public sealed class SlideshowRenderer
                 "set the path manually in Settings → ffmpeg.");
         }
 
+        // ffmpeg's WebP decoder cannot read animation: it skips the frames,
+        // finds no image data and — looped as a still — never finishes.
+        var animated = spec.Clips.Select(c => c.FilePath)
+            .Concat(spec.OverlayTimeline.Select(o => o.FilePath))
+            .FirstOrDefault(MediaKind.IsAnimatedWebp);
+        if (animated is not null)
+            return RenderResult.Failure(
+                $"ไฟล์ {Path.GetFileName(animated)} เป็น .webp แบบเคลื่อนไหว ซึ่ง ffmpeg อ่านไม่ได้ — "
+                + "เอาออกจากไทม์ไลน์ หรือเรนเดอร์ใหม่ด้วยเวิร์กโฟลว์ที่บันทึกเป็น .mp4");
+
         var outDir = AppPaths.MediaFolder;
+        var inv0 = System.Globalization.CultureInfo.InvariantCulture;
         var safeName = SafeFilename(string.IsNullOrWhiteSpace(spec.OutputName)
-            ? $"film_{DateTime.UtcNow:yyyyMMdd_HHmmss}"
+            ? $"film_{DateTime.Now.ToString("yyyyMMdd_HHmmss", inv0)}"
             : spec.OutputName);
+        // Never write over an earlier film: it may already be a Library card,
+        // and a second render under the same name replaced its file — or,
+        // when the second render failed, left a broken file in its place.
         var outputPath = Path.Combine(outDir, safeName + ".mp4");
+        for (var n = 2; File.Exists(outputPath); n++)
+            outputPath = Path.Combine(outDir, $"{safeName} ({n}).mp4");
+        // ffmpeg writes here; the file moves into place only on success.
+        var workingPath = Path.Combine(outDir, Path.GetFileNameWithoutExtension(outputPath) + ".rendering.mp4");
+        string? titleDir = null;
 
         // Probe natural duration of every audio track that has a fade-out
         // configured — feeds AppendMultiAudioStage's afade=out anchor.
@@ -233,57 +257,114 @@ public sealed class SlideshowRenderer
         // Probe each VIDEO clip — does it carry audio (keep its sound), and
         // what's its true length (a silent segment must match the clip exactly
         // or the concat desyncs). Images need neither. ffprobe is cached.
-        var trims = spec.ClipTrimStarts is { Count: > 0 } ts && ts.Count == spec.Clips.Count ? ts : null;
+        var trims = spec.ClipTrimStarts is { Count: > 0 } ts && ts.Count == spec.Clips.Count
+            ? ts.ToArray() : new double[spec.Clips.Count];
         var slotDurs = spec.ClipDurations is { Count: > 0 } sd && sd.Count == spec.Clips.Count ? sd : null;
         var clipHasAudio = new bool[spec.Clips.Count];
+        // effDur is the SLOT: what the timeline shows and what titles, overlays
+        // and music are timed against. srcDur is how much of a video clip is
+        // actually read; when the clip is shorter than its slot its last
+        // frame is held instead of the whole film quietly getting shorter.
         var effDur = new double[spec.Clips.Count];
+        var srcDur = new double[spec.Clips.Count];
         for (int i = 0; i < spec.Clips.Count; i++)
         {
-            var slotDur = slotDurs?[i] ?? spec.SecondsPerClip;
-            var trim = trims?[i] ?? 0;
-            if (IsVideoFile(spec.Clips[i].FilePath))
+            var slotDur = Math.Max(0.1, slotDurs?[i] ?? spec.SecondsPerClip);
+            effDur[i] = slotDur;
+            srcDur[i] = slotDur;
+            if (!MediaKind.RendersAsVideo(spec.Clips[i].FilePath)) continue;
+
+            clipHasAudio[i] = await ff.ProbeHasAudioAsync(spec.Clips[i].FilePath, ct);
+            if (await ff.ProbeDurationSecAsync(spec.Clips[i].FilePath, ct) is not double clipLen) continue;
+
+            // An in-point past the end of the clip read nothing, and the slot
+            // vanished from the film without a word.
+            if (trims[i] > clipLen - 0.1)
             {
-                clipHasAudio[i] = await ff.ProbeHasAudioAsync(spec.Clips[i].FilePath, ct);
-                var clipLen = await ff.ProbeDurationSecAsync(spec.Clips[i].FilePath, ct);
-                effDur[i] = clipLen is double cl ? Math.Max(0.1, Math.Min(slotDur, cl - trim)) : slotDur;
+                ActivityLog.Warn("renderer", $"{Path.GetFileName(spec.Clips[i].FilePath)}: trim {trims[i]:0.##}s is past the clip's {clipLen:0.##}s — starting from 0");
+                trims[i] = 0;
             }
-            else
-            {
-                effDur[i] = slotDur;   // still image loops to exactly slotDur
-            }
+            srcDur[i] = Math.Max(0.1, Math.Min(slotDur, clipLen - trims[i]));
         }
 
-        var args = BuildArgList(spec, outputPath, effDur, trims, clipHasAudio);
-
-        // Total expected frames → "% done" + ETA for the progress pill.
         double totalSec = 0;
         for (int i = 0; i < spec.Clips.Count; i++) totalSec += effDur[i];
         if (spec.CrossfadeSec > 0 && spec.Clips.Count > 1)
-            totalSec -= spec.CrossfadeSec * (spec.Clips.Count - 1);
+            totalSec -= EffectiveFade(spec, effDur) * (spec.Clips.Count - 1);
+
+        List<string> args;
+        try
+        {
+            // Title text files are quoted into the filtergraph; a path holding
+            // an apostrophe cannot be, so such a temp folder is avoided.
+            var titleName = "chanthra-titles-" + Guid.NewGuid().ToString("N")[..8];
+            titleDir = Path.Combine(Path.GetTempPath(), titleName);
+            if (titleDir.Contains('\''))
+                titleDir = Path.Combine(Path.GetPathRoot(Path.GetFullPath(titleDir)) ?? @"C:\", "ChanthraTemp", titleName);
+            args = BuildArgList(spec, workingPath, effDur, srcDur, trims, clipHasAudio, totalSec, titleDir);
+        }
+        catch (Exception ex)
+        {
+            TryDeleteDir(titleDir);
+            return RenderResult.Failure("เตรียมคำสั่ง render ไม่สำเร็จ: " + ex.Message);
+        }
+
+        // Total expected frames → "% done" + ETA for the progress pill.
         var totalFrames = Math.Max(1, (int)Math.Round(totalSec * spec.Fps));
         var startedAt = DateTime.UtcNow;
         progress?.Report($"Rendering · 0%");
 
-        var (_, stderr, exit) = await ff.RunAsync(ffmpegPath, args,
-            onStderrLine: line =>
-            {
-                // ffmpeg emits "frame=  47 fps=30 …" — extract the frame count
-                // and turn it into a "Rendering · 41% · 12s left" pill. Falls
-                // back to the raw line if the parse fails so the user always
-                // sees SOME progress signal.
-                if (!line.StartsWith("frame=", StringComparison.Ordinal))
-                    return;
-                var pretty = FormatProgress(line, totalFrames, startedAt);
-                progress?.Report(pretty);
-            },
-            ct: ct);
-
-        if (exit != 0 || !File.Exists(outputPath))
+        string stderr;
+        int exit;
+        try
         {
-            // Pull last 4 lines of stderr — that's where ffmpeg puts the actual error.
-            var tail = TailLines(stderr, 4);
-            return RenderResult.Failure($"ffmpeg failed (exit {exit}): {tail}");
+            (_, stderr, exit) = await ff.RunAsync(ffmpegPath, args,
+                onStderrLine: line =>
+                {
+                    // ffmpeg emits "frame=  47 fps=30 …" — extract the frame count
+                    // and turn it into a "Rendering · 41% · 12s left" pill. Falls
+                    // back to the raw line if the parse fails so the user always
+                    // sees SOME progress signal.
+                    if (!line.StartsWith("frame=", StringComparison.Ordinal))
+                        return;
+                    var pretty = FormatProgress(line, totalFrames, startedAt);
+                    progress?.Report(pretty);
+                },
+                ct: ct);
         }
+        catch
+        {
+            // Cancelled: ffmpeg has been killed; leave nothing half-written.
+            TryDeleteFile(workingPath);
+            throw;
+        }
+        finally
+        {
+            TryDeleteDir(titleDir);
+        }
+
+        if (exit != 0 || !File.Exists(workingPath))
+        {
+            TryDeleteFile(workingPath);
+            ActivityLog.Warn("renderer", $"ffmpeg exit {exit}: {TailLines(stderr, 12)}");
+            return RenderResult.Failure(ExplainFailure(stderr, exit));
+        }
+
+        try
+        {
+            File.Move(workingPath, outputPath);
+        }
+        catch (Exception ex)
+        {
+            return RenderResult.Failure($"render เสร็จแต่ย้ายไฟล์ไปที่ {outputPath} ไม่ได้: {ex.Message} (ไฟล์อยู่ที่ {workingPath})");
+        }
+
+        // "Succeeded" used to mean ffmpeg exited 0 — which it also does when
+        // an audio stream ends the film early. Measure what was written.
+        if (await ff.ProbeDurationSecAsync(outputPath, ct) is double written
+            && Math.Abs(written - totalSec) > Math.Max(1.0, totalSec * 0.1))
+            ActivityLog.Warn("renderer", $"{Path.GetFileName(outputPath)} is {written:0.0}s, expected {totalSec:0.0}s");
+        progress?.Report("Rendering · 100%");
 
         // Persist as a clip — shotId is the first source clip's shot for now.
         // Honour per-slot durations + subtract crossfade overshoot so the
@@ -337,7 +418,8 @@ public sealed class SlideshowRenderer
     /// Filenames with spaces / quotes / shell metacharacters are safe — there
     /// is no shell parsing in this path.
     /// </summary>
-    private static List<string> BuildArgList(Spec spec, string outputPath, double[] effDur, IReadOnlyList<double>? trims, bool[] clipHasAudio)
+    private static List<string> BuildArgList(Spec spec, string outputPath, double[] effDur, double[] srcDur,
+        double[] trims, bool[] clipHasAudio, double totalSec, string titleDir)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         // Multi-track audio takes precedence over the legacy single-track.
@@ -356,25 +438,30 @@ public sealed class SlideshowRenderer
         var overlays = spec.OverlayTimeline.Where(o => !string.IsNullOrEmpty(o.FilePath) && File.Exists(o.FilePath)).ToList();
         var hasOverlay = overlays.Count > 0;
         var args = new List<string> { "-y" };
+        var perSlotMeta = spec.SlotMeta is { Count: > 0 } metas && metas.Count == spec.Clips.Count ? metas : null;
 
         for (int i = 0; i < spec.Clips.Count; i++)
         {
-            var durStr = effDur[i].ToString("F2", inv);
             // VIDEO clips play their OWN frames — NEVER -loop (looping froze the
             // first frame, the old "slideshow pretending to be a video editor"
-            // bug). -ss seeks to the trim in-point; -t takes the slot length.
-            // STILL images keep -loop 1 for the Ken Burns slideshow path.
-            if (IsVideoFile(spec.Clips[i].FilePath))
+            // bug). -ss seeks to the trim in-point; -t takes what we read.
+            if (MediaKind.RendersAsVideo(spec.Clips[i].FilePath))
             {
-                var trim = trims?[i] ?? 0;
-                if (trim > 0.01) { args.Add("-ss"); args.Add(trim.ToString("F2", inv)); }
-                args.Add("-t");     args.Add(durStr);
+                if (trims[i] > 0.01) { args.Add("-ss"); args.Add(trims[i].ToString("F2", inv)); }
+                args.Add("-t");     args.Add(srcDur[i].ToString("F2", inv));
+                args.Add("-i");     args.Add(spec.Clips[i].FilePath);
+            }
+            else if (perSlotMeta?[i] is { HasZoom: true })
+            {
+                // Ken Burns reads ONE frame. zoompan emits d frames for every
+                // frame it is given, so a looped still (25 frames a second)
+                // came out 25×d frames long — a 2 s slot rendered as 100 s.
                 args.Add("-i");     args.Add(spec.Clips[i].FilePath);
             }
             else
             {
                 args.Add("-loop");  args.Add("1");
-                args.Add("-t");     args.Add(durStr);
+                args.Add("-t");     args.Add(effDur[i].ToString("F2", inv));
                 args.Add("-i");     args.Add(spec.Clips[i].FilePath);
             }
         }
@@ -384,8 +471,10 @@ public sealed class SlideshowRenderer
         var firstOverlayIndex = spec.Clips.Count;
         foreach (var o in overlays)
         {
-            args.Add("-loop");      args.Add("1");
-            args.Add("-t");         args.Add(o.DurationSec.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
+            // -loop is an image-demuxer option; on an .mp4 it failed the whole
+            // render with "Option loop not found".
+            if (!MediaKind.RendersAsVideo(o.FilePath)) { args.Add("-loop"); args.Add("1"); }
+            args.Add("-t");         args.Add(o.DurationSec.ToString("F2", inv));
             args.Add("-i");         args.Add(o.FilePath);
         }
         var audioIndex = spec.Clips.Count + overlays.Count;
@@ -420,7 +509,7 @@ public sealed class SlideshowRenderer
         var finalHasAudio = useClipAudio || hasAudio;
 
         var filter = new StringBuilder();
-        AppendScalePadStage(filter, spec, effDur);
+        AppendScalePadStage(filter, spec, effDur, srcDur);
         // Video → [out] (hard-cut concat OR xfade dissolve).
         AppendConcatOrXfadeStage(filter, spec, effDur);
         if (useClipAudio)
@@ -430,17 +519,27 @@ public sealed class SlideshowRenderer
             AppendClipAudioCombineStage(filter, spec, effDur);
         }
         if (hasOverlay) AppendOverlayStage(filter, overlays, firstOverlayIndex, spec.Width, hasTitles);
-        if (hasTitles) AppendTitleStage(filter, titles, hasOverlay, overlays.Count);
-        // Audio mix → [a].
+        if (hasTitles) AppendTitleStage(filter, titles, hasOverlay, overlays.Count, titleDir);
+
+        // Audio mix → [mix], then held to exactly the film's length → [a].
+        // The old "-shortest" let whichever stream ended first end the film:
+        // a 3 s jingle under a 9 s slideshow produced a 3 s film.
+        //
+        // amix is told not to normalise: by default it divides every input
+        // by the input count, so adding music quietly halved the clips' own
+        // sound. A limiter catches the peaks the plain sum can produce.
+        const string mixTail = ":dropout_transition=0:normalize=0,alimiter=limit=0.95[mix]";
         if (useClipAudio)
         {
             // Mix the clips' own audio with any external music / voice tracks.
-            if (hasMultiAudio) { AppendMultiAudioStage(filter, audioTracks, audioIndex, "ext"); filter.Append(";[acat][ext]amix=inputs=2:duration=first:dropout_transition=0[a]"); }
-            else if (hasLegacyAudio) { AppendLegacyAudioStage(filter, audioIndex, spec.AudioVolume, "ext"); filter.Append(";[acat][ext]amix=inputs=2:duration=first:dropout_transition=0[a]"); }
-            else filter.Append(";[acat]anull[a]");
+            if (hasMultiAudio) { AppendMultiAudioStage(filter, audioTracks, audioIndex, "ext"); filter.Append($";[acat][ext]amix=inputs=2:duration=first{mixTail}"); }
+            else if (hasLegacyAudio) { AppendLegacyAudioStage(filter, audioIndex, spec.AudioVolume, "ext"); filter.Append($";[acat][ext]amix=inputs=2:duration=first{mixTail}"); }
+            else filter.Append(";[acat]anull[mix]");
         }
-        else if (hasLegacyAudio) AppendLegacyAudioStage(filter, audioIndex, spec.AudioVolume, "a");
-        else if (hasMultiAudio) AppendMultiAudioStage(filter, audioTracks, audioIndex, "a");
+        else if (hasLegacyAudio) AppendLegacyAudioStage(filter, audioIndex, spec.AudioVolume, "mix");
+        else if (hasMultiAudio) AppendMultiAudioStage(filter, audioTracks, audioIndex, "mix");
+        if (finalHasAudio)
+            filter.Append($";[mix]apad,atrim=0:{totalSec.ToString("F3", inv)},asetpts=N/SR/TB[a]");
 
         args.Add("-filter_complex");
         args.Add(filter.ToString());
@@ -452,8 +551,9 @@ public sealed class SlideshowRenderer
             args.Add("-map");       args.Add("[a]");
             args.Add("-c:a");       args.Add("aac");
             args.Add("-b:a");       args.Add("192k");
-            args.Add("-shortest");
         }
+        // The film is as long as the timeline, whatever any one stream says.
+        args.Add("-t");             args.Add(totalSec.ToString("F3", inv));
         args.Add("-r");             args.Add(spec.Fps.ToString(System.Globalization.CultureInfo.InvariantCulture));
         args.Add("-c:v");           args.Add("libx264");
         // Quality tier → ffmpeg preset/crf. Draft trades file size + visual
@@ -490,7 +590,7 @@ public sealed class SlideshowRenderer
     /// a uniform output frame. Emits <c>[i:v]scale=…pad=…[vN]</c> per clip
     /// with optional eq (color grade) and zoompan (Ken Burns) stages
     /// appended when SlotMeta supplies non-identity values. (7.18)</summary>
-    private static void AppendScalePadStage(StringBuilder filter, Spec spec, double[] effDur)
+    private static void AppendScalePadStage(StringBuilder filter, Spec spec, double[] effDur, double[] srcDur)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         var perSlotMeta = spec.SlotMeta is { Count: > 0 } metas && metas.Count == spec.Clips.Count
@@ -498,7 +598,7 @@ public sealed class SlideshowRenderer
 
         for (int i = 0; i < spec.Clips.Count; i++)
         {
-            var isVideo = IsVideoFile(spec.Clips[i].FilePath);
+            var isVideo = MediaKind.RendersAsVideo(spec.Clips[i].FilePath);
             // Base stage: fit-and-letterbox into output frame.
             filter.Append($"[{i}:v]scale={spec.Width}:{spec.Height}:force_original_aspect_ratio=decrease,");
             filter.Append($"pad={spec.Width}:{spec.Height}:(ow-iw)/2:(oh-ih)/2:color=#060409,setsar=1");
@@ -547,6 +647,12 @@ public sealed class SlideshowRenderer
             else
             {
                 filter.Append($",fps={spec.Fps}");
+                // A clip shorter than its slot holds its last frame for the
+                // rest of the slot. Letting the slot shrink instead moved every
+                // title, overlay and music cue after it out of place.
+                var hold = effDur[i] - srcDur[i];
+                if (isVideo && hold > 0.04)
+                    filter.Append($",tpad=stop_mode=clone:stop_duration={hold.ToString("F3", inv)}");
             }
 
             filter.Append($"[v{i}];");
@@ -557,20 +663,23 @@ public sealed class SlideshowRenderer
     /// stream. Hard-cut concat unless <see cref="Spec.CrossfadeSec"/> &gt; 0
     /// and there are 2+ clips, in which case an xfade chain walks
     /// pairwise with a running offset.</summary>
+    /// <summary>The crossfade actually used: clamped to slightly less than the
+    /// shortest slot so ffmpeg doesn't reject it with "offset must be
+    /// non-negative". Shared by the video, the audio and the length maths.</summary>
+    private static double EffectiveFade(Spec spec, double[] effDur)
+    {
+        if (spec.CrossfadeSec <= 0 || spec.Clips.Count < 2) return 0;
+        var fade = spec.CrossfadeSec;
+        var minDur = effDur.Min();
+        if (fade >= minDur) fade = Math.Max(0.2, minDur - 0.1);
+        return fade;
+    }
+
     private static void AppendConcatOrXfadeStage(StringBuilder filter, Spec spec, double[] effDur)
     {
         if (spec.CrossfadeSec > 0 && spec.Clips.Count >= 2)
         {
-            double fade = spec.CrossfadeSec;
-            // Clamp fade to slightly less than the smallest clip duration so
-            // ffmpeg doesn't reject the filter with "offset must be non-negative".
-            double minDur = double.MaxValue;
-            for (int i = 0; i < spec.Clips.Count; i++)
-            {
-                var d = effDur[i];
-                if (d < minDur) minDur = d;
-            }
-            if (fade >= minDur) fade = Math.Max(0.2, minDur - 0.1);
+            double fade = EffectiveFade(spec, effDur);
 
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             string lastLabel = "v0";
@@ -609,8 +718,12 @@ public sealed class SlideshowRenderer
         {
             var o = overlays[oi];
             var inputIdx = firstOverlayInputIndex + oi;
-            var w = (int)(frameWidth * Math.Clamp(o.Scale, 0.1, 0.6));
-            filter.Append($";[{inputIdx}:v]scale={w}:-1,setsar=1,format=yuva420p[ov{oi}]");
+            var w = (int)(frameWidth * Math.Clamp(o.Scale, 0.1, 0.6)) & ~1;
+            // Shift the overlay's own clock to its start time, so a video
+            // overlay begins at its first frame when it appears instead of
+            // having played unseen since 0:00.
+            var shift = Math.Max(0, o.StartSec).ToString("F3", inv);
+            filter.Append($";[{inputIdx}:v]setpts=PTS-STARTPTS+{shift}/TB,scale={w}:-2,setsar=1,format=yuva420p[ov{oi}]");
         }
         // Chain overlay filters; each output feeds the next.
         string lastLabel = "out";
@@ -641,33 +754,105 @@ public sealed class SlideshowRenderer
     /// stage chained onto whatever the last video label was — so titles
     /// always sit ON TOP of image overlays. The last title's output is
     /// labelled [outpip].</summary>
-    private static void AppendTitleStage(StringBuilder filter, List<TitleDescriptor> titles, bool hadOverlay, int overlayCount)
+    private static void AppendTitleStage(StringBuilder filter, List<TitleDescriptor> titles, bool hadOverlay, int overlayCount, string titleDir)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         string lastLabel = hadOverlay && overlayCount > 0 ? $"pip{overlayCount - 1}" : "out";
         var defaultFont = ResolveDefaultFontFile();
+        var thaiFont = ResolveThaiFontFile();
+
+        // The text goes to a file drawtext reads with textfile=, rather than
+        // being escaped into the filter: inline, an apostrophe broke the whole
+        // filtergraph ("No such filter"), a % made the title vanish, and a
+        // typed line break came out as the letter n.
+        Directory.CreateDirectory(titleDir);
+
         for (int ti = 0; ti < titles.Count; ti++)
         {
             var t = titles[ti];
-            var fontFile = string.IsNullOrEmpty(t.FontFile) ? defaultFont : t.FontFile;
+            // Segoe UI has no Thai glyphs: a Thai title rendered as boxes.
+            var fontFile = !string.IsNullOrEmpty(t.FontFile) ? t.FontFile
+                : ContainsThai(t.Text) && thaiFont.Length > 0 ? thaiFont
+                : defaultFont;
             var color = string.IsNullOrEmpty(t.Color) ? "0xD4A76A" : t.Color;
-            var (xExpr, yExpr) = t.Position switch
+            // Vertical placement is per line (below); only x depends on the
+            // line's own width.
+            var xExpr = t.Position switch
             {
-                "TL" => ("40",                  "40"),
-                "BL" => ("40",                  "h-th-40"),
-                "BR" => ("w-tw-40",             "h-th-40"),
-                "C"  => ("(w-tw)/2",            "(h-th)/2"),
-                _    => ("w-tw-40",             "40"),  // TR / default
+                "TL" or "BL" => "40",
+                "C" => "(w-tw)/2",
+                _ => "w-tw-40",   // TR / BR / default
             };
             var startStr = t.StartSec.ToString("F2", inv);
             var endStr = (t.StartSec + t.DurationSec).ToString("F2", inv);
-            var safeText = EscapeDrawtext(t.Text);
             var fontArg = string.IsNullOrEmpty(fontFile) ? "" : $"fontfile='{EscapePathForFilter(fontFile)}':";
             var lastStage = ti == titles.Count - 1;
             var outLabel = lastStage ? "outpip" : $"tt{ti}";
-            filter.Append($";[{lastLabel}]drawtext={fontArg}text='{safeText}':fontsize={t.FontSize}:fontcolor={color}:x={xExpr}:y={yExpr}:enable='between(t,{startStr},{endStr})'[{outLabel}]");
-            lastLabel = outLabel;
+
+            // One drawtext per line: drawtext draws a newline character as a
+            // box on the line it ends, so a two-line title came out "line one□".
+            var lines = t.Text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            var lineH = (int)Math.Round(t.FontSize * 1.3);
+            var blockH = lineH * lines.Length;
+            var yBase = t.Position switch
+            {
+                "BL" or "BR" => $"h-40-{blockH}",
+                "C" => $"(h-{blockH})/2",
+                _ => "40",
+            };
+            for (var li = 0; li < lines.Length; li++)
+            {
+                var textFile = Path.Combine(titleDir, $"t{ti}_{li}.txt");
+                File.WriteAllText(textFile, lines[li], new UTF8Encoding(false));
+                var lineOut = li == lines.Length - 1 ? outLabel : $"tt{ti}l{li}";
+                filter.Append($";[{lastLabel}]drawtext={fontArg}textfile='{EscapePathForFilter(textFile)}':expansion=none:fontsize={t.FontSize}:fontcolor={color}:x={xExpr}:y={yBase}+{li * lineH}:enable='between(t,{startStr},{endStr})'[{lineOut}]");
+                lastLabel = lineOut;
+            }
         }
+    }
+
+    private static bool ContainsThai(string text)
+    {
+        foreach (var ch in text) if (ch is >= '฀' and <= '๿') return true;
+        return false;
+    }
+
+    private static string ResolveThaiFontFile()
+    {
+        var fonts = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts");
+        foreach (var name in new[] { "LeelaUIb.ttf", "leelawdb.ttf", "tahomabd.ttf", "LeelawUI.ttf", "tahoma.ttf" })
+        {
+            var p = Path.Combine(fonts, name);
+            if (File.Exists(p)) return p;
+        }
+        return "";
+    }
+
+    /// <summary>What went wrong, in words the user can act on; the full
+    /// stderr goes to the activity log.</summary>
+    private static string ExplainFailure(string stderr, int exit)
+    {
+        var tail = TailLines(stderr, 3);
+        if (stderr.Contains("No such file or directory", StringComparison.OrdinalIgnoreCase))
+            return "render ไม่ได้ — มีไฟล์บนไทม์ไลน์ที่ถูกลบหรือย้ายไปแล้ว ตรวจช่องที่ขึ้นว่าไม่พบไฟล์ · " + tail;
+        if (stderr.Contains("Permission denied", StringComparison.OrdinalIgnoreCase)
+            || stderr.Contains("being used by another process", StringComparison.OrdinalIgnoreCase))
+            return "render ไม่ได้ — ไฟล์ถูกโปรแกรมอื่นเปิดค้างอยู่ ปิดแล้วลองใหม่ · " + tail;
+        if (stderr.Contains("Invalid data found", StringComparison.OrdinalIgnoreCase))
+            return "render ไม่ได้ — มีไฟล์ที่ ffmpeg อ่านไม่ได้ (ไฟล์เสียหรือชนิดไม่รองรับ) · " + tail;
+        if (stderr.Contains("No space left", StringComparison.OrdinalIgnoreCase))
+            return "render ไม่ได้ — ดิสก์เต็ม · " + tail;
+        return $"ffmpeg ล้มเหลว (exit {exit}) · {tail}";
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { /* best effort */ }
+    }
+
+    private static void TryDeleteDir(string? dir)
+    {
+        try { if (dir is not null && Directory.Exists(dir)) Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
     }
 
     /// <summary>Stage 4c: per-clip NATIVE audio for the hard-cut concat path.
@@ -680,11 +865,15 @@ public sealed class SlideshowRenderer
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         for (int i = 0; i < spec.Clips.Count; i++)
         {
+            var slot = effDur[i].ToString("F3", inv);
             // Leading ';' (this runs AFTER the video [out] which has no trailing ';').
+            // Every segment is padded or cut to exactly its slot: a clip whose
+            // sound ran shorter than its picture made every later clip's sound
+            // start early, and the film ended where the sound ran out.
             if (hasAudio[i])
-                filter.Append($";[{i}:a]aresample=44100,aformat=channel_layouts=stereo,asetpts=N/SR/TB[aclip{i}]");
+                filter.Append($";[{i}:a]aresample=44100,aformat=channel_layouts=stereo,apad,atrim=0:{slot},asetpts=N/SR/TB[aclip{i}]");
             else
-                filter.Append($";anullsrc=r=44100:cl=stereo,atrim=duration={effDur[i].ToString("F2", inv)},asetpts=N/SR/TB[aclip{i}]");
+                filter.Append($";anullsrc=r=44100:cl=stereo,atrim=duration={slot},asetpts=N/SR/TB[aclip{i}]");
         }
     }
 
@@ -698,11 +887,7 @@ public sealed class SlideshowRenderer
         filter.Append(";");
         if (spec.CrossfadeSec > 0 && spec.Clips.Count >= 2)
         {
-            double fade = spec.CrossfadeSec;
-            double minDur = double.MaxValue;
-            for (int i = 0; i < spec.Clips.Count; i++) if (effDur[i] < minDur) minDur = effDur[i];
-            if (fade >= minDur) fade = Math.Max(0.2, minDur - 0.1);
-            var fadeStr = fade.ToString("F3", inv);
+            var fadeStr = EffectiveFade(spec, effDur).ToString("F3", inv);
             string last = "aclip0";
             for (int i = 1; i < spec.Clips.Count; i++)
             {
@@ -775,7 +960,9 @@ public sealed class SlideshowRenderer
         }
         filter.Append(";");
         for (int ai = 0; ai < audioTracks.Count; ai++) filter.Append($"[a{ai}]");
-        filter.Append($"amix=inputs={audioTracks.Count}:duration=longest:dropout_transition=0[{outLabel}]");
+        // normalize=0: each track keeps the volume its slider says, instead of
+        // being divided by the number of tracks.
+        filter.Append($"amix=inputs={audioTracks.Count}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95[{outLabel}]");
     }
 
     /// <summary>Parse ffmpeg's per-frame progress line into a "Rendering ·
@@ -816,48 +1003,11 @@ public sealed class SlideshowRenderer
         return string.Join(" · ", lines.Skip(skip).Select(l => l.Trim()));
     }
 
-    /// <summary>True for container extensions we should treat as MOVING video
-    /// (play their own frames) rather than a still image to loop.</summary>
-    private static bool IsVideoFile(string path)
-    {
-        var ext = Path.GetExtension(path).ToLowerInvariant();
-        return ext is ".mp4" or ".mov" or ".webm" or ".mkv" or ".avi" or ".m4v"
-            or ".gif" or ".mpg" or ".mpeg" or ".wmv" or ".flv" or ".ts" or ".m2ts";
-    }
-
     private static string SafeFilename(string raw)
     {
         var invalid = Path.GetInvalidFileNameChars();
         var sb = new StringBuilder(raw.Length);
         foreach (var ch in raw) sb.Append(Array.IndexOf(invalid, ch) >= 0 ? '_' : ch);
-        return sb.ToString();
-    }
-
-    /// <summary>
-    /// Escape a string for inclusion in an ffmpeg <c>drawtext=text='X'</c>
-    /// argument. ffmpeg's filter grammar uses single quotes as the
-    /// delimiter and backslash-escapes a small set of meta characters.
-    /// Newlines become explicit <c>\n</c> so multi-line titles render
-    /// correctly.
-    /// </summary>
-    private static string EscapeDrawtext(string raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return "";
-        var sb = new StringBuilder(raw.Length + 8);
-        foreach (var ch in raw)
-        {
-            switch (ch)
-            {
-                // ffmpeg filter language: ' \ : , % \n need escaping inside text=''.
-                case '\'': sb.Append(@"\'"); break;
-                case '\\': sb.Append(@"\\"); break;
-                case ':':  sb.Append(@"\:"); break;
-                case ',':  sb.Append(@"\,"); break;
-                case '%':  sb.Append(@"\%"); break;
-                case '\n': sb.Append(@"\n"); break;
-                default:   sb.Append(ch); break;
-            }
-        }
         return sb.ToString();
     }
 

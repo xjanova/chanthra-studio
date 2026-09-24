@@ -2,6 +2,8 @@ using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using ChanthraStudio.Models;
 using ChanthraStudio.Services;
@@ -46,7 +48,7 @@ public sealed class StoryboardViewModel : ObservableObject
     public string SelectedTemplateId { get => _selectedTemplateId; private set => SetProperty(ref _selectedTemplateId, value); }
 
     private string _concept = "";
-    public string Concept { get => _concept; set => SetProperty(ref _concept, value); }
+    public string Concept { get => _concept; set { if (SetProperty(ref _concept, value)) ScheduleSave(); } }
 
     private string _character = "";
     public string Character { get => _character; set { if (SetProperty(ref _character, value)) SyncSpecFromForm(); } }
@@ -65,22 +67,23 @@ public sealed class StoryboardViewModel : ObservableObject
     /// user sees — not the character the board was first generated with.</summary>
     private void SyncSpecFromForm()
     {
-        if (_spec is null) return;
+        if (_spec is null) { ScheduleSave(); return; }
         _spec.Character = Character;
         _spec.StyleNote = StyleNote;
         _spec.VoiceNote = VoiceNote;
         _spec.ReferenceTag = ReferenceTag;
         StoryboardBuilder.RefreshVideoPrompts(_spec);
+        ScheduleSave();
     }
 
     private int _clipCount = 4;
-    public int ClipCount { get => _clipCount; set => SetProperty(ref _clipCount, Math.Clamp(value, 1, 8)); }
+    public int ClipCount { get => _clipCount; set { if (SetProperty(ref _clipCount, Math.Clamp(value, 1, 8))) ScheduleSave(); } }
 
     private double _clipDurationSec = 8;
     public double ClipDurationSec
     {
         get => _clipDurationSec;
-        set { if (SetProperty(ref _clipDurationSec, Math.Round(value))) OnPropertyChanged(nameof(ClipDurationLabel)); }
+        set { if (SetProperty(ref _clipDurationSec, Math.Round(value))) { OnPropertyChanged(nameof(ClipDurationLabel)); ScheduleSave(); } }
     }
     public string ClipDurationLabel => $"{ClipDurationSec:0}s";
 
@@ -93,6 +96,7 @@ public sealed class StoryboardViewModel : ObservableObject
             if (!SetProperty(ref _aspectId, value)) return;
             foreach (var a in AspectOptions) a.IsActive = a.Id == value;
             if (_spec is not null) { _spec.AspectId = value; StoryboardBuilder.RefreshVideoPrompts(_spec); }
+            ScheduleSave();
         }
     }
 
@@ -103,6 +107,7 @@ public sealed class StoryboardViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _referenceImagePath, value)) return;
+            ScheduleSave();
             OnPropertyChanged(nameof(HasReferenceImage));
             OnPropertyChanged(nameof(ReferenceImageLabel));
         }
@@ -119,6 +124,7 @@ public sealed class StoryboardViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _sceneImagePath, value)) return;
+            ScheduleSave();
             OnPropertyChanged(nameof(HasSceneImage));
             OnPropertyChanged(nameof(SceneImageLabel));
         }
@@ -135,6 +141,7 @@ public sealed class StoryboardViewModel : ObservableObject
         set
         {
             if (!SetProperty(ref _outfitImagePath, value)) return;
+            ScheduleSave();
             OnPropertyChanged(nameof(HasOutfitImage));
             OnPropertyChanged(nameof(OutfitImageLabel));
         }
@@ -161,6 +168,7 @@ public sealed class StoryboardViewModel : ObservableObject
             foreach (var clip in _spec.Clips)
                 if (string.IsNullOrEmpty(prev) || clip.Route == prev)
                     clip.Route = value.Id;
+            ScheduleSave();
         }
     }
 
@@ -172,6 +180,7 @@ public sealed class StoryboardViewModel : ObservableObject
         private set
         {
             if (!SetProperty(ref _spec, value)) return;
+            WatchClipRoutes(value);
             OnPropertyChanged(nameof(Clips));
             OnPropertyChanged(nameof(HasSpec));
             OnPropertyChanged(nameof(IsEmpty));
@@ -189,8 +198,25 @@ public sealed class StoryboardViewModel : ObservableObject
     public bool IsBusy
     {
         get => _isBusy;
-        set { if (SetProperty(ref _isBusy, value)) GenerateCommand.NotifyCanExecuteChanged(); }
+        set
+        {
+            if (!SetProperty(ref _isBusy, value)) return;
+            // While the AI writes a new board, the old one is about to be
+            // replaced: nothing may start rendering or posting it.
+            GenerateCommand.NotifyCanExecuteChanged();
+            SelectTemplateCommand.NotifyCanExecuteChanged();
+            AutoPilotCommand.NotifyCanExecuteChanged();
+            SendClipCommand.NotifyCanExecuteChanged();
+            SendAllCommand.NotifyCanExecuteChanged();
+        }
     }
+
+    /// <summary>
+    /// The shown board holds work that would be lost by replacing it — an
+    /// AI-written board (a paid LLM call) or any clip already sent. A
+    /// template's ready-made example is not.
+    /// </summary>
+    private bool _boardHasWork;
 
     private string? _statusMessage;
     public string? StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
@@ -210,6 +236,14 @@ public sealed class StoryboardViewModel : ObservableObject
             if (!SetProperty(ref _isAutoPilotRunning, value)) return;
             OnPropertyChanged(nameof(IsAutoPilotIdle));
             AutoPilotCommand.NotifyCanExecuteChanged();
+            // Auto Pilot works on the board in place: replacing it, changing
+            // its aspect or sending its clips by hand mid-run would pull the
+            // board out from under the run (and pay for clips twice).
+            GenerateCommand.NotifyCanExecuteChanged();
+            SelectTemplateCommand.NotifyCanExecuteChanged();
+            SetAspectCommand.NotifyCanExecuteChanged();
+            SendClipCommand.NotifyCanExecuteChanged();
+            SendAllCommand.NotifyCanExecuteChanged();
         }
     }
     public bool IsAutoPilotIdle => !_isAutoPilotRunning;
@@ -224,7 +258,7 @@ public sealed class StoryboardViewModel : ObservableObject
     /// end of an Auto Pilot run. Persisted so the choice survives restarts.</summary>
     public bool AutoPostFacebook
     {
-        get => _ctx?.Settings.StoryboardAutoPost ?? true;
+        get => _ctx?.Settings.StoryboardAutoPost ?? false;
         set
         {
             if (_ctx is null || _ctx.Settings.StoryboardAutoPost == value) return;
@@ -272,24 +306,24 @@ public sealed class StoryboardViewModel : ObservableObject
     {
         _ctx = ctx;
 
-        SelectTemplateCommand = new RelayCommand<string>(SelectTemplate);
-        SetAspectCommand = new RelayCommand<string>(id => { if (!string.IsNullOrEmpty(id)) AspectId = id; });
-        GenerateCommand = new AsyncRelayCommand(GenerateAsync, () => !IsBusy);
+        SelectTemplateCommand = new RelayCommand<string>(PickTemplate, _ => !IsAutoPilotRunning && !IsBusy);
+        SetAspectCommand = new RelayCommand<string>(id => { if (!string.IsNullOrEmpty(id)) AspectId = id; }, _ => !IsAutoPilotRunning);
+        GenerateCommand = new AsyncRelayCommand(GenerateAsync, () => !IsBusy && !IsAutoPilotRunning);
         BrowseReferenceCommand = new RelayCommand(() => BrowseInto(p => ReferenceImagePath = p, "เลือกภาพอ้างอิงตัวละคร (lock face/outfit)"));
         ClearReferenceCommand = new RelayCommand(() => ReferenceImagePath = null);
         BrowseSceneCommand = new RelayCommand(() => BrowseInto(p => SceneImagePath = p, "เลือกภาพฉาก / สถานที่"));
         ClearSceneCommand = new RelayCommand(() => SceneImagePath = null);
         BrowseOutfitCommand = new RelayCommand(() => BrowseInto(p => OutfitImagePath = p, "เลือกภาพเสื้อผ้า / ชุด"));
         ClearOutfitCommand = new RelayCommand(() => OutfitImagePath = null);
-        AutoPilotCommand = new AsyncRelayCommand(RunAutoPilotAsync, () => !IsAutoPilotRunning);
+        AutoPilotCommand = new AsyncRelayCommand(RunAutoPilotAsync, () => !IsAutoPilotRunning && !IsBusy);
         CancelAutoPilotCommand = new RelayCommand(() => _autoPilotCts?.Cancel());
         CopyBoardCommand = new RelayCommand(CopyBoard);
         CopyFacebookCommand = new RelayCommand(CopyFacebook);
         CopyClipPromptCommand = new RelayCommand<StoryboardClip>(CopyClipPrompt);
         ExportClipComfyCommand = new RelayCommand<StoryboardClip>(c => { if (c is not null) ExportClipComfy(c); });
         ExportAllComfyCommand = new RelayCommand(ExportAllComfy);
-        SendClipCommand = new AsyncRelayCommand<StoryboardClip>(SendClipAsync);
-        SendAllCommand = new AsyncRelayCommand(SendAllAsync);
+        SendClipCommand = new AsyncRelayCommand<StoryboardClip>(SendClipAsync, _ => !IsAutoPilotRunning && !IsBusy);
+        SendAllCommand = new AsyncRelayCommand(SendAllAsync, () => !IsAutoPilotRunning && !IsBusy);
         PlayClipCommand = new RelayCommand<StoryboardClip>(PlayClip);
 
         LoadRoutes();
@@ -297,8 +331,10 @@ public sealed class StoryboardViewModel : ObservableObject
         if (_ctx is not null)
             _ctx.Generation.ProgressChanged += OnGenerationProgress;
 
-        // Land on template #1 with its ready-made example board already shown.
+        // Land on template #1 with its ready-made example board already shown
+        // — unless the last session left a board, which comes back as it was.
         SelectTemplate("fortune-money");
+        if (_ctx is not null) RestoreBoard();
     }
 
     private void LoadRoutes()
@@ -324,6 +360,16 @@ public sealed class StoryboardViewModel : ObservableObject
                      ?? Routes.FirstOrDefault(r => r.Id == "veo")
                      ?? Routes.FirstOrDefault();
         OnPropertyChanged(nameof(DefaultRoute));
+    }
+
+    /// <summary>The template list's click: confirms before replacing a board
+    /// that holds work.</summary>
+    private void PickTemplate(string? id)
+    {
+        if (_boardHasWork && _spec is not null
+            && !Confirm("เปลี่ยนเทมเพลตจะแทนที่สตอรี่บอร์ดที่มีอยู่ (รวมสถานะคลิปที่ส่งไปแล้ว)\nต้องการเปลี่ยนหรือไม่?"))
+            return;
+        SelectTemplate(id);
     }
 
     private void SelectTemplate(string? id)
@@ -354,6 +400,8 @@ public sealed class StoryboardViewModel : ObservableObject
             Spec = null;
             SetStatus("กรอกคอนเซ็ปต์แล้วกด ✦ Generate storyboard", "info");
         }
+        _boardHasWork = false;
+        ScheduleSave();
     }
 
     private async Task GenerateAsync()
@@ -364,6 +412,9 @@ public sealed class StoryboardViewModel : ObservableObject
             SetStatus("พิมพ์คอนเซ็ปต์ก่อน (หรือเลือกเทมเพลต) แล้วค่อยกด Generate", "warn");
             return;
         }
+        if (_boardHasWork && _spec is not null
+            && !Confirm("สร้างใหม่จะแทนที่สตอรี่บอร์ดที่มีอยู่ (รวมสถานะคลิปที่ส่งไปแล้ว)\nต้องการสร้างใหม่หรือไม่?"))
+            return;
 
         var srcTpl = StoryboardTemplates.FindById(SelectedTemplateId);
         var formTpl = new StoryboardTemplate
@@ -395,6 +446,8 @@ public sealed class StoryboardViewModel : ObservableObject
             }
             var spec = StoryboardBuilder.Parse(json, formTpl);
             ApplyBoard(spec);
+            _boardHasWork = true;
+            ScheduleSave();
             SetStatus($"สร้างสตอรี่บอร์ดสำเร็จ · {spec.Clips.Count} คลิป ✓", "ok");
         }
         catch (Exception ex)
@@ -420,6 +473,23 @@ public sealed class StoryboardViewModel : ObservableObject
         foreach (var clip in spec.Clips) clip.Route = route;
         StoryboardBuilder.RefreshVideoPrompts(spec);
         Spec = spec;
+    }
+
+    /// <summary>Save when a card's engine picker changes (the board's own
+    /// setters cover everything else).</summary>
+    private void WatchClipRoutes(StoryboardSpec? spec)
+    {
+        if (spec is null) return;
+        foreach (var clip in spec.Clips)
+        {
+            clip.PropertyChanged -= OnClipRouteChanged;
+            clip.PropertyChanged += OnClipRouteChanged;
+        }
+    }
+
+    private void OnClipRouteChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(StoryboardClip.Route)) ScheduleSave();
     }
 
     private void CopyBoard()
@@ -474,7 +544,9 @@ public sealed class StoryboardViewModel : ObservableObject
         catch (Exception ex) { SetStatus("Export ไม่สำเร็จ: " + ex.Message, "err"); }
     }
 
-    private async Task SendClipAsync(StoryboardClip? clip)
+    private Task SendClipAsync(StoryboardClip? clip) => SendClipCoreAsync(clip, fromSendAll: false);
+
+    private async Task SendClipCoreAsync(StoryboardClip? clip, bool fromSendAll)
     {
         if (clip is null) return;
         if (_ctx is null) { SetStatus("Studio context not wired.", "warn"); return; }
@@ -484,6 +556,9 @@ public sealed class StoryboardViewModel : ObservableObject
             SetStatus($"CLIP {clip.Index} กำลังสร้างอยู่แล้ว", "warn");
             return;
         }
+        if (!fromSendAll && clip.IsDone && !string.IsNullOrEmpty(clip.MediaPath) && File.Exists(clip.MediaPath)
+            && !Confirm($"CLIP {clip.Index} สร้างเสร็จแล้ว — สร้างใหม่จะเสียค่าใช้จ่ายอีกรอบ (ถ้าเป็นเอนจินที่คิดเงิน)\nต้องการสร้างใหม่หรือไม่?"))
+            return;
 
         var route = string.IsNullOrWhiteSpace(clip.Route) ? "seedance" : clip.Route;
         // Shared with Auto Pilot — one source of truth for what a clip submit
@@ -516,7 +591,15 @@ public sealed class StoryboardViewModel : ObservableObject
             // before this line runs — only advance to Generating if still Queue
             // so we never clobber a finished status back to "generating".
             if (clip.Status == ShotStatus.Queue) clip.Status = ShotStatus.Generating;
-            SetStatus($"ส่ง CLIP {clip.Index} เข้า Queue ({route}) ✓", "ok");
+            _boardHasWork = true;
+            ScheduleSave();
+            // The local scene graph has no image input, so an attached face
+            // reference does nothing on this route — say so rather than let
+            // the user think the character is locked.
+            if (route == "comfyui" && HasReferenceImage)
+                SetStatus($"ส่ง CLIP {clip.Index} เข้า Queue (comfyui) ✓ — ComfyUI ไม่ได้ใช้ภาพอ้างอิง คลิปนี้สร้างจากข้อความอย่างเดียว", "warn");
+            else
+                SetStatus($"ส่ง CLIP {clip.Index} เข้า Queue ({route}) ✓", "ok");
         }
         catch (Exception ex)
         {
@@ -531,20 +614,29 @@ public sealed class StoryboardViewModel : ObservableObject
         var clips = _spec.Clips.ToList();
         var sent = 0;
         var failed = 0;
+        var skippedDone = 0;
         foreach (var clip in clips)
         {
             if (clip.IsBusy) continue;
-            await SendClipAsync(clip);
+            // A finished clip is not sent again — that paid for it twice.
+            // Its own Queue button re-renders it on purpose.
+            if (clip.IsDone && !string.IsNullOrEmpty(clip.MediaPath) && File.Exists(clip.MediaPath))
+            {
+                skippedDone++;
+                continue;
+            }
+            await SendClipCoreAsync(clip, fromSendAll: true);
             // SendClipAsync flips a failed submit to Error; only count real sends.
             if (clip.Status == ShotStatus.Error) failed++;
             else sent++;
         }
+        var skippedNote = skippedDone > 0 ? $" · ข้าม {skippedDone} คลิปที่เสร็จแล้ว" : "";
         if (sent == 0 && failed == 0)
-            SetStatus("ทุกคลิปกำลังสร้างอยู่แล้ว", "warn");
+            SetStatus(skippedDone > 0 ? $"ทุกคลิปเสร็จหรือกำลังสร้างอยู่แล้ว{skippedNote}" : "ทุกคลิปกำลังสร้างอยู่แล้ว", "warn");
         else if (failed > 0)
-            SetStatus($"ส่ง {sent} คลิป · ผิดพลาด {failed}", "warn");
+            SetStatus($"ส่ง {sent} คลิป · ผิดพลาด {failed}{skippedNote}", "warn");
         else
-            SetStatus($"ส่ง {sent} คลิปเข้า Queue แล้ว ✓", "ok");
+            SetStatus($"ส่ง {sent} คลิปเข้า Queue แล้ว ✓{skippedNote}", "ok");
     }
 
     private void PlayClip(StoryboardClip? clip)
@@ -564,6 +656,7 @@ public sealed class StoryboardViewModel : ObservableObject
         clip.Status = e.Status;
         clip.Progress = e.Progress;
         if (e.MediaPath is not null) clip.MediaPath = e.MediaPath;
+        if (e.Status is ShotStatus.Done or ShotStatus.Error) ScheduleSave();
 
         if (e.Status == ShotStatus.Done)
             SetStatus($"CLIP {clip.Index} เสร็จแล้ว ✓", "ok");
@@ -647,6 +740,10 @@ public sealed class StoryboardViewModel : ObservableObject
             IsAutoPilotRunning = false;
             _autoPilotCts.Dispose();
             _autoPilotCts = null;
+            // A run stopped at preflight (no Facebook token, no ffmpeg) sent
+            // nothing and must not make a template example "precious".
+            if (_spec?.Clips.Any(c => c.HasBeenSent) == true) _boardHasWork = true;
+            ScheduleSave();
         }
     }
 
@@ -660,11 +757,240 @@ public sealed class StoryboardViewModel : ObservableObject
     {
         StatusMessage = message;
         StatusKind = kind;
+        // An error stays until something replaces it: at 4 s it was gone
+        // before a user who had looked away could read why a clip failed.
+        if (kind == "err") return;
         try
         {
-            await Task.Delay(4000);
+            await Task.Delay(kind == "warn" ? 10000 : 5000);
             if (StatusMessage == message) StatusMessage = null;
         }
         catch { }
+    }
+
+    private static bool Confirm(string message) =>
+        System.Windows.MessageBox.Show(message, "Storyboard",
+            System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question,
+            System.Windows.MessageBoxResult.No) == System.Windows.MessageBoxResult.Yes;
+
+    // ── Persistence ───────────────────────────────────────────────────────────
+    // The board lived only in memory, so an AI-written board and the link from
+    // each clip to its rendered file were gone after a restart.
+
+    private static string BoardFile => Path.Combine(AppPaths.Root, "storyboard-current.json");
+
+    private static readonly JsonSerializerOptions BoardJson = new()
+    {
+        // Spec.Clips, Facebook.Hashtags… are get-only collections.
+        PreferredObjectCreationHandling = JsonObjectCreationHandling.Populate,
+        WriteIndented = false,
+    };
+
+    private sealed class SavedBoard
+    {
+        public int Version { get; set; } = 1;
+        public string TemplateId { get; set; } = "";
+        public string Concept { get; set; } = "";
+        public string Character { get; set; } = "";
+        public string StyleNote { get; set; } = "";
+        public string VoiceNote { get; set; } = "";
+        public string ReferenceTag { get; set; } = "";
+        public int ClipCount { get; set; }
+        public double ClipDurationSec { get; set; }
+        public string AspectId { get; set; } = "";
+        public string? ReferenceImagePath { get; set; }
+        public string? SceneImagePath { get; set; }
+        public string? OutfitImagePath { get; set; }
+        public string? DefaultRouteId { get; set; }
+        public bool HasWork { get; set; }
+        public StoryboardSpec? Spec { get; set; }
+    }
+
+    private System.Windows.Threading.DispatcherTimer? _saveTimer;
+    private bool _restoring;
+
+    /// <summary>Save shortly after the last change (typing fires per key).</summary>
+    private void ScheduleSave()
+    {
+        if (_ctx is null || _restoring) return;
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null) return;
+        if (!dispatcher.CheckAccess()) { dispatcher.BeginInvoke(ScheduleSave); return; }
+        _saveTimer ??= CreateSaveTimer();
+        _saveTimer.Stop();
+        _saveTimer.Start();
+    }
+
+    private System.Windows.Threading.DispatcherTimer CreateSaveTimer()
+    {
+        var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+        t.Tick += (_, _) => { t.Stop(); SaveBoard(); };
+        return t;
+    }
+
+    /// <summary>Write a pending save now — called on app exit, where the
+    /// 1.5 s debounce would otherwise drop the last edits.</summary>
+    public void FlushSave()
+    {
+        if (_saveTimer?.IsEnabled != true) return;
+        _saveTimer.Stop();
+        SaveBoard();
+    }
+
+    private void SaveBoard()
+    {
+        try
+        {
+            var saved = new SavedBoard
+            {
+                TemplateId = SelectedTemplateId,
+                Concept = Concept,
+                Character = Character,
+                StyleNote = StyleNote,
+                VoiceNote = VoiceNote,
+                ReferenceTag = ReferenceTag,
+                ClipCount = ClipCount,
+                ClipDurationSec = ClipDurationSec,
+                AspectId = AspectId,
+                ReferenceImagePath = ReferenceImagePath,
+                SceneImagePath = SceneImagePath,
+                OutfitImagePath = OutfitImagePath,
+                DefaultRouteId = DefaultRoute?.Id,
+                HasWork = _boardHasWork,
+                Spec = _spec,
+            };
+            var tmp = BoardFile + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(saved, BoardJson));
+            File.Move(tmp, BoardFile, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn("storyboard", "board save failed: " + ex.Message);
+        }
+    }
+
+    private void RestoreBoard()
+    {
+        SavedBoard? saved;
+        try
+        {
+            if (!File.Exists(BoardFile)) return;
+            saved = JsonSerializer.Deserialize<SavedBoard>(File.ReadAllText(BoardFile), BoardJson);
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn("storyboard", "saved board unreadable, starting fresh: " + ex.Message);
+            SetAsideBoardFile();
+            return;
+        }
+        if (saved is null) return;
+
+        _restoring = true;
+        try
+        {
+            ApplySavedBoard(saved);
+        }
+        catch (Exception ex)
+        {
+            // Parsed but not usable (a null clip, a null line…): start from the
+            // template rather than take the whole window down with it.
+            ActivityLog.Warn("storyboard", "saved board could not be applied, starting fresh: " + ex.Message);
+            SetAsideBoardFile();
+            _restoring = false;
+            SelectTemplate("fortune-money");
+        }
+        finally
+        {
+            _restoring = false;
+        }
+    }
+
+    /// <summary>
+    /// Move a board file that could not be loaded out of the way, so the
+    /// template's next save does not overwrite the only copy of an AI-written
+    /// board (and its links to rendered clips).
+    /// </summary>
+    private static void SetAsideBoardFile()
+    {
+        try
+        {
+            if (!File.Exists(BoardFile)) return;
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+            File.Move(BoardFile, BoardFile + ".bad-" + stamp);
+            ActivityLog.Warn("storyboard", "kept the unreadable board as storyboard-current.json.bad-" + stamp);
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn("storyboard", "could not set the unreadable board aside: " + ex.Message);
+        }
+    }
+
+    private void ApplySavedBoard(SavedBoard saved)
+    {
+        {
+            var tpl = StoryboardTemplates.FindById(saved.TemplateId);
+            if (tpl is not null)
+            {
+                SelectedTemplateId = tpl.Id;
+                foreach (var t in Templates) t.IsActive = t.Id == tpl.Id;
+            }
+            Concept = saved.Concept;
+            Character = saved.Character;
+            StyleNote = saved.StyleNote;
+            VoiceNote = saved.VoiceNote;
+            ReferenceTag = saved.ReferenceTag;
+            if (saved.ClipCount > 0) ClipCount = saved.ClipCount;
+            if (saved.ClipDurationSec > 0) ClipDurationSec = saved.ClipDurationSec;
+            if (!string.IsNullOrEmpty(saved.AspectId)) AspectId = saved.AspectId;
+            // A reference whose file has since moved would be uploaded as a
+            // missing file; drop it instead.
+            ReferenceImagePath = File.Exists(saved.ReferenceImagePath) ? saved.ReferenceImagePath : null;
+            SceneImagePath = File.Exists(saved.SceneImagePath) ? saved.SceneImagePath : null;
+            OutfitImagePath = File.Exists(saved.OutfitImagePath) ? saved.OutfitImagePath : null;
+            var route = Routes.FirstOrDefault(r => r.Id == saved.DefaultRouteId);
+            if (route is not null) { _defaultRoute = route; OnPropertyChanged(nameof(DefaultRoute)); }
+
+            if (saved.Spec is { } spec)
+            {
+                var interrupted = 0;
+                // Drop entries a hand-edited or damaged file left null.
+                foreach (var dead in spec.Clips.Where(c => c is null).ToList()) spec.Clips.Remove(dead);
+                foreach (var clip in spec.Clips)
+                {
+                    foreach (var line in clip.Dialogue.Where(d => d is null).ToList()) clip.Dialogue.Remove(line);
+                    if (Routes.All(r => r.Id != clip.Route)) clip.Route = _defaultRoute?.Id ?? clip.Route;
+                    var fileThere = !string.IsNullOrEmpty(clip.MediaPath) && File.Exists(clip.MediaPath);
+                    if (clip.IsDone && !fileThere)
+                    {
+                        // The render was deleted from disk — the clip is unsent again.
+                        clip.MediaPath = null;
+                        clip.ShotId = "";
+                        clip.Status = ShotStatus.Queue;
+                        clip.Progress = 0;
+                    }
+                    else if (clip.IsBusy)
+                    {
+                        // Nothing resumes a job across a restart.
+                        clip.Status = ShotStatus.Error;
+                        clip.Progress = 0;
+                        interrupted++;
+                    }
+                }
+                spec.Facebook.NotifyDerived();
+                StoryboardBuilder.RefreshVideoPrompts(spec);
+                Spec = spec;
+                _boardHasWork = saved.HasWork;
+                SetStatus(interrupted > 0
+                    ? $"เปิดสตอรี่บอร์ดล่าสุดแล้ว — {interrupted} คลิปที่กำลังสร้างตอนปิดแอปถูกหยุดไป กด Queue เพื่อสร้างใหม่"
+                    : "เปิดสตอรี่บอร์ดล่าสุดแล้ว ✓", interrupted > 0 ? "warn" : "ok");
+            }
+            else
+            {
+                // The saved template had no example board; the constructor's
+                // default example must not stay up under the restored form.
+                Spec = null;
+                _boardHasWork = false;
+            }
+        }
     }
 }

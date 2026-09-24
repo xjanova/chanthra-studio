@@ -49,12 +49,12 @@ public sealed class SchedulesRepository
             INSERT INTO schedules (
                 name, prompt_template, negative_prompt, workflow, route, style_id,
                 aspect, camera, duration_sec, motion, kind, spec,
-                auto_post, post_target, last_fire_at, next_fire_at,
+                auto_post, post_target, post_caption, last_fire_at, next_fire_at,
                 is_enabled, created_at, updated_at
             ) VALUES (
                 $name, $promptTemplate, $negativePrompt, $workflow, $route, $styleId,
                 $aspect, $camera, $duration, $motion, $kind, $spec,
-                $autoPost, $postTarget, $lastFire, $nextFire,
+                $autoPost, $postTarget, $postCaption, $lastFire, $nextFire,
                 $enabled, $now, $now
             );
             SELECT last_insert_rowid();
@@ -74,6 +74,7 @@ public sealed class SchedulesRepository
                 spec = s.Spec,
                 autoPost = s.AutoPost ? 1 : 0,
                 postTarget = s.PostTarget,
+                postCaption = s.PostCaption,
                 lastFire = s.LastFireAt?.ToUnixTimeSeconds(),
                 nextFire = s.NextFireAt?.ToUnixTimeSeconds(),
                 enabled = s.IsEnabled ? 1 : 0,
@@ -104,6 +105,7 @@ public sealed class SchedulesRepository
                 spec = $spec,
                 auto_post = $autoPost,
                 post_target = $postTarget,
+                post_caption = $postCaption,
                 last_fire_at = $lastFire,
                 next_fire_at = $nextFire,
                 is_enabled = $enabled,
@@ -126,6 +128,7 @@ public sealed class SchedulesRepository
                 spec = s.Spec,
                 autoPost = s.AutoPost ? 1 : 0,
                 postTarget = s.PostTarget,
+                postCaption = s.PostCaption,
                 lastFire = s.LastFireAt?.ToUnixTimeSeconds(),
                 nextFire = s.NextFireAt?.ToUnixTimeSeconds(),
                 enabled = s.IsEnabled ? 1 : 0,
@@ -183,6 +186,36 @@ public sealed class SchedulesRepository
         }).ToList();
     }
 
+    /// <summary>The newest run of every schedule, keyed by schedule id — what
+    /// each card shows as its last result.</summary>
+    public IReadOnlyDictionary<long, ScheduleRun> LatestRuns()
+    {
+        using var c = _db.Open();
+        var rows = c.Query<RunRow>("""
+            SELECT r.id, r.schedule_id, r.fired_at, r.job_id, r.status, r.error_message
+            FROM schedule_runs r
+            JOIN (SELECT schedule_id, MAX(id) AS id FROM schedule_runs GROUP BY schedule_id) latest
+              ON latest.id = r.id
+            """).ToList();
+        return rows.ToDictionary(r => r.Schedule_id, r => new ScheduleRun
+        {
+            Id = r.Id,
+            ScheduleId = r.Schedule_id,
+            FiredAt = DateTimeOffset.FromUnixTimeSeconds(r.Fired_at),
+            JobId = r.Job_id,
+            Status = r.Status,
+            ErrorMessage = r.Error_message,
+        });
+    }
+
+    /// <summary>Record how a run ended, including a failed auto-post.</summary>
+    public void FinishRun(string jobId, string status, string? error)
+    {
+        using var c = _db.Open();
+        c.Execute("UPDATE schedule_runs SET status = $status, error_message = $error WHERE job_id = $jobId",
+            new { jobId, status, error });
+    }
+
     private static Schedule Hydrate(Row r)
     {
         return new Schedule
@@ -202,6 +235,7 @@ public sealed class SchedulesRepository
             Spec = r.Spec,
             AutoPost = r.Auto_post != 0,
             PostTarget = r.Post_target ?? "",
+            PostCaption = r.Post_caption ?? "",
             LastFireAt = r.Last_fire_at is long lf ? DateTimeOffset.FromUnixTimeSeconds(lf) : null,
             NextFireAt = r.Next_fire_at is long nf ? DateTimeOffset.FromUnixTimeSeconds(nf) : null,
             IsEnabled = r.Is_enabled != 0,
@@ -227,6 +261,7 @@ public sealed class SchedulesRepository
         public string Spec { get; set; } = "";
         public int Auto_post { get; set; }
         public string? Post_target { get; set; }
+        public string? Post_caption { get; set; }
         public long? Last_fire_at { get; set; }
         public long? Next_fire_at { get; set; }
         public int Is_enabled { get; set; }

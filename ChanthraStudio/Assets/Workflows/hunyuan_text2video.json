@@ -1,4 +1,4 @@
-// "Hunyuan · text → video" · HUNYUAN · text→video — Tencent HunyuanVideo. 73 frames @ 24fps. Needs hunyuan_video_t2v_720p model.
+// "Hunyuan · text → video" · HUNYUAN · text→video — Tencent HunyuanVideo. 73 frames @ 24fps. Needs hunyuan_video_t2v_720p model. Saves H.264 .mp4. 13B model — 24 GB card or a rented GPU.
 {
   "1": {
     "class_type": "UNETLoader",
@@ -81,14 +81,19 @@
     }
   },
   "11": {
-    "class_type": "SaveAnimatedWEBP",
+    "class_type": "CreateVideo",
     "inputs": {
+      "images": ["10", 0],
+      "fps": 24
+    }
+  },
+  "12": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": ["11", 0],
       "filename_prefix": "ChanthraStudio_Hunyuan",
-      "fps": 24,
-      "lossless": false,
-      "quality": 80,
-      "method": "default",
-      "images": ["10", 0]
+      "format": "mp4",
+      "codec": "auto"
     }
   }
 }

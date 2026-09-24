@@ -64,7 +64,7 @@ public sealed class AppSettings
     /// <summary>If the user clicked "Skip this version" in the update
     /// dialog, the latest version they declined is stashed here so we
     /// don't re-pop the same banner every 6 hours. Cleared automatically
-    /// when GitHub reports a higher version.</summary>
+    /// when the site reports a higher version.</summary>
     public string SkippedUpdateVersion { get; set; } = "";
 
     public DateTime? LastSavedAt { get; private set; }

@@ -30,6 +30,10 @@ public sealed class ScheduleService : IDisposable
 
     public event Action<Schedule>? ScheduleFired;
 
+    /// <summary>A run finished (rendered, failed, or its auto-post did).
+    /// Raised on a worker or UI thread; listeners marshal.</summary>
+    public event Action<long>? RunFinished;
+
     public ScheduleService(StudioContext ctx)
     {
         _ctx = ctx;
@@ -58,6 +62,34 @@ public sealed class ScheduleService : IDisposable
     /// </summary>
     public Task ForceTickAsync() => TickAsync();
 
+    /// <summary>Schedule ids between "decided to fire" and "submitted". A
+    /// second fire for the same schedule in that window — a double-clicked
+    /// Run now, or Run now racing the timer — is refused.</summary>
+    private readonly ConcurrentDictionary<long, byte> _firing = new();
+
+    /// <summary>
+    /// Fire one schedule now, whether or not it is enabled, without moving its
+    /// regular next-fire. Returns false when that schedule is already firing.
+    /// </summary>
+    public async Task<bool> RunNowAsync(Schedule schedule)
+    {
+        if (!_firing.TryAdd(schedule.Id, 0)) return false;
+        try
+        {
+            // Fire what is saved, not half-edited fields in the editor.
+            var saved = _ctx.Schedules.All().FirstOrDefault(s => s.Id == schedule.Id) ?? schedule;
+            saved.LastFireAt = DateTimeOffset.UtcNow;
+            try { _ctx.Schedules.Update(saved); } catch { /* best-effort */ }
+            ScheduleFired?.Invoke(saved);
+            await SubmitAsync(saved);
+            return true;
+        }
+        finally
+        {
+            _firing.TryRemove(schedule.Id, out _);
+        }
+    }
+
     private async Task TickAsync()
     {
         // Re-entrancy guard: the previous tick's fired generations may
@@ -73,47 +105,61 @@ public sealed class ScheduleService : IDisposable
 
         foreach (var s in due)
         {
-            // Bump next_fire_at FIRST so a long-running generation can't
-            // cause us to fire the same slot twice on consecutive ticks.
-            var fired = DateTimeOffset.UtcNow;
-            s.LastFireAt = fired;
-            s.NextFireAt = s.ComputeNextFireAt(fired);
-            try { _ctx.Schedules.Update(s); } catch { /* best-effort */ }
-
-            ScheduleFired?.Invoke(s);
-
-            // Compose + submit. If anything throws, log a "skipped" run
-            // and continue — one bad schedule shouldn't take the loop down.
+            if (!_firing.TryAdd(s.Id, 0)) continue;
             try
             {
-                var shot = ComposeShot(s);
-                long runId = _ctx.Schedules.LogRun(s.Id, "queued", null);
+                // Bump next_fire_at FIRST so a long-running generation can't
+                // cause us to fire the same slot twice on consecutive ticks.
+                var fired = DateTimeOffset.UtcNow;
+                s.LastFireAt = fired;
+                s.NextFireAt = s.ComputeNextFireAt(fired);
+                try { _ctx.Schedules.Update(s); } catch { /* best-effort */ }
 
-                // Save the promptId↔scheduleId mapping so OnGenerationProgress
-                // can pick up auto-post and update run status.
-                // Each schedule carries its own Route + Workflow — honour
-                // them per-fire instead of the global Settings.ActiveVideo
-                // so two schedules can target different providers at once.
-                var promptId = await _ctx.Generation.SubmitAsync(
-                    shot,
-                    routeOverride: s.Route,
-                    workflowOverride: s.Workflow);
-                _jobToSchedule[promptId] = s.Id;
-
-                // Patch the run row with the real prompt id (best-effort).
-                try
-                {
-                    using var c = _ctx.Db.Open();
-                    Dapper.SqlMapper.Execute(c,
-                        "UPDATE schedule_runs SET job_id = $j WHERE id = $i",
-                        new { j = promptId, i = runId });
-                }
-                catch { }
+                ScheduleFired?.Invoke(s);
+                await SubmitAsync(s);
             }
-            catch (Exception ex)
+            finally
             {
-                _ctx.Schedules.LogRun(s.Id, "error", null, ex.Message);
+                _firing.TryRemove(s.Id, out _);
             }
+        }
+    }
+
+    /// <summary>Compose and submit one fire. If anything throws, a run row
+    /// says so and the loop carries on — one bad schedule must not take the
+    /// others down.</summary>
+    private async Task SubmitAsync(Schedule s)
+    {
+        try
+        {
+            var shot = ComposeShot(s);
+            long runId = _ctx.Schedules.LogRun(s.Id, "queued", null);
+
+            // Save the promptId↔scheduleId mapping so OnGenerationProgress
+            // can pick up auto-post and update run status.
+            // Each schedule carries its own Route + Workflow — honour
+            // them per-fire instead of the global Settings.ActiveVideo
+            // so two schedules can target different providers at once.
+            var promptId = await _ctx.Generation.SubmitAsync(
+                shot,
+                routeOverride: s.Route,
+                workflowOverride: s.Workflow);
+            _jobToSchedule[promptId] = s.Id;
+
+            // Patch the run row with the real prompt id (best-effort).
+            try
+            {
+                using var c = _ctx.Db.Open();
+                Dapper.SqlMapper.Execute(c,
+                    "UPDATE schedule_runs SET job_id = $j WHERE id = $i",
+                    new { j = promptId, i = runId });
+            }
+            catch { }
+        }
+        catch (Exception ex)
+        {
+            _ctx.Schedules.LogRun(s.Id, "error", null, ex.Message);
+            ActivityLog.Warn("schedule", $"{s.Name}: fire failed — {ex.Message}");
         }
     }
 
@@ -155,13 +201,16 @@ public sealed class ScheduleService : IDisposable
     {
         if (string.IsNullOrEmpty(template)) return template;
         var now = DateTimeOffset.Now;
+        // Invariant: under th-TH the current culture writes the Buddhist year,
+        // so {date} came out as 2569-09-23 while {iso} said 2026.
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
         return template
-            .Replace("{date}", now.ToString("yyyy-MM-dd"))
-            .Replace("{time}", now.ToString("HH:mm"))
-            .Replace("{hour}", now.ToString("HH"))
-            .Replace("{minute}", now.ToString("mm"))
+            .Replace("{date}", now.ToString("yyyy-MM-dd", inv))
+            .Replace("{time}", now.ToString("HH:mm", inv))
+            .Replace("{hour}", now.ToString("HH", inv))
+            .Replace("{minute}", now.ToString("mm", inv))
             .Replace("{dow}", now.DayOfWeek.ToString())
-            .Replace("{iso}", now.ToString("o"));
+            .Replace("{iso}", now.ToString("o", inv));
     }
 
     private async void OnGenerationProgress(object? sender, GenerationProgressEventArgs e)
@@ -171,52 +220,52 @@ public sealed class ScheduleService : IDisposable
         if (e.Status == ShotStatus.Done)
         {
             _jobToSchedule.TryRemove(e.PromptId, out _);
+            string? postProblem = null;
 
-            try
-            {
-                using var c = _ctx.Db.Open();
-                Dapper.SqlMapper.Execute(c,
-                    "UPDATE schedule_runs SET status = 'done' WHERE job_id = $j",
-                    new { j = e.PromptId });
-            }
-            catch { }
-
-            // Auto-post — fire and forget. We look the schedule up fresh
-            // so a recently-edited post target is honoured.
+            // Auto-post. We look the schedule up fresh so a recently-edited
+            // post target is honoured.
             try
             {
                 var schedule = _ctx.Schedules.All().FirstOrDefault(s => s.Id == scheduleId);
-                if (schedule is null || !schedule.AutoPost) return;
-                if (string.IsNullOrEmpty(schedule.PostTarget)) return;
-
-                var clip = _ctx.Clips.RecentClips(20)
-                    .FirstOrDefault(c => c.ShotId == e.ShotId);
-                if (clip is null) return;
-
-                var caption = ResolveTemplate(schedule.PromptTemplate);
-                if (caption.Length > 1500) caption = caption[..1500];
-                await _ctx.Posting.PostAsync(schedule.PostTarget, clip, caption);
+                if (schedule is { AutoPost: true } && !string.IsNullOrEmpty(schedule.PostTarget))
+                {
+                    var clip = _ctx.Clips.RecentClips(20).FirstOrDefault(c => c.ShotId == e.ShotId);
+                    if (clip is null)
+                    {
+                        postProblem = "โพสต์ไม่ได้ — หาไฟล์ของงานนี้ใน Library ไม่เจอ";
+                    }
+                    else
+                    {
+                        // The public caption is the schedule's own caption, or
+                        // its name. It used to be the generation prompt.
+                        var caption = ResolveTemplate(string.IsNullOrWhiteSpace(schedule.PostCaption)
+                            ? schedule.Name
+                            : schedule.PostCaption);
+                        if (caption.Length > 1500) caption = caption[..1500];
+                        var result = await _ctx.Posting.PostAsync(schedule.PostTarget, clip, caption);
+                        if (!result.Ok) postProblem = "โพสต์ไม่สำเร็จ: " + result.Error;
+                    }
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                // Posting failures are noted in the post_history table by
-                // PostingService itself; the schedule run still counts as
-                // "done" because the clip exists.
+                postProblem = "โพสต์ไม่สำเร็จ: " + ex.Message;
             }
+
+            // The run is "done" either way — the clip exists — but a failed
+            // post is written down where the card can show it, instead of
+            // being known only to the post_history table.
+            try { _ctx.Schedules.FinishRun(e.PromptId, "done", postProblem); } catch { }
+            if (postProblem is not null) ActivityLog.Warn("schedule", postProblem);
+            RunFinished?.Invoke(scheduleId);
             return;
         }
 
         if (e.Status == ShotStatus.Error)
         {
             _jobToSchedule.TryRemove(e.PromptId, out _);
-            try
-            {
-                using var c = _ctx.Db.Open();
-                Dapper.SqlMapper.Execute(c,
-                    "UPDATE schedule_runs SET status = 'error', error_message = $err WHERE job_id = $j",
-                    new { j = e.PromptId, err = e.Error });
-            }
-            catch { }
+            try { _ctx.Schedules.FinishRun(e.PromptId, "error", e.Error); } catch { }
+            RunFinished?.Invoke(scheduleId);
         }
     }
 

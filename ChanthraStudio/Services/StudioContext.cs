@@ -44,6 +44,7 @@ public sealed class StudioContext
     public NleProjectFiles NleProjectFiles { get; }
     public WebStudioService WebStudio { get; } = new();
     public WebRecipeRepository WebRecipes { get; } = new();
+    public PosterService Posters { get; }
 
     public StudioContext()
     {
@@ -75,5 +76,6 @@ public sealed class StudioContext
         Usage = new UsageRepository(Db);
         Tracker = new UsageTracker(this);
         NleProjectFiles = new NleProjectFiles(this);
+        Posters = new PosterService(this);
     }
 }

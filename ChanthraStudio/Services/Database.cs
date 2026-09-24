@@ -339,6 +339,16 @@ public sealed class Database
                 """);
             SetSchemaVersion(c, tx, 6);
         }
+
+        if (current < 7)
+        {
+            // Auto-post used the generation prompt as the public caption —
+            // "the empress in moonlit chamber · 2569-09-23 · cinematic gold
+            // halo" went out to the Page verbatim. A schedule now carries its
+            // own caption template; empty falls back to the schedule's name.
+            Exec(c, tx, "ALTER TABLE schedules ADD COLUMN post_caption TEXT;");
+            SetSchemaVersion(c, tx, 7);
+        }
     }
 
     private static int GetSchemaVersion(IDbConnection c, IDbTransaction tx)

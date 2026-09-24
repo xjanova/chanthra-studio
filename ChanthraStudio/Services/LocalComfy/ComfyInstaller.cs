@@ -71,10 +71,18 @@ public sealed class ComfyInstaller
 
         // A previous attempt that got as far as a complete extraction leaves
         // 5 GB of unpacked files behind. Re-extracting them costs four minutes
-        // to produce byte-identical output, so reuse them.
-        var portableSource = FindPortableRoot(staging);
+        // to produce byte-identical output, so reuse them — but only when the
+        // marker says that extraction finished. A tree from a killed tar has
+        // python.exe and main.py too; it is just missing half of torch.
+        var extractedMarker = Path.Combine(root, "staging.ok");
+        string? portableSource = null;
+        if (File.Exists(extractedMarker)
+            && string.Equals(File.ReadAllText(extractedMarker).Trim(), asset.AssetName, StringComparison.Ordinal))
+            portableSource = FindPortableRoot(staging);
+
         if (portableSource is null)
         {
+            TryDelete(extractedMarker);
             SafeDelete(staging);
             progress?.Report(new ComfyInstallProgress("extract", "กำลังแตกไฟล์…", 0.55));
             ExtractSevenZip(archive, staging, progress, ct);
@@ -83,6 +91,7 @@ public sealed class ComfyInstaller
                 ?? throw new InvalidOperationException(
                     "The downloaded archive did not contain a ComfyUI portable folder — "
                     + "the release layout may have changed.");
+            File.WriteAllText(extractedMarker, asset.AssetName);
         }
         else
         {
@@ -95,6 +104,7 @@ public sealed class ComfyInstaller
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         MoveDirectory(portableSource, target);
         SafeDelete(staging);
+        TryDelete(extractedMarker);
 
         if (!File.Exists(ComfyPaths.PythonExe(root)))
             throw new InvalidOperationException(
@@ -276,6 +286,13 @@ public sealed class ComfyInstaller
             using var proc = System.Diagnostics.Process.Start(psi);
             if (proc is null) return false;
 
+            // Cancel has to stop tar itself; otherwise the install "cancels"
+            // while a 4 GB extraction keeps writing into the folder behind it.
+            using var killOnCancel = ct.Register(() =>
+            {
+                try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { }
+            });
+
             // tar gives no progress, and this step runs for minutes on a 4.4 GB
             // expansion. Watching the destination grow is not exact, but it is
             // an honest moving number rather than a frozen bar.
@@ -297,6 +314,7 @@ public sealed class ComfyInstaller
             var stderr = proc.StandardError.ReadToEnd();
             proc.WaitForExit();
             try { watcher.Wait(2000, ct); } catch { }
+            ct.ThrowIfCancellationRequested();
 
             if (proc.ExitCode == 0) return true;
 
@@ -306,7 +324,7 @@ public sealed class ComfyInstaller
             Directory.CreateDirectory(destination);
             return false;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             ActivityLog.Warn("comfy", "tar.exe failed: " + ex.Message);
             return false;
@@ -379,6 +397,9 @@ public sealed class ComfyInstaller
             => Directory.Exists(Path.Combine(dir, "python_embeded"))
             && Directory.Exists(Path.Combine(dir, "ComfyUI"));
 
+        // On a clean machine nothing has been extracted yet, and enumerating a
+        // folder that does not exist throws instead of returning nothing.
+        if (!Directory.Exists(staging)) return null;
         if (Looks(staging)) return staging;
         return Directory.EnumerateDirectories(staging).FirstOrDefault(Looks);
     }

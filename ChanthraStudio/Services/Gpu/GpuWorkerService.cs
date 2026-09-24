@@ -51,6 +51,15 @@ public sealed class GpuWorkerService : IDisposable
 
     private CancellationTokenSource? _cts;
     private Task? _loop;
+
+    /// <summary>Renders in flight per worker. Busy used to be a flag: the
+    /// first of two jobs to finish set the worker Ready while the second was
+    /// still rendering, and the idle reaper could then kill it mid-render.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _activeJobs = new();
+
+    /// <summary>Rentals the vendor may have accepted without our seeing the
+    /// machine; each tick tries to find and tag them for the orphan sweep.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentBag<PendingRental> _unconfirmed = new();
     private DateTime _lastOrphanSweep = DateTime.MinValue;
     private bool _disposed;
 
@@ -129,6 +138,8 @@ public sealed class GpuWorkerService : IDisposable
         var live = _repo.Live();
         var g = Guardrails;
 
+        await AdoptUnconfirmedAsync(g, ct);
+
         // Early-out only when there is genuinely nothing to look after. Note
         // the deliberate order: live workers are checked BEFORE the enabled
         // flag, so switching the feature off never abandons a running box.
@@ -161,6 +172,34 @@ public sealed class GpuWorkerService : IDisposable
     }
 
     /// <summary>
+    /// A rent whose machine never showed up may still have produced one, billing
+    /// with no row and no name. Tag it with our prefix so the orphan sweep —
+    /// which only ever touches our prefix — can release it.
+    /// </summary>
+    private async Task AdoptUnconfirmedAsync(GpuGuardrails g, CancellationToken ct)
+    {
+        if (_unconfirmed.IsEmpty || !HasApiKey) return;
+        var keep = new List<PendingRental>();
+        while (_unconfirmed.TryTake(out var pending))
+        {
+            if (DateTime.UtcNow - pending.OrderedAtUtc > TimeSpan.FromMinutes(15)) continue;
+            try
+            {
+                if (await Provider(g).AdoptUnconfirmedAsync(ApiKey, pending, ct) > 0)
+                {
+                    LastActivity = "found the machine from an unconfirmed rental — releasing it";
+                    _lastOrphanSweep = DateTime.MinValue;
+                    continue;
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { LastActivity = "unconfirmed rental check failed: " + ex.Message; }
+            keep.Add(pending);
+        }
+        foreach (var p in keep) _unconfirmed.Add(p);
+    }
+
+    /// <summary>
     /// Health + guardrails for one worker.
     ///
     /// Ordering matters: the hard stops are evaluated first and depend on
@@ -172,6 +211,20 @@ public sealed class GpuWorkerService : IDisposable
     {
         var provider = Provider(g);
         var ageMinutes = (DateTime.UtcNow - w.CreatedAt).TotalMinutes;
+
+        // ---- a termination that failed last time is retried first ----------
+        if (!string.IsNullOrEmpty(w.TerminateReason) && w.TerminatedAt is null)
+        {
+            // Not under a render that is running right now — that throws away
+            // work already paid for — unless the lifetime cap has been hit.
+            if (_activeJobs.TryGetValue(w.Id, out var running) && running > 0 && ageMinutes <= g.MaxLifetimeMinutes)
+            {
+                LastActivity = $"{w.Name}: release waits for the render on it to finish";
+                return;
+            }
+            await TerminateAsync(w, w.TerminateReason!, ct);
+            return;
+        }
 
         // ---- hard stops (no profile lookup, no network dependency) --------
         if (ageMinutes > g.MaxLifetimeMinutes)
@@ -224,7 +277,9 @@ public sealed class GpuWorkerService : IDisposable
             WarnIfInsecure(w);
         }
         if (!string.IsNullOrWhiteSpace(inst.GpuModel)) w.GpuModel = inst.GpuModel;
-        if (inst.PricePerHourUsd > 0) w.PricePerHourUsd = inst.PricePerHourUsd;
+        // The price stays the one recorded at rent time: it includes disk, and
+        // the instance reports the GPU line alone — overwriting it made the
+        // budget and the cost label read low.
 
         // ---- boot progress -------------------------------------------------
         var report = await GpuWorkerClient.ProbeAsync(w.EndpointUrl ?? "", w.Token, ct);
@@ -249,12 +304,32 @@ public sealed class GpuWorkerService : IDisposable
                 LastActivity = $"{w.Name} is ready ({w.UptimeLabel} to warm up)";
             }
         }
-        else if (w.Status == GpuWorkerStatus.Warming && ageMinutes > g.WarmupTimeoutMinutes)
+
+        // Judged whether or not the proxy answers: a box that answers but is
+        // stuck (aria2 hung, ComfyUI crash-looping behind the proxy) used to be
+        // exempt, and after an app restart nothing else was waiting on it.
+        if (w.Status == GpuWorkerStatus.Warming && ageMinutes > g.WarmupTimeoutMinutes)
         {
             await TerminateAsync(w,
                 $"never came up within {g.WarmupTimeoutMinutes} min", ct);
             return;
         }
+
+        // The probe above can take the better part of a minute; a render may
+        // have started or finished meanwhile. Decide on the row as it is now,
+        // and never write back job accounting from the stale copy.
+        var latest = _repo.Find(w.Id);
+        if (latest is null || !latest.IsAlive) return;
+        // Marked for release while the probe ran (the user pressed Terminate
+        // and the call failed): writing this older copy back would erase the
+        // mark, and the machine would bill on. The next tick retries it.
+        if (!string.IsNullOrEmpty(latest.TerminateReason)) return;
+        w.LastJobAt = latest.LastJobAt;
+        w.RenderSeconds = latest.RenderSeconds;
+        w.JobsDone = latest.JobsDone;
+        if (w.Status is GpuWorkerStatus.Ready or GpuWorkerStatus.Busy
+            && latest.Status is GpuWorkerStatus.Ready or GpuWorkerStatus.Busy)
+            w.Status = latest.Status;
 
         // ---- soft stops ----------------------------------------------------
         // A busy worker is never reaped here: killing it throws away a render
@@ -359,27 +434,36 @@ public sealed class GpuWorkerService : IDisposable
 
         // One rent at a time. Two concurrent submits would otherwise each see
         // "no worker" and rent their own, doubling the bill.
+        GpuWorker chosen;
         await _rentLock.WaitAsync(ct);
         try
         {
+            // Not one that is marked for release: a failed release is retried
+            // on the next tick, which would kill the render placed on it.
             var existing = _repo.Live().FirstOrDefault(w =>
                 w.ProfileKey == profileKey &&
+                string.IsNullOrEmpty(w.TerminateReason) &&
                 w.Status is GpuWorkerStatus.Ready or GpuWorkerStatus.Warming or GpuWorkerStatus.Busy);
 
             if (existing is not null)
             {
                 progress?.Report(new GpuWarmupProgress("reuse",
                     $"Reusing {existing.Name} ({existing.StatusLabel})", 0.5));
-                return await WaitUntilReadyAsync(existing, g, progress, ct);
+                chosen = existing;
             }
-
-            var fresh = await RentNewAsync(profile, g, progress, ct);
-            return await WaitUntilReadyAsync(fresh, g, progress, ct);
+            else
+            {
+                chosen = await RentNewAsync(profile, g, progress, ct);
+            }
         }
         finally
         {
+            // Held only while deciding what to rent. Holding it through a
+            // warm-up of up to 75 minutes queued every other profile's job
+            // silently behind this one.
             _rentLock.Release();
         }
+        return await WaitUntilReadyAsync(chosen, g, progress, ct);
     }
 
     private async Task<GpuWorker> RentNewAsync(
@@ -458,15 +542,18 @@ public sealed class GpuWorkerService : IDisposable
         var spec = new GpuRentSpec
         {
             OfferId = pick.Id,
+            OfferMarketRef = pick.MarketRef,
             Name = worker.Name,
             DockerImage = string.IsNullOrWhiteSpace(g.DockerImage) ? profile.DockerImage : g.DockerImage,
             GpuCount = 1,
+            DiskGb = profile.RequiredDiskGb,
             ExposedPort = GpuProvisioning.ProxyPort,
-            StartScript = GpuProvisioning.BuildStartScript(profile, worker.Token, HfToken),
+            StartScript = GpuProvisioning.BuildStartScript(profile, worker.Token, HfToken,
+                _ctx.Settings.GetSetting("gpu:comfyRef")),
         };
         spec.Env["CHANTHRA_TOKEN"] = worker.Token;
-        spec.Env["CHANTHRA_PROXY_PORT"] = GpuProvisioning.ProxyPort.ToString();
-        spec.Env["CHANTHRA_COMFY_PORT"] = GpuProvisioning.ComfyPort.ToString();
+        spec.Env["CHANTHRA_PROXY_PORT"] = GpuProvisioning.ProxyPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        spec.Env["CHANTHRA_COMFY_PORT"] = GpuProvisioning.ComfyPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
         if (!string.IsNullOrWhiteSpace(HfToken)) spec.Env["HF_TOKEN"] = HfToken;
 
         try
@@ -475,6 +562,7 @@ public sealed class GpuWorkerService : IDisposable
         }
         catch (Exception ex)
         {
+            if (ex is GpuRentUnconfirmedException unconfirmed) _unconfirmed.Add(unconfirmed.Pending);
             worker.Status = GpuWorkerStatus.Failed;
             worker.ErrorMessage = ex.Message;
             worker.TerminatedAt = DateTime.UtcNow;
@@ -516,6 +604,20 @@ public sealed class GpuWorkerService : IDisposable
         var provider = Provider(g);
         var deadline = worker.CreatedAt.AddMinutes(g.WarmupTimeoutMinutes);
 
+        // Every write below starts from the row as it is NOW. The vendor call
+        // and the probe take tens of seconds, and a Release pressed meanwhile
+        // marks the row; writing the copy read before them back would erase
+        // the mark (and a machine the user released would bill on).
+        GpuWorker Reread()
+        {
+            var now = _repo.Find(worker.Id)
+                ?? throw new GpuRentalException("Worker row vanished mid-warm-up.");
+            if (!now.IsAlive || !string.IsNullOrEmpty(now.TerminateReason))
+                throw new GpuRentalException(
+                    $"{now.Name} is being released ({now.TerminateReason ?? "stopped"}) — submit again to rent another.");
+            return now;
+        }
+
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
@@ -534,6 +636,9 @@ public sealed class GpuWorkerService : IDisposable
             if (!worker.IsAlive)
                 throw new GpuRentalException(
                     worker.ErrorMessage ?? worker.TerminateReason ?? "The worker stopped before it was ready.");
+            if (!string.IsNullOrEmpty(worker.TerminateReason))
+                throw new GpuRentalException(
+                    $"{worker.Name} is being released ({worker.TerminateReason}) — submit again to rent another.");
 
             // Pick up the endpoint as soon as the vendor publishes it.
             if (string.IsNullOrWhiteSpace(worker.EndpointUrl) && worker.InstanceId is not null)
@@ -541,7 +646,11 @@ public sealed class GpuWorkerService : IDisposable
                 var inst = await provider.GetInstanceAsync(ApiKey, worker.InstanceId, ct);
                 if (!string.IsNullOrWhiteSpace(inst?.EndpointUrl))
                 {
+                    worker = Reread();
                     worker.EndpointUrl = inst!.EndpointUrl;
+                    // Where it lives, for diagnosing a warm-up after the fact
+                    // (the URL carries no secret; the token travels separately).
+                    ActivityLog.Info("gpu", $"{worker.Name} endpoint published: {worker.EndpointUrl}");
                     WarnIfInsecure(worker);
                     _repo.Update(worker);
                 }
@@ -552,6 +661,7 @@ public sealed class GpuWorkerService : IDisposable
                 var report = await GpuWorkerClient.ProbeAsync(worker.EndpointUrl!, worker.Token, ct);
                 if (report.Reachable)
                 {
+                    worker = Reread();
                     worker.Stage = report.Stage;
                     worker.StageDetail = report.Detail;
                     worker.LastSeenAt = DateTime.UtcNow;
@@ -587,10 +697,17 @@ public sealed class GpuWorkerService : IDisposable
             await Task.Delay(TimeSpan.FromSeconds(10), ct);
         }
 
-        await TerminateAsync(worker, $"warm-up exceeded {g.WarmupTimeoutMinutes} min", CancellationToken.None);
+        // Keep where it got stuck: once the machine is released its own
+        // boot log is gone, and "timed out" alone says nothing about why.
+        var lastSeen = string.IsNullOrWhiteSpace(worker.StageDetail)
+            ? worker.StageLabel
+            : $"{worker.StageLabel} — {worker.StageDetail}";
+        if (string.IsNullOrWhiteSpace(worker.EndpointUrl)) lastSeen = "the vendor never published an endpoint";
+        var released = await TerminateAsync(worker, $"warm-up exceeded {g.WarmupTimeoutMinutes} min (last seen: {lastSeen})", CancellationToken.None);
         throw new GpuRentalException(
-            $"The machine never finished setting up within {g.WarmupTimeoutMinutes} minutes, so it was released. " +
-            "A faster host (raise the Mbps floor) usually fixes this.");
+            $"The machine never finished setting up within {g.WarmupTimeoutMinutes} minutes " +
+            (released ? "and was released" : "and releasing it failed — the app keeps retrying; check the GPU panel") +
+            $" (last seen: {lastSeen}). A faster host (raise the Mbps floor) usually fixes this.");
     }
 
     /// <summary>
@@ -636,6 +753,7 @@ public sealed class GpuWorkerService : IDisposable
     {
         var w = _repo.Find(workerId);
         if (w is null || !w.IsAlive) return;
+        _activeJobs.AddOrUpdate(workerId, 1, (_, n) => n + 1);
         w.Status = GpuWorkerStatus.Busy;
         w.LastJobAt = DateTime.UtcNow;
         _repo.Update(w);
@@ -654,8 +772,10 @@ public sealed class GpuWorkerService : IDisposable
         w.RenderSeconds += Math.Max(0, renderSeconds);
         w.JobsDone += 1;
         w.LastJobAt = DateTime.UtcNow;
-        // Draining means someone asked for it to go; don't resurrect it.
-        if (w.Status == GpuWorkerStatus.Busy) w.Status = GpuWorkerStatus.Ready;
+        var stillRunning = _activeJobs.AddOrUpdate(workerId, 0, (_, n) => Math.Max(0, n - 1));
+        if (stillRunning == 0) _activeJobs.TryRemove(workerId, out _);
+        // Ready only when the LAST render on it has finished.
+        if (w.Status == GpuWorkerStatus.Busy && stillRunning == 0) w.Status = GpuWorkerStatus.Ready;
         _repo.Update(w);
         WorkersChanged?.Invoke();
     }
@@ -664,7 +784,9 @@ public sealed class GpuWorkerService : IDisposable
     // Termination
     // =====================================================================
 
-    public async Task TerminateAsync(GpuWorker w, string reason, CancellationToken ct = default)
+    /// <returns>True when the vendor confirmed the release; false when it is
+    /// still pending (the row stays marked and the reaper retries).</returns>
+    public async Task<bool> TerminateAsync(GpuWorker w, string reason, CancellationToken ct = default)
     {
         var g = Guardrails;
         if (w.InstanceId is not null && HasApiKey)
@@ -675,20 +797,37 @@ public sealed class GpuWorkerService : IDisposable
             }
             catch (Exception ex)
             {
-                // The row must still be closed out, but the user has to know
-                // the meter might not have stopped — that's real money.
+                // The meter may not have stopped, so the row stays live, marked
+                // for termination, and the next tick tries again. Closing it
+                // here dropped it from every later check (and from the orphan
+                // sweep, which skips ids we know) while it billed on.
                 w.ErrorMessage = $"terminate call failed: {ex.Message}";
-                LastActivity = $"could not terminate {w.Name} — check the vendor dashboard: {ex.Message}";
+                w.TerminateReason = reason;
+                w.TerminatedAt = null;
+                _repo.Update(w);
+                LastActivity = $"could not release {w.Name} yet ({ex.Message}) — retrying every 30 s";
+                WorkersChanged?.Invoke();
+                return false;
             }
+        }
+        else if (w.InstanceId is not null && !HasApiKey)
+        {
+            w.TerminateReason = reason;
+            _repo.Update(w);
+            LastActivity = $"{w.Name} should be released, but the API key is gone — re-paste it";
+            WorkersChanged?.Invoke();
+            return false;
         }
 
         w.Status = w.Status == GpuWorkerStatus.Failed ? GpuWorkerStatus.Failed : GpuWorkerStatus.Terminated;
         w.TerminatedAt ??= DateTime.UtcNow;
         w.TerminateReason = reason;
         _repo.Update(w);
-        if (LastActivity is null || !LastActivity.StartsWith("could not terminate"))
+        // Keep a "could not release" line from another worker in view.
+        if (LastActivity is null || !LastActivity.StartsWith("could not release"))
             LastActivity = $"released {w.Name} — {reason} ({w.CostLabel}, {w.UptimeLabel})";
         WorkersChanged?.Invoke();
+        return true;
     }
 
     public async Task TerminateAsync(string workerId, string reason, CancellationToken ct = default)
@@ -707,7 +846,8 @@ public sealed class GpuWorkerService : IDisposable
         var n = 0;
         foreach (var w in live)
         {
-            try { await TerminateAsync(w, reason, ct); n++; }
+            // Counts confirmed releases only; a pending one is still billing.
+            try { if (await TerminateAsync(w, reason, ct)) n++; }
             catch (Exception ex) { LastActivity = $"{w.Name}: {ex.Message}"; }
         }
         return n;
@@ -728,7 +868,10 @@ public sealed class GpuWorkerService : IDisposable
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
-            TerminateAllAsync("app closed", cts.Token).GetAwaiter().GetResult();
+            // Off the UI thread: blocking the dispatcher on a chain whose
+            // continuations need the dispatcher deadlocked, leaving a
+            // windowless process and every machine after the first billing.
+            Task.Run(() => TerminateAllAsync("app closed", cts.Token)).Wait(TimeSpan.FromSeconds(26));
         }
         catch
         {
